@@ -1,0 +1,189 @@
+#ifndef UI_CONTROL_LIST_CTRL_SUB_ITEM_H_
+#define UI_CONTROL_LIST_CTRL_SUB_ITEM_H_
+
+#include "duilib/Core/ImageList.h"
+#include "duilib/Control/ListCtrlDefs.h"
+
+namespace ui
+{
+/** Report视图中，列表项的子项
+*/
+class ListCtrlItem;
+class DUILIB_API ListCtrlSubItem : public ListCtrlLabel
+{
+    typedef ListCtrlLabel BaseClass;
+    friend class ListCtrlReportView;//允许调用SetDataColumnId函数
+public:
+    explicit ListCtrlSubItem(Window* pWindow);
+
+    /** 获取控件类型
+    */
+    virtual DString GetType() const override;
+
+    /** 设置属性
+    */
+    virtual void SetAttribute(const DString& strName, const DString& strValue) override;
+
+    /** DPI发生变化，更新控件大小和布局
+    * @param [in] nOldDpiScale 旧的DPI缩放百分比
+    * @param [in] nNewDpiScale 新的DPI缩放百分比，与Dpi().GetScale()的值一致
+    */
+    virtual void ChangeDpiScale(uint32_t nOldDpiScale, uint32_t nNewDpiScale) override;
+
+    /** 是否支持勾选模式（目前是TreeView/ListCtrl在使用这个模式）
+        勾选模式是指：
+        （1）只有点击在CheckBox图片上的时候，勾选框图片才是选择状态（非勾选模式下，是点击在控件矩形内就选择）
+        （2）勾选状态和选择状态分离，是两个不同的状态
+    */
+    virtual bool SupportCheckMode() const override;
+
+public:
+    /** 设置关联的Item接口
+    */
+    void SetListCtrlItem(ListCtrlItem* pItem);
+
+    /** 获取关联的Item接口
+    */
+    ListCtrlItem* GetListCtrlItem() const;
+
+    /** 获取关联的数据项索引号, 代表关联哪一行的数据
+    * @return 返回数据项的索引号, 有效范围：[0, ListCtrl::GetDataItemCount())
+    */
+    size_t GetDataItemIndex() const;
+
+    /** 获取关联的列索引号, 代表关联哪一列的数据
+    * @return 返回数据项的列索引号, 有效范围：[0, ListCtrl::GetColumnCount())
+    *         可以通过传入ListCtrl::GetColumnId()函数，获取到对应的列ID
+    */
+    size_t GetDataColumnIndex() const;
+
+    /** 获取关联的列ID, 代表关联哪一列的数据
+    * @return 返回数据项的列列ID，可以通过传入ListCtrl::GetColumnIndex()函数，获取到对应的列索引号
+    */
+    size_t GetDataColumnId() const;
+
+    /** 设置是否在该列的数据项显示CheckBox
+    * @param [in] bShow true表示在行首显示CheckBox，false表示不显示
+    */
+    bool SetShowCheckBox(bool bShow);
+
+    /** 判断当前该列的数据项CheckBox是否处于显示状态
+    @return 返回true表示CheckBox存在，并且可见； 如果不含CheckBox，返回false
+    */
+    bool IsShowCheckBox() const;
+
+    /** 判断当前该列的数据项CheckBox是否处于勾选状态
+    */
+    bool IsCheckBoxChecked() const;
+
+    /** 设置关联图标Id, 如果为-1表示不显示图标，图标显示在文本前面
+    */
+    void SetImageId(int32_t imageId);
+
+    /** 获取关联图标Id
+    */
+    int32_t GetImageId() const;
+
+    /** 设置文字与图标之间的间隔（像素）
+    */
+    void SetIconSpacing(int32_t nIconSpacing, bool bNeedDpiScale);
+
+    /** 获取文字与图标之间的间隔（像素）
+    */
+    int32_t GetIconSpacing() const;
+
+    /** 设置进度条显示值
+    * @param [in] nProgress 进度值，有效范围[0, 100]，-1表示不显示进度条（按普通文本显示）
+    */
+    void SetProgress(int32_t nProgress);
+
+    /** 获取进度条显示值
+    * @return 返回进度值，有效范围[0, 100]，-1表示不显示进度条（按普通文本显示）
+    */
+    int32_t GetProgress() const;
+
+    /** 获取进度条前景色（语义色名）
+    */
+    const DString& GetProgressColor() const;
+
+    /** 获取进度条背景色（语义色名）
+    */
+    const DString& GetProgressBkColor() const;
+
+    /** 设置进度条上文本的位置
+    * @param [in] textPos 位置模式，可取值："center"(默认，在单元格内居中)/"left"(在单元格内左对齐)/"right"(在单元格内右对齐)/"outside"(显示在进度条右侧外部)
+    */
+    void SetProgressTextPos(const DString& textPos);
+
+    /** 获取进度条上文本的位置
+    */
+    const DString& GetProgressTextPos() const;
+
+protected:
+    /** 绘制文字
+    */
+    virtual void PaintText(IRender* pRender) override;
+
+    /** 绘制进度条
+    */
+    void PaintProgress(IRender* pRender);
+
+    /** 计算文本区域大小（宽和高）
+     *  @param [in] szAvailable 可用大小，不包含内边距，不包含外边距
+     *  @return 控件的文本估算大小，包含内边距(Box)，不包含外边距
+     */
+    virtual UiSize EstimateText(UiSize szAvailable) override;
+
+    /** 加载图标资源
+    */
+    ImagePtr LoadItemImage() const;
+
+    /** 使得目标区域纵向对齐
+    */
+    void VAlignRect(UiRect& rc, uint32_t textStyle, int32_t nImageHeight);
+
+    /** 获取CheckBox的图片宽度
+    */
+    int32_t GetCheckBoxImageWidth();
+
+    /** 设置关联的列ID, 代表关联哪一列的数据
+    */
+    void SetDataColumnId(size_t nColumnId);
+
+private:
+    /** 关联的Item接口
+    */
+    ListCtrlItem* m_pItem;
+
+    /** 关联图标Id, 如果为-1表示不显示图标，图标显示在文本前面
+    */
+    int32_t m_imageId;
+
+    /** 文字与图标之间的间隔
+    */
+    int32_t m_nIconSpacing;
+
+    /** 关联的列ID
+    */
+    size_t m_nColumnId;
+
+    /** 进度条显示值，-1表示不显示进度条（按普通文本显示）
+    */
+    int32_t m_nProgress;
+
+    /** 进度条前景色（语义色名）
+    */
+    DString m_sProgressColor;
+
+    /** 进度条背景色（语义色名）
+    */
+    DString m_sProgressBkColor;
+
+    /** 进度条上文本的位置（"center"/"right"/"outside"）
+    */
+    DString m_sProgressTextPos;
+};
+
+}//namespace ui
+
+#endif //UI_CONTROL_LIST_CTRL_SUB_ITEM_H_

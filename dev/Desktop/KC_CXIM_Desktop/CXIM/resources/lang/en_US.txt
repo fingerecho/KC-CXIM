@@ -1,0 +1,10 @@
+﻿# String resources in English 
+# Comment symbol: "#"; trim spaces on both sides of language ID and text.
+# Allowed escape chars in text: "\r" (carriage return), "\n" (line feed), "\s" (space).
+
+# Language name and display name
+LANGUAGE_NAME = en_US
+LANGUAGE_DISPLAY_NAME = English(English)
+
+# Include language file list, different files are separated by semicolon: ";"
+INCLUDE_LANGUAGE_FILES = en_US-public.txt ; en_US-examples.txt

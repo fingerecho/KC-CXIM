@@ -1,0 +1,367 @@
+#ifndef UI_CONTROL_PROGRESS_H_
+#define UI_CONTROL_PROGRESS_H_
+
+#include "duilib/Control/Label.h"
+#include "duilib/Image/Image.h"
+#include "duilib/Animation/AnimationPlayer.h"
+#include <functional>
+
+namespace ui
+{
+
+/** 进度条控件
+*/
+class DUILIB_API Progress : public LabelTemplate<Control>
+{
+    typedef LabelTemplate<Control> BaseClass;
+public:
+    /** 进度文本格式化回调：自定义 show_percent 显示的文本
+    *   @param value     当前进度值（动画插值中的显示值）
+    *   @param minValue  进度最小值
+    *   @param maxValue  进度最大值
+    *   @return 要显示的文本（如 "5/10"、"3.2 GB"、"剩余 3 秒"）
+    */
+    typedef std::function<DString(double value, double minValue, double maxValue)> TextFormatCallback;
+
+public:
+    explicit Progress(Window* pWindow);
+    virtual ~Progress() override;
+
+    /// 重写父类方法，提供个性化功能，请参考父类声明
+    virtual DString GetType() const override;
+    virtual void SetAttribute(const DString& strName, const DString& strValue) override;
+    virtual void PaintStateImages(IRender* pRender) override;
+    virtual void ClearImageCache() override;
+
+    /** DPI发生变化，更新控件大小和布局
+    * @param [in] nOldDpiScale 旧的DPI缩放百分比
+    * @param [in] nNewDpiScale 新的DPI缩放百分比，与Dpi().GetScale()的值一致
+    */
+    virtual void ChangeDpiScale(uint32_t nOldDpiScale, uint32_t nNewDpiScale) override;
+
+    /** 判断是否是水平进度条
+     * @return 返回 true 是水平进度条，false 为垂直进度条
+     */
+    bool IsHorizontal() const;
+
+    /** 设置水平或垂直进度条
+     * @param [in] bHorizontal 为 true 时设置为水平进度条，false 时设置为垂直进度条，默认为 true
+     */
+    void SetHorizontal(bool bHorizontal = true);
+
+    /** 获取进度条最小值
+     * @return 返回进度条最小值
+     */
+    int32_t GetMinValue() const;
+
+    /** 设置进度条最小值
+     * @param [in] nMin 最小值数值
+     */
+    void SetMinValue(int32_t nMin);
+
+    /** 获取进度条最大值
+     * @return 返回进度条最大值
+     */
+    int32_t GetMaxValue() const;
+
+    /** 设置进度条最大值
+     * @param [in] nMax 要设置的最大值
+     */
+    void SetMaxValue(int32_t nMax);
+
+    /** 获取当前进度百分比
+     * @return 返回当前进度百分比
+     */
+    double GetValue() const;
+
+    /** 设置当前进度百分比
+     * @param[in] fValue 要设置的百分比数值
+     */
+    void SetValue(double fValue);
+
+    /** 设置当前进度百分比（不触发 kEventValueChanged 事件）
+     * 用于程序内部同步数值的场景（例如一个事件源驱动多个控件同步显示），
+     * 避免值变化事件回调被再次触发，形成循环调用
+     * @param[in] fValue 要设置的百分比数值
+     */
+    void SetValueNoEvent(double fValue);
+
+    /** 进度条前景图片是否缩放显示
+     * @return 返回 true 为缩放显示，false 为不缩放显示
+     */
+    bool IsStretchForeImage();
+
+    /** 设置进度条前景图片是否缩放显示
+     * @param [in] bStretchForeImage true 为缩放显示，false 为不缩放显示
+     */
+    void SetStretchForeImage(bool bStretchForeImage = true);
+
+    /** 获取滚动条背景图片
+     * @return 返回背景图片位置
+     */
+    DString GetProgressImage() const;
+
+    /** 设置进度条背景图片
+     * @param [in] strImage 图片地址
+     */
+    void SetProgressImage(const DString& strImage);
+
+    /** 获取进度条背景颜色
+     * @return 返回背景颜色的字符串值，对应 global.xml 中的指定色值
+     */
+    DString GetProgressColor() const;
+
+    /** 设置进度条背景颜色
+     * @param [in] 要设置的背景颜色字符串，该字符串必须在 global.xml 中存在
+     */
+    void SetProgressColor(const DString& strProgressColor);
+
+    /** 获取进度条位置
+    * @return 返回进度条区域坐标（以GetRect()为整个区域的相对坐标，左上角为<0,0>）
+    */
+    virtual UiRect GetProgressPos() const;
+
+    /** 获取当前显示值（值动画播放期间为插值中的中间值，其余时候等于 GetValue()）
+    * @return 返回当前用于绘制的进度值
+    */
+    double GetDisplayValue() const { return m_fDisplayValue; }
+
+    /** 监听进度值改变事件
+    * @param [in] callback 进度值改变后调用的回调函数（EventArgs::wParam 为新值、lParam 为旧值，均按整数截断）
+    * @param [in] callbackID 该回调函数对应的ID（用于删除回调函数）
+    */
+    void AttachValueChanged(const EventCallback& callback, EventCallbackID callbackID = 0) { AttachEvent(kEventValueChanged, callback, callbackID); }
+
+    /** 设置是否自动显示百分比文本（覆盖控件 text，进度变化时自动更新为"xx%"）
+    */
+    void SetShowPercent(bool bShowPercent);
+
+    /** 获取是否自动显示百分比文本
+    */
+    bool IsShowPercent() const { return m_bShowPercent; }
+
+    /** 设置是否启用值变化动画（默认关闭）
+    */
+    void SetAnimationEnabled(bool bEnabled);
+
+    /** 获取是否启用值变化动画
+    */
+    bool IsAnimationEnabled() const { return m_bAnimationEnabled; }
+
+    /** 设置值变化动画时长（毫秒，默认 300）
+    */
+    void SetAnimationDuration(int32_t nMs);
+
+    /** 获取值变化动画时长
+    */
+    int32_t GetAnimationDuration() const { return m_nAnimationDuration; }
+
+    /** 设置值变化动画的缓动曲线（默认 EaseOutQuad）
+    * @param [in] easing 缓动函数类型，取值见 enum EasingFunctionType
+    */
+    void SetAnimationEasing(EasingFunctionType easing);
+
+    /** 获取值变化动画的缓动曲线
+    */
+    EasingFunctionType GetAnimationEasing() const { return m_easingAnimation; }
+
+    /** 设置值变化动画的缓动曲线（字符串方式，字符串名称与 EasingFunctionType 枚举名完全一致）
+    * @param [in] strEasing 缓动函数名，如 "EaseOutQuad"、"EaseLinear"、"EaseOutElastic"；
+    *                       空字符串或无法识别时回退为默认的 EaseOutQuad
+    */
+    void SetAnimationEasingName(const DString& strEasing);
+
+    /** 获取值变化动画的缓动曲线名称（与 EasingFunctionType 枚举名一致）
+    */
+    const DString& GetAnimationEasingName() const { return m_strAnimationEasing; }
+
+    /** 设置纯色前景的圆角半径（像素，自动 DPI 缩放，默认 0 为直角）
+    */
+    void SetProgressRadius(int32_t nRadius);
+
+    /** 获取纯色前景的圆角半径
+    */
+    int32_t GetProgressRadius() const { return m_nProgressRadius; }
+
+    /** 立即把当前值钳位到新的 [min, max] 区间内（min/max 变化时自动调用）
+    */
+    void ClampCurrentValue();
+
+    /** 设置次级进度值（缓冲/buffer，通常比主进度略靠前，如视频已缓存位置）
+    * @param [in] fValue 次级进度值，小于等于 min 时不绘制；默认 -1 表示未设置
+    */
+    void SetBufferValue(double fValue);
+
+    /** 获取次级进度值
+    */
+    double GetBufferValue() const { return m_fBufferValue; }
+
+    /** 设置次级进度颜色（语义色名或颜色值，为空则使用前景色的半透明版）
+    */
+    void SetBufferColor(const DString& strColor);
+
+    /** 获取次级进度颜色
+    */
+    const DString& GetBufferColor() const { return m_strBufferColor; }
+
+    /** 设置进度文本格式化回调（show_percent 开启时生效，自定义显示文本）
+    * @param [in] callback 格式化回调，置空则恢复默认的"xx%"格式
+    */
+    void SetTextFormatCallback(const TextFormatCallback& callback);
+
+    /** 监听进度完成事件（进度值到达完成端点时触发：正向到达 max，倒数到达 min）
+    */
+    void AttachProgressCompleted(const EventCallback& callback, EventCallbackID callbackID = 0) { AttachEvent(kEventProgressCompleted, callback, callbackID); }
+
+    /** 播放Marquee
+     */
+    virtual void Play();
+
+    /** 绘制Marquee
+     */
+    void PaintMarquee(IRender* pRender);
+
+    /** 是否是Marquee
+     */
+    bool IsMarquee() const;
+
+    /** 设置Marquee
+     */
+    void SetMarquee(bool bMarquee);
+
+    /** 获取Marquee宽度
+     */
+    int32_t GetMarqueeWidth() const;
+
+    /** 设置Marquee宽度
+     */
+    void SetMarqueeWidth(int32_t nMarqueeWidth, bool bNeedDpiScale);
+
+    /** 获取Marquee步长
+     */
+    int32_t GetMarqueeStep() const;
+
+    /** 设置Marquee步长
+     */
+    void SetMarqueeStep(int32_t nMarqueeStep, bool bNeedDpiScale);
+
+    /** 获取Marquee持续时间
+     */
+    int32_t GetMarqueeElapsed() const;
+
+    /** 设置Marquee持续时间
+     */
+    void SetMarqueeElapsed(int32_t nMarqueeElapsed);
+
+public:
+    /** 设置是否反向填充进度条
+    */
+    void SetReverse(bool bReverse);
+
+    /** 是否反向填充进度条
+    */
+    bool IsReverse() const;
+
+private:
+    /** 发送进度值改变事件
+    * @param newValue 新值
+    * @param oldValue 旧值
+    */
+    void SendValueChangedEvent(double newValue, double oldValue);
+
+    /** 更新百分比显示文本（show_percent 开启时）
+    */
+    void UpdatePercentText();
+
+    /** 启动值变化动画（从 fFrom 缓动到 fTo）
+    */
+    void StartValueAnimation(double fFrom, double fTo);
+
+    /** 根据进度值计算填充区域（含钳位与 reverse 处理，供 GetProgressPos 与 buffer 绘制复用）
+    * @param value 进度值
+    */
+    UiRect CalcProgressRect(double value) const;
+
+    /** 绘制纯色进度填充（含圆角，供主进度与 buffer 复用）
+    */
+    void DrawSolidProgressRect(IRender* pRender, const UiRect& rcProgressColor, UiColor color, uint8_t alpha);
+
+private:
+    //进度条是水平或垂直: true为水平，false为垂直
+    bool m_bHorizontal;
+
+    //指定进度条前景图片是否缩放显示
+    bool m_bStretchForeImage;
+
+    //进度最大值（默认为100）
+    int32_t m_nMaxValue;
+
+    //进度最小值（默认为0）
+    int32_t m_nMinValue;
+
+    //当前进度值
+    double m_fCurrentValue;
+
+    //次级进度值（缓冲/buffer），默认 -1 表示未设置
+    double m_fBufferValue;
+
+    //次级进度颜色（语义色名或颜色值）
+    DString m_strBufferColor;
+
+    //进度文本格式化回调
+    TextFormatCallback m_textFormatCallback;
+
+    //进度条前景图片
+    Image* m_pProgressImage;
+
+    //进度条前景图片属性
+    UiString m_sProgressImageModify;
+
+    //进度条前景颜色,不指定则使用默认颜色
+    UiString m_sProgressColor;
+
+    //滚动效果
+    bool m_bMarquee;
+    int32_t m_nMarqueeWidth;
+    int32_t m_nMarqueeStep;
+    int32_t m_nMarqueeElapsed;
+    int32_t m_nMarqueePos;
+
+    //值变化动画的显示值（动画插值中的中间值）
+    double m_fDisplayValue;
+
+    //是否启用值变化动画
+    bool m_bAnimationEnabled;
+
+    //值变化动画时长（毫秒）
+    int32_t m_nAnimationDuration;
+
+    //值变化动画的缓动曲线（默认 EaseOutQuad）
+    EasingFunctionType m_easingAnimation;
+
+    //值变化动画的缓动曲线名称（与 EasingFunctionType 枚举名一致，供 XML 往返与日志使用）
+    DString m_strAnimationEasing;
+
+    //值变化动画播放器
+    std::unique_ptr<AnimationPlayer> m_pAnimPlayer;
+
+    //是否自动显示百分比文本
+    bool m_bShowPercent;
+
+    //是否禁止发送进度值变化事件（SetValueNoEvent 期间为 true）
+    bool m_bDisableValueChangeEvent;
+
+    //纯色前景的圆角半径（DPI 缩放前原始值）
+    int32_t m_nProgressRadius;
+
+private:
+    //是否倒数（进度从100 到 0）
+    bool m_bReverse;
+
+    //定时器取消机制
+    WeakCallbackFlag m_timer;
+};
+
+} // namespace ui
+
+#endif // UI_CONTROL_PROGRESS_H_

@@ -1,0 +1,1433 @@
+# String resources in English 
+# comment symbol："#"
+
+# The following are the texts used by each example program
+# ========================================================
+# examples/basic
+STRID_BASIC_TEXT = A simple window with a title bar and standard control buttons.
+
+# cef/cef_browser Browser
+STRID_CEF_BROWSER_DEV_TOOL           =    Developer Tools
+STRID_CEF_BROWSER_WINDOW_MODE        =    Window Mode Cef Browser Component Test
+STRID_CEF_BROWSER_BACKWARD           =    Back
+STRID_CEF_BROWSER_FORWARD            =    Forward
+STRID_CEF_BROWSER_INPUT_ADDRESS      =    Please input url
+STRID_CEF_BROWSER_BROWSE_TO          =    Go
+STRID_CEF_BROWSER_REFRESH            =    Refresh
+STRID_CEF_BROWSER_STOP               =    Stop
+STRID_CEF_BROWSER_NEW_TAB            =    New Tab
+STRID_CEF_BROWSER_HELLO_JS           =    Hello JS！
+STRID_CEF_BROWSER_INPUT_TEXT         =    Input text sending to JS
+STRID_CEF_BROWSER_SEND_TO_JS         =    Send to JS
+STRID_CEF_BROWSER_OFF_SCREEN_MODE    =    Off-screen Rendering Cef Browser Component Test
+STRID_CEF_BROWSER_RECEIVE_JS_MSG     =    Received Msg From JS: %s
+STRID_CEF_BROWSER_MULTI_TAB          =    Multi Tab Browser
+STRID_CEF_BROWSER_OPEN_LINK_IN_NEW_TAB    = Open link in new tab
+STRID_CEF_BROWSER_OPEN_LINK_IN_NEW_WINDOW = Open link in new window
+STRID_CEF_BROWSER_COPY_LINK               = Copy link
+
+# WebView2/WebView2Browser 浏览器
+STRID_WEBVIEW2_BROWSER_DEV_TOOL          =    Developer Tools
+STRID_WEBVIEW2_BROWSER_BACKWARD          =    Back
+STRID_WEBVIEW2_BROWSER_FORWARD           =    Forward
+STRID_WEBVIEW2_BROWSER_INPUT_ADDRESS     =    Please input url
+STRID_WEBVIEW2_BROWSER_BROWSE_TO         =    Go
+STRID_WEBVIEW2_BROWSER_REFRESH           =    Refresh
+STRID_WEBVIEW2_BROWSER_STOP              =    Stop
+STRID_WEBVIEW2_BROWSER_NEW_TAB           =    New Tab
+STRID_WEBVIEW2_BROWSER_MULTI_TAB         =    Multi Tab Browser
+
+# examples/MultiLang
+MULTI_LANG_WINDOW_TEXT               =   Support for multilingual windows
+MULTI_LANG_LABEL_TEXT                =   This is a program that supports multiple languages.
+MULTI_LANG_RICH_TEXT                 =   <font color="#8B0000">This is</font> a <b>program </b>that <bgcolor color="#6495ED">supports multiple languages </bgcolor>.
+
+# examples/chat
+STRID_CHAT_SIGN_UP  = Sign Up
+STRID_CHAT_SIGN_IN  = Sign In
+STRID_CHAT_ACCOUNT  = Account
+STRID_CHAT_PASSWORD = Password
+
+# examples/ChildWindow
+STRID_CHILDWINDOW_TITLE  = ChildWindow Test Program
+STRID_CHILDWINDOW_FPS    = FPS
+STRID_CHILDWINDOW_PAINT  = Paint
+STRID_CHILDWINDOW_FULLSCREEN  = Fullscreen
+
+# examples/DpiAware
+STRID_DPIAWARE_TITLE  = Examples of applications that support DPI awareness
+STRID_DPIAWARE_CURRENT_AWARENESS  = Current DPI awareness:
+STRID_DPIAWARE_CURRENT_DPI_SCALE  = Primary monitor display scale:
+STRID_DPIAWARE_WINDOW_DISPLAY_SCALE  = Window display scale:
+STRID_DPIAWARE_WINDOW_SIZE  = Window size:
+STRID_DPIAWARE_WINDOW_CLIENT_SIZE  = Window client size:
+STRID_DPIAWARE_RICHTEXT  = RichText：<b>Bold, <font color="#FF0000">Red Font</font></b>
+STRID_DPIAWARE_MODIFY_DPI  = Adjust DPI scale (60-500):
+STRID_DPIAWARE_MODIFY_DPI_BTN  = DPI Scale
+STRID_DPIAWARE_NEW_WINDOW  = New Window
+
+# examples/ListBox
+STRID_LISTBOX_TITLE  = ListBox（VTileListBox | HTileListBox | VListBox | HListBox）
+STRID_LISTBOX_DELETE  = Delete
+
+# examples/MoveControl
+STRID_MOVECONTROL_APP_LIST  = Application List
+STRID_MOVECONTROL_APP_COMMON  = Common Applications
+STRID_MOVECONTROL_MY_APP  = My Applications
+STRID_MOVECONTROL_TEST_01  = Test01
+STRID_MOVECONTROL_TEST_02  = Test02
+STRID_MOVECONTROL_TEST_03  = Test03
+STRID_MOVECONTROL_TEST_04  = Test04
+STRID_MOVECONTROL_TEST_05  = Test05
+STRID_MOVECONTROL_TEST_06  = Test06
+STRID_MOVECONTROL_TEST_07  = Test07
+STRID_MOVECONTROL_TEST_08  = Test08
+STRID_MOVECONTROL_TEST_09  = Test09
+STRID_MOVECONTROL_TEST_10  = Test10
+
+# examples/threads
+STRID_THREADS_TITLE  = Duilib multithreading example program
+STRID_THREADS_START  = Start Threads
+STRID_THREADS_STOP  = Stop Threads
+STRID_THREADS_EXECUTE_IN_THREAD_INFO  = Execute tasks in thread，TID:
+STRID_THREADS_EXECUTE_IN_THREAD  = Execute tasks in thread
+STRID_THREADS_EXECUTE_LOG_01_1  = System TID
+STRID_THREADS_EXECUTE_LOG_01_2  = Thread Identifier
+STRID_THREADS_EXECUTE_LOG_01_3  = Execute in thread
+STRID_THREADS_EXECUTE_LOG_02_1  = Caller TID
+STRID_THREADS_EXECUTE_LOG_02_2  = TID
+STRID_THREADS_EXECUTE_LOG_02_3  = ThreadName
+STRID_THREADS_EXECUTE_LOG_02_4  = Thread Identifier
+
+# examples/VirtualListBox
+STRID_VIRTUALLISTBOX_TITLE  = VirtualListBox（VirtualHTileListBox | VirtualVTileListBox | VirtualHListBox | VirtualVListBox）
+STRID_VIRTUALLISTBOX_DELETE  = Delete
+STRID_VIRTUALLISTBOX_BOX_TYPE  = VirtualListBox Type:
+STRID_VIRTUALLISTBOX_ROW_COLS  = Rows/Cols:
+STRID_VIRTUALLISTBOX_AUTO_CALC  = Auto Calc
+STRID_VIRTUALLISTBOX_FIX_COLS  = Fix Cols
+STRID_VIRTUALLISTBOX_FIX_ROWS  = Fix Rows
+STRID_VIRTUALLISTBOX_ALIGN_TYPE  = Alignment:
+STRID_VIRTUALLISTBOX_ALIGN_LEFT  = Left
+STRID_VIRTUALLISTBOX_ALIGN_CENTER  = Center
+STRID_VIRTUALLISTBOX_ALIGN_RIGHT  = Right
+STRID_VIRTUALLISTBOX_ALIGN_TOP  = Top
+STRID_VIRTUALLISTBOX_ALIGN_BOTTOM  = Bottom
+STRID_VIRTUALLISTBOX_CHILD_MARGIN_X  = ChildMarginX:
+STRID_VIRTUALLISTBOX_CHILD_MARGIN_Y  = ChildMarginY:
+STRID_VIRTUALLISTBOX_DATA_COUNT  = Data Count:
+STRID_VIRTUALLISTBOX_CHANGE  = Update
+STRID_VIRTUALLISTBOX_DATA_MODIFY  = Modify:
+STRID_VIRTUALLISTBOX_INPUT_INDEX  = Index
+STRID_VIRTUALLISTBOX_INPUT_NAME = New name
+STRID_VIRTUALLISTBOX_DATA_UPDATE  = Update
+STRID_VIRTUALLISTBOX_DATA_DELETE  = Delete:
+STRID_VIRTUALLISTBOX_BTN_DELETE  = Delete
+STRID_VIRTUALLISTBOX_TASK_NAME  = Task
+
+# examples/XmlPreview
+STRID_XMLPREVIEW_TITLE  = XML file preview function test
+STRID_XMLPREVIEW_XML_PATH  = XML Path:
+STRID_XMLPREVIEW_XML_LOAD_RESULT  = XML Load Result:
+STRID_XMLPREVIEW_XML_DRAG_PROMPT  = Drag the XML file into the display area below for preview
+STRID_XMLPREVIEW_XML_AUTO_REFRESH  = Auto Refresh
+STRID_XMLPREVIEW_XML_REFRESH_MS  = Refresh Interval(ms):
+STRID_XMLPREVIEW_XML_CLEAR_PREVIEW  = Clear Preview
+STRID_XMLPREVIEW_XML_OPEN_XML  = Open Xml ...
+
+# examples/TreeView
+STRID_TREEVIEW_WIN_NAME = Name
+STRID_TREEVIEW_WIN_DISK_TYPE = Disk Type
+STRID_TREEVIEW_WIN_PARTITION_TYPE = Partition Type
+STRID_TREEVIEW_WIN_TOTAL_SIZE = Total Size
+STRID_TREEVIEW_WIN_FREE_SPACE = Free Space
+STRID_TREEVIEW_WIN_USED_SPACE = Used
+STRID_TREEVIEW_LINUX_FILE_SYSTEM = File System
+STRID_TREEVIEW_LINUX_DEVICE_TYPE = Device Type
+STRID_TREEVIEW_LINUX_PARTITION_TYPE = Partition Type
+STRID_TREEVIEW_LINUX_TOTAL_SIZE = Total Size
+STRID_TREEVIEW_LINUX_FREE_SPACE = Free Space
+STRID_TREEVIEW_LINUX_USED_SPACE = Used
+STRID_TREEVIEW_LINUX_MOUNT_POINT = Mount Point
+STRID_TREEVIEW_LINUX_DEVICE_UNKNOWN = Unknown
+STRID_TREEVIEW_LINUX_DEVICE_HDD = HDD (Mechanical Hard Disk)
+STRID_TREEVIEW_LINUX_DEVICE_SSD = SATA SSD
+STRID_TREEVIEW_LINUX_DEVICE_NVME = NVMe SSD
+STRID_TREEVIEW_LINUX_DEVICE_USB = USB Storage
+STRID_TREEVIEW_LINUX_DEVICE_SD_CARD = SD Card
+STRID_TREEVIEW_LINUX_DEVICE_CDROM = CD/DVD
+STRID_TREEVIEW_LINUX_DEVICE_LOOP = LOOP Virtual Storage
+STRID_TREEVIEW_LINUX_DEVICE_VIRT_DISK = Virtual Disk
+STRID_TREEVIEW_LINUX_DEVICE_RAMDISK = RAM Disk
+STRID_TREEVIEW_LINUX_DEVICE_NFS = NFS
+STRID_TREEVIEW_LINUX_DEVICE_SHARE = Shared Folder
+STRID_TREEVIEW_EXPLORER_FILE_NAME = File Name
+STRID_TREEVIEW_EXPLORER_MODIFY_DATE = Modified Date
+STRID_TREEVIEW_EXPLORER_FILE_TYPE = File Type
+STRID_TREEVIEW_EXPLORER_FILE_SIZE = File Size
+
+STRID_TREEVIEW_TITLE  = TreeView Control Test Program
+STRID_TREEVIEW_FUNCTION_CONTROL  = Function Control:
+STRID_TREEVIEW_SHOW_EXPAND_ICON  = Show expand icon
+STRID_TREEVIEW_SHOW_CHECKBOX  = Show CheckBox
+STRID_TREEVIEW_SHOW_ICON  = Show Icon
+STRID_TREEVIEW_MULTI_SELECT  = Multi Select
+STRID_TREEVIEW_SHOW_HIDEN_FILES  = Show hidden files
+STRID_TREEVIEW_SHOW_SYSTEM_FILES  = Show system files
+STRID_TREEVIEW_VIEW_UP  = Move up to parent directory
+STRID_TREEVIEW_VIEW_LEFT  = Backward
+STRID_TREEVIEW_VIEW_RIGHT  = Forward
+STRID_TREEVIEW_VIEW_REFRESH  = Refresh the directory tree and file display area on the left
+STRID_TREEVIEW_VIEW_SORT_MODE  = Sorting method
+STRID_TREEVIEW_VIEW_SORT  = Sort
+STRID_TREEVIEW_VIEW_SWITCH_MODE  = Switch view mode
+STRID_TREEVIEW_VIEW_MODE  = View
+STRID_TREEVIEW_VIEW_PATH  = Path:
+STRID_TREEVIEW_NODE_USER_HOME  = User Home
+STRID_TREEVIEW_NODE_DESKTOP  = Desktop
+STRID_TREEVIEW_NODE_DOCUMENTS  = Documents
+STRID_TREEVIEW_NODE_PICTURES  = Pictures
+STRID_TREEVIEW_NODE_MUSIC  = Music
+STRID_TREEVIEW_NODE_VIDEOS  = Videos
+STRID_TREEVIEW_NODE_DOWNLOADS  = Downloads
+STRID_TREEVIEW_NODE_MYCOMPUTER  = MyComputer
+STRID_TREEVIEW_NODE_FILESYSTEM  = FileSystem
+STRID_TREEVIEW_ICON_VIEW_BIG = Icon View (Large)
+STRID_TREEVIEW_ICON_VIEW_MEDIUM = Icon View (Medium)
+STRID_TREEVIEW_ICON_VIEW_SMALL = Icon View (Small)
+STRID_TREEVIEW_LIST_VIEW_BIG = List View (Large)
+STRID_TREEVIEW_LIST_VIEW_MEDIUM = List View (Medium)
+STRID_TREEVIEW_LIST_VIEW_SMALL = List View (Small)
+STRID_TREEVIEW_DETAIL_VIEW = Details View
+STRID_TREEVIEW_IMAGE_LIST_VIEW = Image List View
+STRID_TREEVIEW_FILE_NAME = File Name
+STRID_TREEVIEW_FILE_MODIFY_TIME = Modified Date
+STRID_TREEVIEW_FILE_TYPE = File Type
+STRID_TREEVIEW_FILE_SIZE = File Size
+STRID_TREEVIEW_SORT_ASCENDING = Sort Ascending
+STRID_TREEVIEW_SORT_DESCENDING = Sort Descending
+
+# examples/RichEdit
+# Window Title/Basic Controls
+STRID_RICHEDIT_TEST_TITLE = RichEdit Control Test Program
+STRID_RICHEDIT_MINIMIZE = Minimize
+STRID_RICHEDIT_MAXIMIZE = Maximize
+STRID_RICHEDIT_RESTORE = Restore
+STRID_RICHEDIT_CLOSE = Close
+
+# Password Related
+STRID_RICHEDIT_PASSWORD_FUNC = Password Related Functions
+STRID_RICHEDIT_PASSWORD_INPUT = Password Input:  
+STRID_RICHEDIT_SHOW_PASSWORD = Show Password:  
+STRID_RICHEDIT_FLASH_PASSWORD_CHAR = Flash Password Char:  
+STRID_RICHEDIT_PASSWORD_CHAR_HASH = Password Char is # :  
+
+# Basic Functions
+STRID_RICHEDIT_BASIC_FUNC = Basic Functions
+STRID_RICHEDIT_SINGLE_LINE_EDIT = Single Line Edit:  
+STRID_RICHEDIT_PROMPT_MODE = Prompt Mode:  
+STRID_RICHEDIT_INPUT_TEXT_HERE = Enter text here
+STRID_RICHEDIT_NUMBER_MODE = Number Mode:  
+STRID_RICHEDIT_READONLY_MODE = Readonly Mode:  
+STRID_RICHEDIT_DISABLE_MODE = Disabled Mode:  
+STRID_RICHEDIT_HYPERLINK = Hyperlink:  
+STRID_RICHEDIT_TEXT_COLOR = Text Color:  
+STRID_RICHEDIT_CARET_COLOR = Caret Color:  
+STRID_RICHEDIT_TEXT_ALIGN = Text Align:  
+STRID_RICHEDIT_MAX_CHAR_8 = Max Chars: 8:  
+
+# Common Functions
+STRID_RICHEDIT_COMMON_FUNC = Common Functions
+STRID_RICHEDIT_SPIN_FUNC = Spin Function:  
+STRID_RICHEDIT_NUMBER_RANGE_64 = (Number Range: -64 - 64)
+STRID_RICHEDIT_SPINBOX_STEP = SpinBox Control:  
+STRID_RICHEDIT_SPINBOX_STEP_DESC = (Step: 5, Range: 0 - 100)
+STRID_RICHEDIT_SEARCH_BOX = SearchBox:  
+STRID_RICHEDIT_SEARCH_PROMPT = Type to search
+STRID_RICHEDIT_CLEAR_TEXT = Clear Text:  
+
+# Scrollbar Related
+STRID_RICHEDIT_SCROLLBAR_FUNC = Scrollbar Related
+STRID_RICHEDIT_HORIZONTAL_SCROLLBAR = Horizontal Scrollbar:  
+STRID_RICHEDIT_VERTICAL_SCROLLBAR = Vertical Scrollbar:  
+STRID_RICHEDIT_HORIZONTAL_VERTICAL_SCROLLBAR = Horizontal & Vertical Scrollbar:  
+
+# File Operations
+STRID_RICHEDIT_FILE = File:
+STRID_RICHEDIT_OPEN_FILE = Open(Ctrl+O)
+STRID_RICHEDIT_SAVE_FILE = Save(Ctrl+S)
+STRID_RICHEDIT_SAVE_AS_FILE = Save As(Ctrl+Shift+S)
+
+# Edit Operations
+STRID_RICHEDIT_EDIT = Edit:
+STRID_RICHEDIT_COPY = Copy(Ctrl+C)
+STRID_RICHEDIT_CUT = Cut(Ctrl+X)
+STRID_RICHEDIT_PASTE = Paste(Ctrl+V)
+STRID_RICHEDIT_DELETE = Delete(Del)
+STRID_RICHEDIT_SELECT_ALL = Select All(Ctrl+A)
+STRID_RICHEDIT_DESELECT = Deselect
+STRID_RICHEDIT_UNDO = Undo(Ctrl+Z)
+STRID_RICHEDIT_REDO = Redo(Ctrl+Y)
+
+# Find & Replace
+STRID_RICHEDIT_FIND = Find:
+STRID_RICHEDIT_FIND_TEXT = Find(Ctrl+F)
+STRID_RICHEDIT_FIND_NEXT_TEXT = Find Next(F3)
+STRID_RICHEDIT_REPLACE_TEXT = Replace(Ctrl+H)
+
+# Font Settings
+STRID_RICHEDIT_FONT = Font:
+STRID_RICHEDIT_SET_FONT = Set Font
+STRID_RICHEDIT_SELECT_FONT = Select Font
+STRID_RICHEDIT_FONT_BOLD = Bold: Make font bolder
+STRID_RICHEDIT_FONT_ITALIC = Italic: Make font slanted
+STRID_RICHEDIT_FONT_UNDERLINE = Underline: Draw a line under text
+STRID_RICHEDIT_FONT_STRIKEOUT = Strikeout: Draw a line through text
+STRID_RICHEDIT_INCREASE_FONT_SIZE = Increase font size
+STRID_RICHEDIT_DECREASE_FONT_SIZE = Decrease font size
+STRID_RICHEDIT_RICH_TEXT_FORMAT_TIPS = (Rich text mode sets format for selected text)
+STRID_RICHEDIT_RICH_TEXT_FORMAT_TIPS_DETAIL = Rich text mode sets format for selected text# plain text mode sets format for all text.
+
+# Zoom Settings
+STRID_RICHEDIT_ZOOM = Zoom:
+STRID_RICHEDIT_CURRENT_ZOOM_RATIO = Current Zoom Ratio:
+STRID_RICHEDIT_ZOOM_100_PERCENT = 100.0%
+STRID_RICHEDIT_ZOOM_IN = Zoom In+
+STRID_RICHEDIT_ZOOM_OUT = Zoom Out-
+STRID_RICHEDIT_RESET_ZOOM = Reset to 100%
+STRID_RICHEDIT_RESET_FONT_SIZE = Reset font size to 100%
+
+# Other Settings
+STRID_RICHEDIT_OTHER = Other:
+STRID_RICHEDIT_AUTO_WRAP = Auto Wrap
+STRID_RICHEDIT_AUTO_WRAP_TIPS = Whether to auto wrap text
+STRID_RICHEDIT_RICH_TEXT_MODE = Rich Text Mode
+STRID_RICHEDIT_RICH_TEXT_MODE_TIPS = Whether to support rich text format
+STRID_RICHEDIT_LINE_SPACING = Line Spacing:
+STRID_RICHEDIT_LINE_SPACING_RICH_TEXT_ONLY = (Line spacing: Only valid in rich text mode)
+STRID_RICHEDIT_MORE_COLOR  = More ...
+STRID_RICHEDIT_REPLACE_TITLE = Replace
+STRID_RICHEDIT_REPLACE_FIND_CONTENT = Find what:
+STRID_RICHEDIT_REPLACE_FIND = Find
+STRID_RICHEDIT_REPLACE_FIND_NEXT = Find Next
+STRID_RICHEDIT_REPLACE_WITH = Replace with:
+STRID_RICHEDIT_REPLACE_REPLACE = Replace
+STRID_RICHEDIT_REPLACE_REPLACE_ALL = Replace All
+STRID_RICHEDIT_REPLACE_SEARCH_DIRECTION = Search Direction
+STRID_RICHEDIT_REPLACE_SEARCH_UP = Search Up
+STRID_RICHEDIT_REPLACE_SEARCH_DOWN = Search Down
+STRID_RICHEDIT_REPLACE_CASE_SENSITIVE = Match Case
+STRID_RICHEDIT_REPLACE_MATCH_WHOLE_WORD = Match Whole Word
+STRID_RICHEDIT_REPLACE_CANCEL = Cancel
+STRID_RICHEDIT_FIND_TITLE = Find
+STRID_RICHEDIT_FIND_CONTENT = Find what:
+STRID_RICHEDIT_FIND_PROMPT = Find
+STRID_RICHEDIT_FIND_NEXT = Find Next
+STRID_RICHEDIT_FIND_SEARCH_DIRECTION = Search Direction
+STRID_RICHEDIT_FIND_SEARCH_UP = Search Up
+STRID_RICHEDIT_FIND_SEARCH_DOWN = Search Down
+STRID_RICHEDIT_FIND_CASE_SENSITIVE = Match Case
+STRID_RICHEDIT_FIND_MATCH_WHOLE_WORD = Match Whole Word
+STRID_RICHEDIT_FIND_CANCEL = Cancel
+
+STRID_RICHEDIT_ALL_FILES = All Files(*.*)
+STRID_RICHEDIT_TXT_FILES = Text Files(*.txt)
+STRID_RICHEDIT_RTF_FILES = RTF Files(*.rtf)
+
+# examples/ListCtrl
+# Window Basic
+STRID_LISTCTRL_TEST_TITLE = ListCtrl Test
+STRID_LISTCTRL_TABLE_TYPE = Table Type:
+STRID_LISTCTRL_REPORT = Report
+STRID_LISTCTRL_ICON = Icon
+STRID_LISTCTRL_LIST = List
+STRID_LISTCTRL_SUPPORT_MULTI_SELECT = Multi-Select
+STRID_LISTCTRL_ALL_COLUMNS_EDITABLE = All Columns Editable
+STRID_LISTCTRL_COMBO_EDITOR = Combo Editor (2nd Last Column)
+STRID_LISTCTRL_SELECTION_MODE = Selection Mode:
+STRID_LISTCTRL_SELECTION_MODE_TIPS = Select by row or by cell (cell mode is only supported in the Report view)
+STRID_LISTCTRL_SELECTION_ROW = By Row
+STRID_LISTCTRL_SELECTION_CELL = By Cell
+
+# Group Titles (Layout)
+STRID_LISTCTRL_VIEW_GROUP = View & Data
+STRID_LISTCTRL_HEADER_GROUP = Header
+STRID_LISTCTRL_COLUMN_GROUP = Columns
+STRID_LISTCTRL_CELL_LEVEL_GROUP = Column / Row CheckBox & Icon
+STRID_LISTCTRL_TABLE_GROUP = Appearance
+STRID_LISTCTRL_SELECTION_GROUP = Selection Mode & Operations
+STRID_LISTCTRL_LOADING_GROUP = Loading Tests
+
+# Report Type Core Config
+STRID_LISTCTRL_REPORT_TYPE = Report Type
+STRID_LISTCTRL_HEADER_CONTROL = Header Ctrl:
+STRID_LISTCTRL_HIDE = Hide
+STRID_LISTCTRL_SHOW = Show
+STRID_LISTCTRL_DRAG_HEADER_REORDER = Drag Header:
+STRID_LISTCTRL_DISABLE = Disabled
+STRID_LISTCTRL_ENABLE = Enabled
+STRID_LISTCTRL_HEADER_HEIGHT = Header H:
+STRID_LISTCTRL_SET_COLUMN_WIDTH_BY_RATIO = Set Col Width Ratio
+
+# Column Control
+STRID_LISTCTRL_COLUMN_CONTROL = Column Ctrl:
+STRID_LISTCTRL_SHOW_THIS_COLUMN = Show Col
+STRID_LISTCTRL_RESIZABLE_COLUMN_WIDTH = Resizable
+STRID_LISTCTRL_SORTABLE = Sortable
+STRID_LISTCTRL_SORT_ICON_AT_TOP = Sort Icon Top
+STRID_LISTCTRL_DRAG_REORDERABLE = Drag Reorder
+STRID_LISTCTRL_EDITABLE_TEXT = Editable
+
+# Column-Level CheckBox/Icon
+STRID_LISTCTRL_COLUMN_LEVEL_CHECKBOX = Col CheckBox:
+STRID_LISTCTRL_COLUMN_LEVEL_CHECKBOX_TIPS = Col header/table show CheckBox
+STRID_LISTCTRL_SHOW_IN_HEADER = ShowInHeader
+STRID_LISTCTRL_SHOW_IN_EACH_COLUMN = ShowInCol
+STRID_LISTCTRL_COLUMN_LEVEL_ICON = Col Icon:
+STRID_LISTCTRL_COLUMN_LEVEL_ICON_TIPS = Col header/table show Icon
+
+# Text Alignment
+STRID_LISTCTRL_HEADER_TEXT = Header Text:
+STRID_LISTCTRL_ALIGN_LEFT = Left
+STRID_LISTCTRL_ALIGN_CENTER = Center
+STRID_LISTCTRL_ALIGN_RIGHT = Right
+STRID_LISTCTRL_TABLE_TEXT = Table Text:
+
+# Table Properties
+STRID_LISTCTRL_TABLE_PROPERTIES = Table Attr:
+STRID_LISTCTRL_HORIZONTAL_GRID = H Grid:
+STRID_LISTCTRL_VERTICAL_GRID = V Grid:
+STRID_LISTCTRL_ROW_HEIGHT = Row H:
+STRID_LISTCTRL_FROZEN_COLUMN = Freeze First Col:
+STRID_LISTCTRL_FROZEN_COLUMN_TIPS = Freeze the first column on the left; it stays fixed when scrolling horizontally
+STRID_LISTCTRL_COLUMN_VISIBLE_API = Column 2 Visible:
+STRID_LISTCTRL_COLUMN_VISIBLE_API_TIPS = Hide or show column 2 (column index 1) using ListCtrl::SetColumnVisible/IsColumnVisible
+
+# Cell Word Wrap
+STRID_LISTCTRL_CELL_WORD_WRAP = Cell Wrap:
+STRID_LISTCTRL_CELL_WORD_WRAP_TIPS = Enable word wrap for cells of the selected column (Report view); adjust row height accordingly, otherwise text is clipped
+STRID_LISTCTRL_SINGLE_LINE = Single Line
+STRID_LISTCTRL_WORD_WRAP = Word Wrap
+
+# Row-Level CheckBox/Icon
+STRID_LISTCTRL_ROW_LEVEL_CHECKBOX = Row CheckBox:
+STRID_LISTCTRL_ROW_LEVEL_CHECKBOX_TIPS = Row header/start show CheckBox
+STRID_LISTCTRL_SHOW_AT_ROW_START = Show at Row Start
+STRID_LISTCTRL_ROW_LEVEL_ICON = Row Icon:
+STRID_LISTCTRL_ROW_LEVEL_ICON_TIPS = Row start show Icon
+
+# Other Tests
+STRID_LISTCTRL_OTHER_TESTS = Other Tests
+STRID_LISTCTRL_LOADING_TEST_PROGRESS1 = Loading Test (Bar1)
+STRID_LISTCTRL_LOADING_TEST_PROGRESS2 = Loading Test (Bar2)
+STRID_LISTCTRL_LOADING_TEST1 = Loading Test 1
+STRID_LISTCTRL_LOADING_TEST2 = Loading Test 2
+STRID_LISTCTRL_LOADING_TEST3 = Loading Test 3
+STRID_LISTCTRL_LOADING_TEST4 = Loading Test 4
+STRID_LISTCTRL_LOADING_TEST5 = Loading Test 5
+STRID_LISTCTRL_LOADING_TEST6 = Loading Test 6
+STRID_LISTCTRL_LOADING_TEST_SKELETON_LIST = Skeleton Test (List)
+STRID_LISTCTRL_LOADING_TEST_SKELETON_CARD = Skeleton Test (Card)
+STRID_LISTCTRL_LOADING_TEST_STOP = Stop Loading
+
+# Stress Test (Phase 0 performance baseline)
+STRID_LISTCTRL_STRESS_TEST = Stress Test
+STRID_LISTCTRL_STRESS_LOAD = Load Stress Data (100k x 10)
+STRID_LISTCTRL_STRESS_LOAD_SPARSE = Load Sparse Data (100k rows, 1000 cells)
+STRID_LISTCTRL_STRESS_INSERT = Insert 1000 Rows at Middle
+STRID_LISTCTRL_STRESS_DELETE = Delete 500 Rows
+STRID_LISTCTRL_STRESS_DELETE_BATCH = Delete 500 Rows (Batch, unordered)
+STRID_LISTCTRL_STRESS_COMPACT = Compact Storage
+STRID_LISTCTRL_COPY_SELECTION = Copy Selection (Ctrl+C)
+STRID_LISTCTRL_EXPORT_CSV = Export CSV
+STRID_LISTCTRL_ENTER_CELL_EDIT = Enter Cell Edit (F2)
+STRID_LISTCTRL_COPY_EXPORT_TITLE = Copy / Export
+STRID_LISTCTRL_STRESS_SORT = Sort
+STRID_LISTCTRL_STRESS_REPAINT = Scroll & Repaint
+STRID_LISTCTRL_STRESS_RESTORE = Restore Demo Data
+STRID_LISTCTRL_STRESS_MEMORY = Memory Readout
+STRID_LISTCTRL_STRESS_NEED_LOAD = Please load the stress data first
+
+STRID_LISTCTRL_DATA_COLUMN = Column %d
+STRID_LISTCTRL_DATA_ROW_COLUMN = Row %03d / Column %02d
+
+# Checking operations
+STRID_LISTCTRL_CELL_SELECTION_GROUP = Checking Operations
+STRID_LISTCTRL_CELL_SET_CURRENT = Set Current Cell
+STRID_LISTCTRL_CELL_QUERY_CURRENT = Query Current Cell
+STRID_LISTCTRL_CELL_CLEAR = Clear Cell Selection
+STRID_LISTCTRL_CELL_SET_SELECTION = Set Selection Range
+STRID_LISTCTRL_CELL_ADD_SELECTION = Add Selection Range
+STRID_LISTCTRL_CELL_QUERY_SELECTION = Query Selection Range
+STRID_LISTCTRL_CELL_SET_SELECTED_CELLS = Set Selected Cells
+STRID_LISTCTRL_CELL_QUERY_STATE = Query Cell State
+STRID_LISTCTRL_CHECK_FIRST5 = Check First 5 Rows
+STRID_LISTCTRL_CHECK_QUERY = Read Checked Set
+STRID_LISTCTRL_AUTO_CHECK_SELECT = Check To Select
+
+# Copy & export
+STRID_LISTCTRL_CHECK_COPY_GROUP = Copy & Export
+STRID_LISTCTRL_COPY_AS_CSV = Copy as CSV
+STRID_LISTCTRL_EXPORT_ALL_CSV = Export All CSV
+STRID_LISTCTRL_ENABLE_COPY = Enable Copy
+STRID_LISTCTRL_ENABLE_CSV_EXPORT = Enable CSV Export
+
+# Progress
+STRID_LISTCTRL_PROGRESS_EDITOR_GROUP = Progress
+STRID_LISTCTRL_PROGRESS_TEXT_POS = Progress Text Pos:
+STRID_LISTCTRL_POS_CENTER = Center
+STRID_LISTCTRL_POS_LEFT = Left
+STRID_LISTCTRL_POS_RIGHT = Right
+STRID_LISTCTRL_POS_OUTSIDE = Outside
+STRID_LISTCTRL_PROGRESS_COLOR = Progress Color:
+STRID_LISTCTRL_COLOR_DEFAULT = Default
+STRID_LISTCTRL_COLOR_GREEN = Green
+STRID_LISTCTRL_COLOR_RED = Red
+STRID_LISTCTRL_SET_CELL_PROGRESS = Set Row1 Progress
+
+# Fill callback & cell refresh
+STRID_LISTCTRL_FILL_REFRESH_GROUP = Fill & Cell Refresh
+STRID_LISTCTRL_ENABLE_REPORT_ITEM_FILLED = Fill callback (hover button)
+STRID_LISTCTRL_ENABLE_REFRESH_SUBITEM = Cell refresh demo
+
+# Cell editing
+STRID_LISTCTRL_CELL_EDIT_GROUP = Cell Editing
+STRID_LISTCTRL_EDITOR_TYPE = Editor Type:
+STRID_LISTCTRL_EDITOR_TEXT = Text
+STRID_LISTCTRL_EDITOR_NUMBER = Number
+STRID_LISTCTRL_EDITOR_DATE = Date
+STRID_LISTCTRL_EDITOR_COMBO = Combo
+
+# Event & state
+STRID_LISTCTRL_EVENT_STATE_GROUP = Event & State
+STRID_LISTCTRL_CUSTOM_SORT = Custom Sort
+
+# examples/controls
+
+STRID_CONTROLS_CONTROL_TEST = Ctrl Test
+STRID_CONTROLS_ANIMATION_TEST = Anim Test
+STRID_CONTROLS_CHECKBOX_1 = CheckBox 1
+STRID_CONTROLS_CHECKBOX_2 = CheckBox 2
+STRID_CONTROLS_CHECKBOX_3 = CheckBox 3
+STRID_CONTROLS_MODAL_DIALOG = ModalDlg
+STRID_CONTROLS_COLOR_PICKER_MODAL = ColorPicker
+STRID_CONTROLS_OPTION_1 = Radio 1
+STRID_CONTROLS_OPTION_2 = Radio 2
+STRID_CONTROLS_OPTION_3 = Radio 3
+STRID_CONTROLS_SWITCH_1 = Tray Icon
+STRID_CONTROLS_SWITCH_2 = Switch 2
+STRID_CONTROLS_SWITCH_3 = Switch
+STRID_CONTROLS_BADGE = Badge
+STRID_CONTROLS_BADGE_MSG = Messages
+STRID_CONTROLS_TAG_INPUT = TagInput
+STRID_CONTROLS_TAG_INPUT_PROMPT = Type and press Enter to add a tag
+STRID_CONTROLS_TAG_INPUT_PROMPT2 = Press Enter or comma to add a tag
+STRID_CONTROLS_TAG_ADD = Add Tag
+STRID_CONTROLS_AUTO_COMPLETE = AutoComplete
+STRID_CONTROLS_AUTO_COMPLETE_PROMPT = Type a city prefix, e.g. b / sh
+STRID_CONTROLS_AUTO_COMPLETE_PROMPT2 = Contains match, e.g. git
+STRID_CONTROLS_TABCTRL = TabCtrl
+STRID_CONTROLS_CONTEXT_MENU = Context Menu
+STRID_CONTROLS_CONTEXT_MENU_HINT = Right-click on this control
+STRID_CONTROLS_TAB_MSG = Messages
+STRID_CONTROLS_TAB_NOTIFY = Notifications
+STRID_CONTROLS_TAB_FEED = Feed
+STRID_CONTROLS_TAB_SETTINGS = Settings
+STRID_FLYOUT_DEMO_GROUP = Flyout
+STRID_FLYOUT_DEMO_BOTTOM = Bottom
+STRID_FLYOUT_DEMO_TOP = Top
+STRID_FLYOUT_DEMO_LEFT = Left
+STRID_FLYOUT_DEMO_RIGHT = Right
+STRID_CALENDAR_DEMO_GROUP = Calendar
+STRID_CALENDAR_DEMO_SINGLE = Single
+STRID_CALENDAR_DEMO_RANGE = Range
+STRID_FLYOUT_DEMO_TITLE = Flyout Title
+STRID_FLYOUT_DEMO_DESC = This is a general-purpose flyout container for arbitrary content. Click outside or press Esc to close.
+STRID_FLYOUT_DEMO_ACTION1 = Primary Action
+STRID_FLYOUT_DEMO_ACTION2 = Secondary Action
+STRID_FLYOUT_DEMO_CLOSE = Close
+STRID_FLYOUT_TOAST_ACTION1 = Primary action executed
+STRID_FLYOUT_TOAST_ACTION2 = Secondary action executed
+STRID_CONTROLS_MASK = Mask / Overlay
+STRID_CONTROLS_MASK_MODAL = Modal Mask
+STRID_CONTROLS_MASK_GUIDE = Onboarding
+STRID_CONTROLS_MASK_GUIDE_TARGET = Target
+STRID_CONTROLS_MASK_LOADING = Loading Mask
+STRID_CONTROLS_MASK_MODAL_TITLE = Modal Dialog
+STRID_CONTROLS_MASK_MODAL_DESC = The mask covers the whole window and blocks mouse input,\ncreating a modal effect.
+STRID_CONTROLS_MASK_CLOSE = Close
+STRID_CONTROLS_MASK_GUIDE_HINT = Click the highlighted button to continue
+STRID_CONTROLS_MASK_GUIDE_DONE = Onboarding finished
+STRID_CONTROLS_MASK_GUIDE_TIP = Click "Onboarding" first, then click this button to finish the guide
+STRID_CONTROLS_MASK_LOADING_TEXT = Loading, please wait...
+STRID_CONTROLS_MONDAY   = Monday
+STRID_CONTROLS_TUESDAY  = Tuesday
+STRID_CONTROLS_WEDNESDAY= Wednesday
+STRID_CONTROLS_THURSDAY = Thursday
+STRID_CONTROLS_FRIDAY   = Friday
+STRID_CONTROLS_SATURDAY = Saturday
+STRID_CONTROLS_SUNDAY   = Sunday
+
+STRID_CONTROLS_RICHEDIT_SINGLE_LINE = ui::RichEdit: Single Line
+STRID_CONTROLS_FULLSCREEN_RICHEDIT = Fullscreen RichEdit
+STRID_CONTROLS_DATE = Date
+STRID_CONTROLS_TIME = Time
+STRID_CONTROLS_CALENDAR = Calendar
+STRID_CONTROLS_IP_ADDRESS = IP Address
+
+STRID_CONTROLS_NONE = None
+STRID_CONTROLS_SET_WINDOW_HOTKEY = SetWinHotkey
+STRID_CONTROLS_SET_SYSTEM_HOTKEY = SetSysHotkey
+
+# Hyperlink/RichText
+STRID_CONTROLS_BAIDU_HOME = Baidu Home
+STRID_CONTROLS_TEXT_BUTTON = Text Button
+STRID_CONTROLS_HYPERLINK_CONTROL = A HyperLink control
+
+STRID_CONTROLS_ANI_WINDOW_TITLE = Animation Test
+
+STRID_CONTROLS_ANI_PLAY = Play
+STRID_CONTROLS_ANI_PAUSE = Pause
+STRID_CONTROLS_ANI_PLAY_PAUSE = Play/Pause
+STRID_CONTROLS_ANI_CURRENT_TOTAL_FRAME = Frame/Total:
+STRID_CONTROLS_ANI_GOTO = Goto
+STRID_CONTROLS_ANI_THE = 
+STRID_CONTROLS_ANI_FRAME = Frame
+
+# First-level menu items
+STRID_CONTROLS_MENU_FIRST_LEVEL_1 = Menu Item 1
+STRID_CONTROLS_MENU_FIRST_LEVEL_2 = Menu Item 2
+STRID_CONTROLS_MENU_FIRST_LEVEL_3 = Menu Item 3
+
+# Function label
+STRID_CONTROLS_MENU_VOLUME = Volume
+
+# Second-level menu items
+STRID_CONTROLS_MENU_SECOND_LEVEL = Submenu
+STRID_CONTROLS_MENU_SECOND_LEVEL_0 = Sub Item 0
+STRID_CONTROLS_MENU_SECOND_LEVEL_1 = Sub Item 1
+STRID_CONTROLS_MENU_SECOND_LEVEL_2 = Sub Item 2
+STRID_CONTROLS_MENU_SECOND_LEVEL_3 = Sub Item 3
+
+# Third-level menu items
+STRID_CONTROLS_MENU_THIRD_LEVEL = Sub-Submenu
+STRID_CONTROLS_MENU_THIRD_LEVEL_1 = Sub-Sub Item 1
+STRID_CONTROLS_MENU_THIRD_LEVEL_2 = Sub-Sub Item 2
+
+# Sort options
+STRID_CONTROLS_MENU_SORT_ASC = Sort: Ascending
+STRID_CONTROLS_MENU_SORT_DESC = Sort: Descending
+
+# About
+STRID_CONTROLS_MENU_ABOUT = About
+
+# Tray Menu
+STRID_CONTROLS_TRAY_MENU_01 = Menu Item 1
+STRID_CONTROLS_TRAY_MENU_02 = Menu Item 2
+STRID_CONTROLS_TRAY_MENU_03 = Menu Item 3
+STRID_CONTROLS_TRAY_MENU_04 = Menu Item 4
+STRID_CONTROLS_TRAY_MENU_05 = Exit
+
+# controls/NavigationView
+STRID_CONTROLS_NAVIGATION_TEST = Nav Test
+STRID_CONTROLS_CHART_TEST = Chart Test
+STRID_CONTROLS_MARQUEE_TEST = Marquee Test
+STRID_CONTROLS_TIMELINE_TEST = Timeline Test
+STRID_CONTROLS_STATUSBAR_TEST = StatusBar Test
+STRID_CONTROLS_TOOLBAR_TEST = ToolBar Test
+STRID_CONTROLS_RANGESLIDER_TEST = RangeSlider Test
+STRID_CONTROLS_STEPPER_TEST = Stepper Test
+# controls/Timeline
+STRID_TIMELINE_WINDOW_TITLE = Timeline Control Test
+STRID_TIMELINE_HINT = Hint: click a node to fire the callback
+STRID_TIMELINE_CARD_APPROVAL = Approval Flow (data binding · multi-status)
+STRID_TIMELINE_CARD_TASK = Task Flow (reverse · dashed)
+STRID_TIMELINE_BTN_ADD = Add Node
+STRID_TIMELINE_BTN_REMOVE = Remove Last
+STRID_TIMELINE_BTN_CLEAR = Clear
+STRID_TIMELINE_BTN_REVERSE = Toggle Reverse
+STRID_TIMELINE_ADD_TIME = 2026-10-11 10:00
+STRID_TIMELINE_ADD_TITLE = New Task
+STRID_TIMELINE_ADD_CONTENT = A dynamically appended in-progress task node.
+STRID_TIMELINE_EMPTY = No data (cleared)
+# Timeline data binding (multi-language IDs)
+STRID_TIMELINE_A_TITLE_1 = Submitted
+STRID_TIMELINE_A_TITLE_2 = Initial Review
+STRID_TIMELINE_A_TITLE_3 = Re-review
+STRID_TIMELINE_A_TITLE_4 = Approval Done
+STRID_TIMELINE_A_CONTENT_1 = Leave request submitted, awaiting approval.
+STRID_TIMELINE_A_CONTENT_2 = Department initial review passed.
+STRID_TIMELINE_A_CONTENT_3 = HR re-review in progress, please wait.
+STRID_TIMELINE_A_CONTENT_4 = Approval fully completed.
+STRID_TIMELINE_T_TITLE_1 = Started
+STRID_TIMELINE_T_TITLE_2 = Running
+STRID_TIMELINE_T_TITLE_3 = Waiting
+STRID_TIMELINE_T_TITLE_4 = Completed
+STRID_TIMELINE_T_CONTENT_1 = Task started.
+STRID_TIMELINE_T_CONTENT_2 = Core logic running.
+STRID_TIMELINE_T_CONTENT_3 = Waiting for upstream data.
+STRID_TIMELINE_T_CONTENT_4 = Task completed and archived.
+# controls/Progress
+STRID_PROGRESS_WINDOW_TITLE = Progress Control Test
+STRID_PROGRESS_BTN_ANIMATE = Animate
+STRID_PROGRESS_BTN_SPIN = Toggle Spin
+STRID_PROGRESS_EVENT_NONE = Event: none
+STRID_PROGRESS_CARD_HORIZ = Horizontal (image / radius+percent / float+animation / slider / marquee)
+STRID_PROGRESS_CARD_VERT = Vertical
+STRID_PROGRESS_CARD_CIRCLE = Circular (gradient / CCW / indeterminate)
+STRID_PROGRESS_CARD_SLIDER = Slider Interaction (keyboard accessibility / ticks / track click-to-jump)
+STRID_PROGRESS_SLIDER_KEYBOARD = Keyboard: Tab to focus, then use arrow keys
+STRID_PROGRESS_SLIDER_TIP_KEY = Left/Right: step 5 - Shift+Arrow / PgUp/PgDn: step 25 - Home/End: endpoints - value: 50
+STRID_PROGRESS_SLIDER_TICKS = Ticks: 6 marks, major ticks longer and labeled
+STRID_PROGRESS_SLIDER_TIP_TICKS = Common for volume bars / timelines: ticks + labels, custom text via SetTickLabelCallback
+STRID_PROGRESS_SLIDER_CLICK = Track click-to-jump comparison (step=1)
+STRID_PROGRESS_SLIDER_TIP_CLICK = Top: jumps on mouse down - Bottom: jumps on mouse up
+STRID_PROGRESS_CARD_GAUGE = CircleProgress Shapes (gauge/gap ring / custom center content / indeterminate tuning)
+STRID_PROGRESS_CARD_ROBUST = Robustness and Consistency (runtime min/max clamping / marquee radius / configurable easing)
+STRID_PROGRESS_ROBUST_MARQUEE = Marquee radius (top: radius=10 / bottom: radius=0)
+STRID_PROGRESS_ROBUST_TIP_MARQUEE = Marquee now shares progress_radius with the main progress, so styles match
+STRID_PROGRESS_ROBUST_EASING = animation_easing (click the buttons above to set random values and observe)
+STRID_PROGRESS_ROBUST_TIP_EASING = Top: EaseLinear / Middle: EaseOutQuad (default) / Bottom: EaseOutElastic
+STRID_PROGRESS_ROBUST_CLAMP = Runtime min/max clamping (value=80, max=100)
+STRID_PROGRESS_ROBUST_BTN_SHRINK = Set max to 50
+STRID_PROGRESS_ROBUST_BTN_RESTORE = Restore max to 100
+STRID_PROGRESS_ROBUST_TIP_CLAMP = Click to set max to 50; the value should fall back to 50 instead of staying at 80.
+STRID_PROGRESS_ROBUST_REVERSE = reverse comparison (min=10, non-zero)
+STRID_PROGRESS_ROBUST_TIP_REVERSE = Top value=min should be full / Bottom value=max should be empty
+STRID_PROGRESS_GAUGE_HALF = 180 deg half-round gauge (span_angle=180)
+STRID_PROGRESS_GAUGE_GAP = 270 deg gap ring (start_angle=135)
+STRID_PROGRESS_GAUGE_CENTER = Custom center content (SetCenterCallback)
+STRID_PROGRESS_GAUGE_INDET = Indeterminate tuning (arc 240 deg / 3 deg per 24ms)
+# controls/Marquee
+STRID_MARQUEE_WINDOW_TITLE = Marquee Control Test
+STRID_MARQUEE_HINT = Hint: hover over a marquee to pause scrolling
+STRID_MARQUEE_CARD_H_LEFT = Horizontal · Left (hover pause)
+STRID_MARQUEE_CARD_H_RIGHT = Horizontal · Right (no hover pause)
+STRID_MARQUEE_CARD_V_UP = Vertical · Up
+STRID_MARQUEE_CARD_V_DOWN = Vertical · Down
+STRID_MARQUEE_CARD_STATIC = Static (fits, no scroll)
+STRID_MARQUEE_BTN_PAUSE = Pause
+STRID_MARQUEE_BTN_RESUME = Resume
+STRID_MARQUEE_BTN_UPDATE = Update Text
+STRID_MARQUEE_TEXT_H_LEFT = This is a left-scrolling announcement: welcome to the nim_duilib cross-platform UI library! The Marquee control supports both horizontal and vertical scrolling, with customizable speed and direction, pause/resume, hover pause and dynamic text updates. When the text exceeds the display area it loops automatically and seamlessly.
+STRID_MARQUEE_TEXT_H_RIGHT = Right-scrolling demo: text loops automatically when it exceeds the display area, with two copies joined end-to-end for a seamless loop; whether hovering pauses the scroll is controlled by the hover_pause attribute, and the speed can be adjusted at runtime via SetScrollSpeed.
+STRID_MARQUEE_TEXT_V_UP = This is a vertical text announcement scrolling upward.
+STRID_MARQUEE_TEXT_V_DOWN = Vertical downward scroll: vertical text loops from bottom to top.
+STRID_MARQUEE_TEXT_STATIC = Short text
+STRID_MARQUEE_TEXT_UPDATE_1 = This is a left-scrolling announcement: welcome to the nim_duilib cross-platform UI library! The Marquee control supports both horizontal and vertical scrolling with customizable speed and direction.
+STRID_MARQUEE_TEXT_UPDATE_2 = Text updated dynamically: the marquee resets its scroll position automatically when the content changes, and the speed can be adjusted at runtime via SetScrollSpeed. This demo switches to a medium speed.
+STRID_MARQUEE_TEXT_UPDATE_3 = Third content: speed, direction, pause and resume can all be adjusted via the API in real time; the text loops automatically when it exceeds the display area and is centered statically when it fits.
+# controls/StatusBar
+STRID_STATUSBAR_WINDOW_TITLE = StatusBar Control Test
+STRID_STATUSBAR_HINT = Hint: a status bar is a set of status panes; separators are drawn automatically between adjacent panes
+STRID_STATUSBAR_BTN_STATE = Toggle State
+STRID_STATUSBAR_BTN_CONN = Toggle Connection
+STRID_STATUSBAR_BTN_ADVANCE = Advance Progress
+STRID_STATUSBAR_BTN_PANEL = Set Text by Pane Index
+STRID_STATUSBAR_BTN_GRIP = Toggle Grip Drag
+STRID_STATUSBAR_CONTENT_TITLE = Main content area (simulated editor / IDE)
+STRID_STATUSBAR_CONTENT_BODY = The status bar sits at the bottom of the window and shows status hints such as cursor position, character count, connection state and background progress. It is a common element in editors, IDEs and communication apps. StatusBar derives from the horizontal container (HBox); each child control is a status pane, and vertical separators are drawn automatically between adjacent panes. Set separator_width to 0 to hide them, and use separator_color to change the color. An optional size grip (size_grip) can be drawn at the bottom-right corner. When the status bar sits at the bottom-right corner of the window, the grip is merged into the window's draggable resize area, so you can drag it to resize the window directly (set size_grip_resize="false" to disable). Panes can also be addressed by index via GetPanelCount / GetPanel / SetPanelText, with no need to FindControl the child controls. Click the buttons above to update the panes dynamically.
+STRID_STATUSBAR_STATUS_READY = State: Ready
+STRID_STATUSBAR_STATUS_BUSY = State: Busy
+STRID_STATUSBAR_CONN_ON = Link: Connected
+STRID_STATUSBAR_CONN_OFF = Link: Disconnected
+STRID_STATUSBAR_POS_TEXT = Line 128, Col 24 · 2048 chars
+STRID_STATUSBAR_BACKEND = Background:
+STRID_STATUSBAR_PLAIN_TEXT = Second status bar: separator_width="0" (no separators)
+# controls/ToolBar
+STRID_TOOLBAR_WINDOW_TITLE = ToolBar Control Test
+STRID_TOOLBAR_HINT = Hint: drag the window edge to change the width; items that no longer fit are collapsed into the "»" button at the right end, click it to see them
+STRID_TOOLBAR_NEW = New
+STRID_TOOLBAR_OPEN = Open
+STRID_TOOLBAR_SAVE = Save
+STRID_TOOLBAR_UNDO = Undo
+STRID_TOOLBAR_REDO = Redo
+STRID_TOOLBAR_CUT = Cut
+STRID_TOOLBAR_COPY = Copy
+STRID_TOOLBAR_PASTE = Paste
+STRID_TOOLBAR_FIND = Find
+STRID_TOOLBAR_REPLACE = Replace
+STRID_TOOLBAR_ZOOM_IN = Zoom In
+STRID_TOOLBAR_ZOOM_OUT = Zoom Out
+STRID_TOOLBAR_FULLSCREEN = Full Screen
+STRID_TOOLBAR_CONTENT_TITLE = ToolBar container
+STRID_TOOLBAR_CONTENT_BODY = ToolBar inherits HBox and hosts a row of tool buttons; use the Line control to draw vertical separators between button groups. When the available width is not enough, the trailing items are automatically collapsed (hidden) and a "»" button is shown at the right end; clicking it opens a flyout listing the collapsed items. When this happens, the callback registered by AttachOverflowItemActivated receives the name of the clicked item, so the application can dispatch the command.
+STRID_TOOLBAR_EVENT_NONE = No collapsed item has been clicked yet
+STRID_TOOLBAR_EVENT_ITEM = Last activated overflow item: 
+# controls/RangeSlider
+STRID_RANGESLIDER_WINDOW_TITLE = RangeSlider Control Test
+STRID_RANGESLIDER_HINT = Hint: drag the two thumbs to adjust the range; the highlighted part is the selected range
+STRID_RANGESLIDER_PRICE = Price range (horizontal)
+STRID_RANGESLIDER_LEVEL = Level range (vertical)
+STRID_RANGESLIDER_RESET = Reset range
+STRID_RANGESLIDER_FULL = Full range
+STRID_RANGESLIDER_EVENT_NONE = Current range: 200 ~ 800
+STRID_RANGESLIDER_EVENT_PREFIX = Current range: 
+# controls/Stepper
+STRID_STEPPER_WINDOW_TITLE = Stepper Control Test
+STRID_STEPPER_HINT = Hint: click a step to jump, or use the buttons below (Prev / Next / GoTo / Reset)
+STRID_STEPPER_HORIZONTAL_TITLE = Horizontal steps (install wizard)
+STRID_STEPPER_VERTICAL_TITLE = Vertical steps (config wizard)
+STRID_STEPPER_S1_TITLE = Choose location
+STRID_STEPPER_S2_TITLE = License
+STRID_STEPPER_S3_TITLE = Installing
+STRID_STEPPER_S4_TITLE = Finish
+STRID_STEPPER_S1_DESC = Select target folder
+STRID_STEPPER_S2_DESC = Read and accept
+STRID_STEPPER_S3_DESC = Writing files
+STRID_STEPPER_S4_DESC = Done
+STRID_STEPPER_V1_TITLE = Basic info
+STRID_STEPPER_V2_TITLE = Network
+STRID_STEPPER_V3_TITLE = Confirm
+STRID_STEPPER_V1_DESC = Name and purpose
+STRID_STEPPER_V2_DESC = Address and port
+STRID_STEPPER_V3_DESC = Review and submit
+STRID_STEPPER_PREV = Previous
+STRID_STEPPER_NEXT = Next
+STRID_STEPPER_GOTO = Go to step 3
+STRID_STEPPER_RESET = Reset
+STRID_STEPPER_EVENT_NONE = Current step: 2 / 4
+STRID_STEPPER_EVENT_PREFIX = Current step: 
+# controls/Chart
+STRID_CHART_WINDOW_TITLE = Chart Control Test
+STRID_CHART_CARD_LINE = Line · Multi-series
+STRID_CHART_CARD_AREA = Line · Curve + Area
+STRID_CHART_CARD_BAR = Bar · Grouped (negative)
+STRID_CHART_CARD_PIE = Pie · Donut (percent)
+STRID_CHART_BTN_ADD = Append
+STRID_CHART_BTN_CLEAR = Clear
+STRID_CHART_BTN_SWITCH = Switch Data
+STRID_CHART_LINE_TITLE = Quarterly Sales Trend
+STRID_CHART_AXIS_QUARTER = Quarter
+STRID_CHART_AXIS_SALES = Sales (10k)
+STRID_CHART_AREA_TITLE = Website Visits Trend
+STRID_CHART_AXIS_DATE = Date
+STRID_CHART_AXIS_VISITS = Visits
+STRID_CHART_BAR_TITLE = Quarterly Income & Expense
+STRID_CHART_AXIS_AMOUNT = Amount (10k)
+STRID_CHART_PIE_TITLE = Traffic Source Share
+STRID_CHART_SLICE_SE = Search Engine
+STRID_CHART_SLICE_DIRECT = Direct
+STRID_CHART_SLICE_SOCIAL = Social Media
+STRID_CHART_SLICE_EMAIL = Email
+STRID_CHART_SLICE_OTHER = Others
+STRID_CHART_SERIES_THISYEAR = This Year
+STRID_CHART_SERIES_LASTYEAR = Last Year
+STRID_CHART_SERIES_INCOME = Income
+STRID_CHART_SERIES_EXPENSE = Expense
+STRID_CHART_MONTH_1 = Jan
+STRID_CHART_MONTH_2 = Feb
+STRID_CHART_MONTH_3 = Mar
+STRID_CHART_MONTH_4 = Apr
+STRID_CHART_MONTH_5 = May
+STRID_CHART_MONTH_6 = Jun
+STRID_CHART_REGION_EAST = East China
+STRID_CHART_REGION_SOUTH = South China
+STRID_CHART_REGION_NORTH = North China
+STRID_NAV_SETTINGS = Settings
+STRID_NAV_DEMO_TITLE = Demo App
+STRID_NAV_PAGE_HOME = Home
+STRID_NAV_PAGE_DASHBOARD = Dashboard
+STRID_NAV_PAGE_TOOLS = Tools
+STRID_NAV_GROUP_SYSTEM = System
+STRID_NAV_HOME_DESC = This is the Home page. Click an item in the left pane to switch pages; click the hamburger button at the top-left to expand/collapse the pane. When collapsed, only icons are shown and hover tooltips reveal the text.
+STRID_NAV_DASHBOARD_DESC = This is the Dashboard page for summary content.
+STRID_NAV_TOOLS_DESC = This is the Tools page for tool entries.
+STRID_NAV_SETTINGS_DESC = This is the Settings page, opened from the settings item pinned at the bottom of the pane.
+STRID_NAV_JUMP_TOOLS = Jump to Tools via C++
+STRID_NAV_PAGE_NOTIFICATIONS = Notifications
+STRID_NAV_PAGE_PROJECTS = Projects
+STRID_NAV_PAGE_DOCS = Docs
+STRID_NAV_PAGE_TASKS = Tasks
+STRID_NAV_PAGE_CALENDAR = Calendar
+STRID_NAV_PAGE_FAVORITES = Favorites
+STRID_NAV_PAGE_HELP = Help
+STRID_NAV_PAGE_DISABLED = Disabled item (not clickable)
+STRID_NAV_GROUP_WORKSPACE = Workspace
+STRID_NAV_NOTIFICATIONS_DESC = This is the Notifications page. With many items, the left nav list scrolls vertically inside the pane.
+STRID_NAV_PROJECTS_DESC = This is the Projects page.
+STRID_NAV_DOCS_DESC = This is the Docs page.
+STRID_NAV_TASKS_DESC = This is the Tasks page.
+STRID_NAV_CALENDAR_DESC = This is the Calendar page.
+STRID_NAV_FAVORITES_DESC = This is the Favorites page.
+STRID_NAV_HELP_DESC = This is the Help page.
+STRID_NAV_STATUS = Selected:
+STRID_NAV_BTN_ADD_ITEM = Add nav item
+STRID_NAV_BTN_REMOVE_ITEM = Remove last dynamic item
+STRID_NAV_BTN_TOGGLE = Toggle collapsed
+
+# controls/MessageBox
+# Main window UI
+STRID_MSGBOX_MAIN_TITLE          = MessageBox Demo
+STRID_MSGBOX_MAIN_HINT           = Click a button below to show a message box:
+STRID_MSGBOX_MAIN_RESULT_PREFIX  = Last result:
+STRID_MSGBOX_MAIN_RESULT_NONE    = Last result: (none)
+
+# Demo button text
+STRID_MSGBOX_BTN_OK             = OK
+STRID_MSGBOX_BTN_OK_CANCEL      = OK + Cancel
+STRID_MSGBOX_BTN_YES_NO         = Yes + No
+STRID_MSGBOX_BTN_YES_NO_CANCEL  = Yes + No + Cancel
+STRID_MSGBOX_BTN_RETRY_CANCEL   = Retry + Cancel
+STRID_MSGBOX_BTN_ICONS          = Four standard icons
+STRID_MSGBOX_BTN_LONG_TEXT      = Long text (auto-wrap, adaptive height)
+STRID_MSGBOX_BTN_CUSTOM_TEXT    = Custom button text (Save/Don't Save/Cancel)
+
+# Demo: OK
+STRID_MSGBOX_DEMO_OK_TEXT   = This is a normal informational message.
+STRID_MSGBOX_DEMO_OK_TITLE  = Information
+
+# Demo: OK + Cancel
+STRID_MSGBOX_DEMO_OK_CANCEL_TEXT   = The file has been modified. Save changes?
+STRID_MSGBOX_DEMO_OK_CANCEL_TITLE  = Save File
+
+# Demo: Yes + No
+STRID_MSGBOX_DEMO_YES_NO_TEXT   = Are you sure you want to perform this operation?
+STRID_MSGBOX_DEMO_YES_NO_TITLE  = Confirm Operation
+
+# Demo: Yes + No + Cancel
+STRID_MSGBOX_DEMO_YES_NO_CANCEL_TEXT   = Deleted items cannot be restored. Continue deleting the selected items?
+STRID_MSGBOX_DEMO_YES_NO_CANCEL_TITLE  = Delete Confirmation
+
+# Demo: Retry + Cancel
+STRID_MSGBOX_DEMO_RETRY_CANCEL_TEXT   = Network connection failed. Check your network and retry.
+STRID_MSGBOX_DEMO_RETRY_CANCEL_TITLE  = Connection Failed
+
+# Demo: Four icons
+STRID_MSGBOX_DEMO_ICONS_TEXT            = Four standard icons: Information, Warning, Error, Question.
+STRID_MSGBOX_DEMO_ICONS_TITLE_INFO      = Icon Type - Info
+STRID_MSGBOX_DEMO_ICONS_TITLE_WARNING   = Icon Type - Warning
+STRID_MSGBOX_DEMO_ICONS_TITLE_ERROR     = Icon Type - Error
+STRID_MSGBOX_DEMO_ICONS_TITLE_QUESTION  = Icon Type - Question
+
+# Demo: Long text
+STRID_MSGBOX_DEMO_LONG_TEXT_TITLE = Long Text
+STRID_MSGBOX_DEMO_LONG_TEXT_TEXT  = This is a long message used to verify multi-line text auto-wrap and adaptive window height.\n\nExplicit line breaks are also supported. The window width is fixed at 420 and the height grows with the number of lines, while buttons stay at the bottom.
+
+# Demo: Custom button text
+STRID_MSGBOX_DEMO_CUSTOM_TEXT    = Button text can be customized, useful for multilingual scenarios.
+STRID_MSGBOX_DEMO_CUSTOM_TITLE   = Custom Button Text
+STRID_MSGBOX_CUSTOM_YES          = Save
+STRID_MSGBOX_CUSTOM_NO           = Don't Save
+STRID_MSGBOX_CUSTOM_CANCEL       = Cancel
+
+# Result names
+STRID_MSGBOX_RESULT_OK      = OK (IDOK=1)
+STRID_MSGBOX_RESULT_CANCEL  = Cancel (IDCANCEL=2)
+STRID_MSGBOX_RESULT_RETRY   = Retry (IDRETRY=4)
+STRID_MSGBOX_RESULT_YES     = Yes (IDYES=6)
+STRID_MSGBOX_RESULT_NO      = No (IDNO=7)
+
+# controls/Toast
+# Main window UI
+STRID_TOAST_MAIN_TITLE = Toast Control Demo
+STRID_TOAST_MAIN_HINT  = Click a button below to show a notification at the top of this window. \nClick to dismiss instantly; hover to pause the auto-close timer:
+
+# Demo buttons
+STRID_TOAST_BTN_INFO     = Info toast (3 seconds)
+STRID_TOAST_BTN_SUCCESS  = Success toast (3 seconds)
+STRID_TOAST_BTN_WARNING  = Warning toast (5 seconds)
+STRID_TOAST_BTN_ERROR    = Error toast (5 seconds)
+STRID_TOAST_BTN_STACK    = Show 4 toasts in a row (stacked, auto reflow)
+STRID_TOAST_BTN_LONG     = Long text (auto wrap, 6 seconds)
+STRID_TOAST_BTN_MANUAL   = No auto close (0 ms, click to dismiss)
+STRID_TOAST_BTN_POSITION = Bottom-right position (3 seconds)
+STRID_TOAST_BTN_ACTION   = With action buttons (Undo / View details)
+
+# Demo toast contents
+STRID_TOAST_DEMO_INFO_TEXT     = This is an information message.
+STRID_TOAST_DEMO_SUCCESS_TEXT  = Done. Your changes have been saved.
+STRID_TOAST_DEMO_WARNING_TEXT  = Warning: the current settings may be risky.
+STRID_TOAST_DEMO_ERROR_TEXT    = The operation failed. Please try again later.
+STRID_TOAST_DEMO_LONG_TEXT     = This is a longer notification used to verify multi-line text wrapping and automatic height adjustment.\nThe toast width is fixed at 360 and its height grows with the number of lines; explicit line breaks are also supported.
+STRID_TOAST_DEMO_MANUAL_TEXT   = This toast stays until you click it.
+STRID_TOAST_DEMO_POSITION_TEXT = This toast is shown at the bottom-right corner.
+STRID_TOAST_DEMO_ACTION_TEXT   = This is a demo notification used to showcase the Toast action buttons (ActionButton).
+
+# Action button labels
+STRID_TOAST_ACTION_GOTIT   = Got it
+STRID_TOAST_ACTION_DETAIL  = View details
+
+# examples/render
+# Window core title
+STRID_RENDER_WINDOW_TITLE = Render Engine Test
+STRID_RENDER_TITLE_BAR = Render Engine Test
+
+# Tab page titles
+STRID_RENDER_TAB_IMAGE1 = Image 1
+STRID_RENDER_TAB_IMAGE2 = Image 2
+STRID_RENDER_TAB_IMAGE3 = Image 3
+STRID_RENDER_TAB_TEXT_HORIZONTAL = Text - Horizontal
+STRID_RENDER_TAB_TEXT_VERTICAL = Text - Vertical
+STRID_RENDER_TAB_DRAW = Draw
+STRID_RENDER_TAB_PAINT = Paint
+STRID_RENDER_TAB_PROPERTY_TAB = Property & Tab Page
+STRID_RENDER_TAB_WINDOW_SHADOW = Window Shadow
+STRID_RENDER_TAB_BITMAP_CTRL = Bitmap Ctrl
+STRID_RENDER_TAB_CONTROL_TEST = Ctrl Test
+STRID_RENDER_TAB_CONTROL_ANI = Ctrl Animation
+
+# Page description text
+STRID_RENDER_PAGE1_DESC = Page1: Test all supported image formats with standard controls
+STRID_RENDER_PAGE2_DESC = Page2: Test image properties (SVG supports vector scaling when resized proportionally)
+STRID_RENDER_PAGE3_DESC = Page3: Test image properties (Non-SVG formats do not support vector scaling)
+STRID_RENDER_PAGE4_DESC = Page4: Text Drawing - Horizontal Text
+STRID_RENDER_PAGE5_DESC = Page5: Text Drawing - Vertical Text
+STRID_RENDER_PAGE6_DESC = Page6: IRender image drawing API test (DrawImage, BitBlt, StretchBlt, AlphaBlend, 9-grid, tiling, etc.)
+STRID_RENDER_PAGE7_DESC = Page7: IRender basic shape drawing test (Line, Rect, Filled Rect, etc.)
+STRID_RENDER_PAGE8_DESC = Page8: DrawBoxShadow Test
+STRID_RENDER_PAGE10_DESC = Page10: Window Shadow Test
+STRID_RENDER_PAGE11_DESC = Page11: Bitmap Control Test
+STRID_RENDER_PAGE12_DESC = Page12: Control Comprehensive Test
+STRID_RENDER_PAGE13_DESC = Page13: Control Animation Test
+
+# Static image format labels
+STRID_RENDER_P1_FORMAT_BMP = BMP Format
+STRID_RENDER_P1_FORMAT_WEBP = WEBP Format
+STRID_RENDER_P1_FORMAT_JPG = JPG Format
+STRID_RENDER_P1_FORMAT_ICO = ICO Format
+STRID_RENDER_P1_FORMAT_PNG = PNG Format
+STRID_RENDER_P1_FORMAT_SVG = SVG Format
+STRID_RENDER_P1_FORMAT_GIF = GIF Format
+
+# Animated image format labels
+STRID_RENDER_P1_ANI_GIF = GIF Animation
+STRID_RENDER_P1_ANI_APNG = APNG Animation
+STRID_RENDER_P1_ANI_WEBP = WEBP Animation
+STRID_RENDER_P1_ANI_LOTTIE = Lottie JSON Animation
+STRID_RENDER_P1_ANI_PAG = PAG Animation
+
+# Interactive prompt text
+STRID_RENDER_P1_HOVER_PLAY = Play on mouse hovered
+
+STRID_RENDER_SHADOW_BIG = Shadow:big
+STRID_RENDER_SHADOW_BIG_ROUND = Shadow:big_round
+STRID_RENDER_SHADOW_SMALL = Shadow:small
+STRID_RENDER_SHADOW_SMALL_ROUND = Shadow:small_round
+STRID_RENDER_SHADOW_MENU = Shadow:menu
+STRID_RENDER_SHADOW_MENU_ROUND = Shadow:menu_round
+STRID_RENDER_SHADOW_TEST_TITLE = Window shadow function test:
+STRID_RENDER_SHADOW_TYPE_DEFAULT = Shadow type: default, Default shadow
+STRID_RENDER_SHADOW_TYPE_BIG = Shadow type: big, Big shadow (right angle, suitable for normal windows)
+STRID_RENDER_SHADOW_TYPE_BIG_ROUND = Shadow type: big_round, Big shadow (rounded corner, suitable for normal windows)
+STRID_RENDER_SHADOW_TYPE_SMALL = Shadow type: small, Small shadow (right angle, suitable for normal windows)
+STRID_RENDER_SHADOW_TYPE_SMALL_ROUND = Shadow type: small_round, Small shadow (rounded corner, suitable for normal windows)
+STRID_RENDER_SHADOW_TYPE_MENU = Shadow type: menu, Small shadow (right angle, suitable for pop-up windows like menus)
+STRID_RENDER_SHADOW_TYPE_MENU_ROUND = Shadow type: menu_round, Small shadow (rounded corner, suitable for pop-up windows like menus)
+STRID_RENDER_SHADOW_TYPE_NONE = Shadow type: none, No shadow (with border, right angle)
+STRID_RENDER_SHADOW_TYPE_NONE_ROUND = Shadow type: none_round, No shadow (with border, rounded corner)
+STRID_RENDER_SHADOW_TYPE_SYSTEM_DEFAULT = Shadow type: system_default, use system default shadow
+STRID_RENDER_SHADOW_TYPE_SYSTEM_NOT_ROUND = Shadow type: system_not_round, system shadow, not round
+STRID_RENDER_SHADOW_TYPE_SYSTEM_ROUND = Shadow type: system_round, system shadow, round
+STRID_RENDER_SHADOW_TYPE_SYSTEM_SMALL_ROUND = Shadow type: system_small_round, system shadow, small round
+STRID_RENDER_SHADOW_CLOSE_FUNC = Turn off shadow function
+STRID_RENDER_SYSTEM_CAPTION_TEST_TITLE = Window System Title Bar Function Test:
+STRID_RENDER_SYSTEM_CAPTION_ON = Enable System Title Bar
+STRID_RENDER_SYSTEM_CAPTION_OFF = Disable System Title Bar
+
+STRID_RENDER_CTRL_TEST_MENUBAR_DESC =  MenuBar Example:
+STRID_RENDER_CTRL_TEST_MOVABLE_DESC = Draggable controls and containers
+STRID_RENDER_CTRL_TEST_MOVABLE_BOX = Draggable container
+STRID_RENDER_CTRL_TEST_RESIZABLE_MOVABLE_DESC = Resizable/draggable controls and containers
+STRID_RENDER_CTRL_TEST_RESIZABLE_MOVABLE_BOX = Draggable container \nResizable container
+
+STRID_RENDER_CTRL_ANI_MOUSE_ENTER_SHOW_CTRL = Show ctrl on mouse enter
+STRID_RENDER_CTRL_ANI_MOUSE_ENTER_SHOW_CTRL_LEFT_SLIDE = Show ctrl (slide left)
+STRID_RENDER_CTRL_ANI_MOUSE_ENTER_SHOW_CTRL_RIGHT_SLIDE = Show ctrl (slide right)
+STRID_RENDER_CTRL_ANI_MOUSE_ENTER_SHOW_CTRL_TOP_SLIDE = Show ctrl (slide top)
+STRID_RENDER_CTRL_ANI_MOUSE_ENTER_SHOW_CTRL_BOTTOM_SLIDE = Show ctrl (slide bottom)
+STRID_RENDER_CTRL_ANI_MOUSE_ENTER_SHOW_CTRL_WIDTH_FADE = Show ctrl (width fade)
+STRID_RENDER_CTRL_ANI_MOUSE_ENTER_SHOW_CTRL_HEIGHT_FADE = Show ctrl (height fade)
+STRID_RENDER_CTRL_ANI_MOUSE_ENTER_SHOW_CTRL_SIZE_FADE = Show ctrl (size fade)
+STRID_RENDER_CTRL_ANI_HOT_STATE_ANIM = Ctrl Hot-state anim
+STRID_RENDER_CTRL_ANI_CHECKBOX = Checkbox
+STRID_RENDER_CTRL_ANI_TEXT_LABEL = Text Label
+STRID_RENDER_CTRL_ANI_NORMAL_CTRL = Normal Ctrl
+
+STRID_RENDER_BOX_SHADOW_TRANSPARENT_CTRL = Transparent ctrl
+STRID_RENDER_BOX_SHADOW_NOTES = box-shadow Notes:\n(1) X/Y extend: blur+spread+offset\n(2) Shadow beyond ctrl area as above\n(3) Reserve space (e.g. margin) to avoid shadow cover
+STRID_RENDER_BOX_SHADOW_SHOW_CTRL = Show ctrl on mouse enter
+
+STRID_RENDER_ALL_FILES = All Files(*.*)
+STRID_RENDER_TXT_FILES = Text Files(*.txt)
+STRID_RENDER_CSV_FILES = CSV Files(*.csv)
+STRID_RENDER_INI_FILES = INI Files(*.ini)
+
+# PropertyGrid Basic Text
+STRID_RENDER_PROPGRID_PROPERTY=Property
+STRID_RENDER_PROPGRID_VALUE=Value
+
+# Group Related
+STRID_RENDER_PROPGRID_GROUP_1=Group 1
+STRID_RENDER_PROPGRID_DESC_GROUP_1=Description Info 1
+STRID_RENDER_PROPGRID_GROUP_2=Group 2
+STRID_RENDER_PROPGRID_DESC_GROUP_2=Description Info 2
+STRID_RENDER_PROPGRID_GROUP_3=Group 3
+STRID_RENDER_PROPGRID_DESC_GROUP_3=Description Info 3
+STRID_RENDER_PROPGRID_GROUP_4=Group 4
+STRID_RENDER_PROPGRID_DESC_GROUP_4=Description Info 4
+STRID_RENDER_PROPGRID_GROUP_5=Group 5
+STRID_RENDER_PROPGRID_DESC_GROUP_5_FONT=Description Info 5: Font
+STRID_RENDER_PROPGRID_GROUP_6=Group 6
+STRID_RENDER_PROPGRID_DESC_GROUP_6_DATETIME=Description Info 6: Date & Time
+STRID_RENDER_PROPGRID_GROUP_7=Group 7
+STRID_RENDER_PROPGRID_DESC_GROUP_7=Description Info 7
+STRID_RENDER_PROPGRID_GROUP_8=Group 8
+STRID_RENDER_PROPGRID_DESC_GROUP_8=Description Info 8
+
+# Property Items
+STRID_RENDER_PROPGRID_PROPERTY_1=Property 1
+STRID_RENDER_PROPGRID_VALUE_1=Value 1
+STRID_RENDER_PROPGRID_DESC_PROPERTY_1=Description for Property 1
+STRID_RENDER_PROPGRID_PROPERTY_2=Property 2
+STRID_RENDER_PROPGRID_VALUE_2=Value 2
+STRID_RENDER_PROPGRID_DESC_PROPERTY_2=Description for Property 2
+STRID_RENDER_PROPGRID_DESC_PROPERTY_2_DISABLE=Description for Property 2: Disabled
+STRID_RENDER_PROPGRID_PROPERTY_3_0_TEXT=Property 3-0 (Text)
+STRID_RENDER_PROPGRID_VALUE_3_0=Text Value 3-0
+STRID_RENDER_PROPGRID_DESC_PROPERTY_3=Description for Property 3
+STRID_RENDER_PROPGRID_PROPERTY_3_1_NUMBER=Property 3-1 (Number)
+STRID_RENDER_PROPGRID_VALUE_3_1=3
+STRID_RENDER_PROPGRID_DESC_PROPERTY_3_SPIN=Description for Property 3, Number with Spin Control
+STRID_RENDER_PROPGRID_PROPERTY_3_2_READONLY=Property 3-2 (Readonly)
+STRID_RENDER_PROPGRID_VALUE_3_2=Value 3-2
+STRID_RENDER_PROPGRID_PROPERTY_3_3_PASSWORD=Property 3-3 (Password)
+STRID_RENDER_PROPGRID_VALUE_3_3=Value 3-3
+
+# Combo Box Options
+STRID_RENDER_PROPGRID_PROPERTY_4_1_COMBO_LIST=Property 4-1 (Combo List)
+STRID_RENDER_PROPGRID_PROPERTY_4_1_COMBO_BOX=Property 4-1 (Combo Box)
+STRID_RENDER_PROPGRID_DESC_PROPERTY_4=Description for Property 4
+STRID_RENDER_PROPGRID_OPTION_1=Option 1
+STRID_RENDER_PROPGRID_OPTION_2=Option 2
+STRID_RENDER_PROPGRID_OPTION_3=Option 3
+
+# Font Related
+STRID_RENDER_PROPGRID_FONT=Font
+STRID_RENDER_PROPGRID_FONT_ARIAL=Arial
+STRID_RENDER_PROPGRID_DESC_SET_FONT_NAME=Description: Set Font Name
+STRID_RENDER_PROPGRID_FONT_SIZE=Font Size
+STRID_RENDER_PROPGRID_FONT_SIZE_5=14
+STRID_RENDER_PROPGRID_FONT_SIZE_6=10
+STRID_RENDER_PROPGRID_DESC_SET_FONT_SIZE=Description: Set Font Size
+STRID_RENDER_PROPGRID_COLOR=Color
+STRID_RENDER_PROPGRID_COLOR_BLUE=Blue
+STRID_RENDER_PROPGRID_DESC_SET_FONT_COLOR=Description: Set Font Color
+
+# Date & Time Related
+STRID_RENDER_PROPGRID_DATE=Date
+STRID_RENDER_PROPGRID_DESC_SET_DATE=Description: Set Date
+STRID_RENDER_PROPGRID_DATE_TIME=Date & Time
+STRID_RENDER_PROPGRID_DESC_SET_DATE_TIME=Description: Set Date & Time
+STRID_RENDER_PROPGRID_TIME=Time
+STRID_RENDER_PROPGRID_DESC_SET_TIME=Description: Set Time
+
+# IP/Hotkey Related
+STRID_RENDER_PROPGRID_IP_ADDRESS=IP Address
+STRID_RENDER_PROPGRID_DESC_IP_ADDRESS=Description: IP Address
+STRID_RENDER_PROPGRID_HOTKEY_1=Hotkey 1
+STRID_RENDER_PROPGRID_DESC_HOTKEY_1=Description: Hotkey Control 1
+STRID_RENDER_PROPGRID_HOTKEY_2=Hotkey 2
+STRID_RENDER_PROPGRID_DESC_HOTKEY_2=Description: Hotkey Control 2
+STRID_RENDER_PROPGRID_HOTKEY_3=Hotkey 3
+STRID_RENDER_PROPGRID_DESC_HOTKEY_3=Description: Hotkey Control 3
+STRID_RENDER_PROPGRID_HOTKEY_4=Hotkey 4
+STRID_RENDER_PROPGRID_DESC_HOTKEY_4=Description: Hotkey Control 4
+
+# File/Folder Related
+STRID_RENDER_PROPGRID_FILE_PATH=File Path
+STRID_RENDER_PROPGRID_DESC_FILE_PATH=Description: File Path
+STRID_RENDER_PROPGRID_FOLDER=Folder
+STRID_RENDER_PROPGRID_DESC_FOLDER=Description: Folder
+
+# PropertyGrid XML Tab Text
+STRID_RENDER_PROPGRID_TAB_1_1=Tab 1-1
+STRID_RENDER_PROPGRID_TAB_1_2=Tab 1-2
+STRID_RENDER_PROPGRID_TAB_1_3=Tab 1-3
+STRID_RENDER_PROPGRID_TAB_1_4=Tab 1-4
+STRID_RENDER_PROPGRID_TAB_2_1=Tab 2-1
+STRID_RENDER_PROPGRID_TAB_2_2=Tab 2-2
+STRID_RENDER_PROPGRID_TAB_2_3=Tab 2-3
+STRID_RENDER_PROPGRID_TAB_2_4=Tab 2-4
+STRID_RENDER_PROPGRID_TAB_3_1_NO_DRAG=Tab 3-1: Drag sort not supported
+STRID_RENDER_PROPGRID_TAB_3_1=Tab 3-1
+STRID_RENDER_PROPGRID_TAB_3_2=Tab 3-2
+STRID_RENDER_PROPGRID_TAB_3_3=Tab 3-3
+STRID_RENDER_PROPGRID_TAB_3_4=Tab 3-4
+STRID_RENDER_PROPGRID_TAB_MINUS_1=Tab -1
+STRID_RENDER_PROPGRID_TAB_MINUS_2=Tab -2
+STRID_RENDER_PROPGRID_TAB_MINUS_3=Tab -3
+STRID_RENDER_PROPGRID_TAB_MINUS_4=Tab -4
+
+# Text Labels
+STRID_RENDER_PROPGRID_LABEL_VERTICAL_TEXT_TIP=Vertical text test, the following vertical text needs to be displayed:
+STRID_RENDER_PROPGRID_LABEL_VERTICAL_TEXT_CONTENT=Vertical text test:\nTest whether it can be displayed normally in the scroll bar.
+STRID_RENDER_PROPGRID_LABEL_GRADIENT_BG_TIP=This demonstrates the gradient background color function
+
+STRID_RENDER_IMAGE_TITLE_01 = Test 1: Original image (width 48, height 48), the control's width is set to auto and height to auto, the image is not stretched. This test mainly verifies the impact of dpi_scale on various properties.
+STRID_RENDER_IMAGE_TITLE_02 = Test 2: Original image (width 48, height 48), combined testing of various usage scenarios.
+STRID_RENDER_IMAGE_TITLE_03 = Test 3: Nine-patch rendering, combined testing of other usage scenarios.
+STRID_RENDER_IMAGE_TITLE_04 = Test 4: Nine-patch rendering, test of stretching and tiling for the center area; only the center part needs to be checked.
+
+# examples/layout
+STRID_LAYOUT_TEST_TITLE = Container Layout Test
+STRID_LAYOUT_TABBOX_DESC = : The TabBox contains an embedded TabBox control
+STRID_LAYOUT_TAB_ITEM1 = Tab 1
+STRID_LAYOUT_TAB_ITEM2 = Tab 2
+STRID_LAYOUT_TAB_ITEM3 = Tab 3
+STRID_LAYOUT_PAGE1_CONTENT = Page 1: This is Page 1
+STRID_LAYOUT_PAGE2_CONTENT = Page 2: This is Page 2
+STRID_LAYOUT_PAGE3_CONTENT = Page 3: This is Page 3
+STRID_LAYOUT_SUB_PAGE1_CONTENT = Embedded Page 1: This is Embedded Page 1
+STRID_LAYOUT_SUB_PAGE2_CONTENT = Embedded Page 2: This is Embedded Page 2
+STRID_LAYOUT_SUB_PAGE3_CONTENT = Embedded Page 3: This is Embedded Page 3
+
+STRID_LAYOUT_PAGE_1 = Container does not support alignment setting
+STRID_LAYOUT_PAGE_2 = Child control alignment set on itself
+STRID_LAYOUT_PAGE_3 = Container horizontal alignment:
+STRID_LAYOUT_PAGE_4 = Align left (left)
+STRID_LAYOUT_PAGE_5 = Align center (center)
+STRID_LAYOUT_PAGE_6 = Align right (right)
+STRID_LAYOUT_PAGE_7 = (Content width < display area width)
+STRID_LAYOUT_PAGE_8 = Container vertical alignment:
+STRID_LAYOUT_PAGE_9 = Align top (top)
+STRID_LAYOUT_PAGE_10 = Align bottom (bottom)
+STRID_LAYOUT_PAGE_11 = (Content height < display area height)
+STRID_LAYOUT_PAGE_12 = Clear
+STRID_LAYOUT_PAGE_13 = Undo
+STRID_LAYOUT_PAGE_14 = Container child_halign:
+STRID_LAYOUT_PAGE_15 = (Child width < container width)
+STRID_LAYOUT_PAGE_16 = Container child_valign: Not supported, set on child
+STRID_LAYOUT_PAGE_17 = Child alignment: halign: No, valign: Yes
+STRID_LAYOUT_PAGE_18 = Layout Test
+STRID_LAYOUT_PAGE_19 = (Aligned in same row)
+STRID_LAYOUT_PAGE_20 = (Child height < display area height)
+STRID_LAYOUT_PAGE_21 = (No scrollbar appears)
+STRID_LAYOUT_PAGE_22 = (Container no alignment, set on child)
+STRID_LAYOUT_PAGE_23 = (Vertical layout)
+STRID_LAYOUT_PAGE_24 = (Horizontal layout)
+STRID_LAYOUT_PAGE_25 = Container child_valign:
+STRID_LAYOUT_PAGE_26 = (Child height < container height)
+STRID_LAYOUT_PAGE_27 = Container child_halign: Not supported, set on child
+STRID_LAYOUT_PAGE_28 = Child alignment: halign: Yes, valign: No
+STRID_LAYOUT_PAGE_29 = (Child width < display area width)
+STRID_LAYOUT_PAGE_30 = (Aligned in same column)
+
+# examples/ColorTheme
+STRID_COLORTHEME_BTN_OPEN_THEME_MGR    = Open Theme Color Manager
+STRID_COLORTHEME_BTN_OPEN_WND_AS_DARK  = Open New Window with Dark Theme
+STRID_COLORTHEME_BTN_OPEN_WND_AS_LIGHT = Open New Window with Light Theme
+STRID_COLORTHEME_ENABLE_GEN_THEME = Enable Theme Color Generation
+STRID_COLORTHEME_SHOW_ALL_COLORS = Show All Colors
+STRID_COLORTHEME_LIGHT_THEME = Light Theme
+STRID_COLORTHEME_DARK_THEME = Dark Theme
+STRID_COLORTHEME_TOGGLE_1 = Toggle 1:
+STRID_COLORTHEME_TOGGLE_2 = Toggle 2:
+STRID_COLORTHEME_SWITCH_IOS = Switch(iOS):
+STRID_COLORTHEME_SWITCH_FLUENT = Switch(Fluent):
+STRID_COLORTHEME_SWITCH_MATERIAL = Switch(Material):
+STRID_COLORTHEME_BADGE_NUMBER = Badge(Count):
+STRID_COLORTHEME_BADGE_DOT = Badge(Dot):
+STRID_COLORTHEME_BADGE_BUTTON = Badge on Button:
+STRID_COLORTHEME_BADGE_MSG = Messages
+STRID_COLORTHEME_SWITCH_BADGE_GROUP = Switches & Badges
+STRID_COLORTHEME_FLYOUT_GROUP = Flyout
+STRID_COLORTHEME_FLYOUT_BOTTOM = Show at Bottom
+STRID_COLORTHEME_FLYOUT_RIGHT = Show at Right
+STRID_COLORTHEME_CALENDAR_GROUP = Calendar
+STRID_COLORTHEME_CALENDAR_DATE_PICKER = Date picker flyout:
+STRID_COLORTHEME_FLYOUT_TITLE = Flyout Title
+STRID_COLORTHEME_FLYOUT_DESC = This is a general-purpose flyout container for arbitrary content. Click outside or press Esc to close it.
+STRID_COLORTHEME_FLYOUT_CLOSE = Close
+STRID_COLORTHEME_GEN_NEUTRAL_MODE = Neutral Colors Only
+STRID_COLORTHEME_COPY_XML = Copty Xml Data
+STRID_COLORTHEME_COLOR_HUE = Hue:
+STRID_COLORTHEME_COLOR_BASE_L = Base Luminance:
+STRID_COLORTHEME_COLOR_PREVIEW     = Primary Color Preview
+STRID_COLORTHEME_COLOR_BACKGROUND  = Background Color
+STRID_COLORTHEME_COLOR_ACCENT      = Accent Color
+STRID_COLORTHEME_COLOR_SUCCESS     = Success Color
+STRID_COLORTHEME_COLOR_WARNING     = Warning Color
+STRID_COLORTHEME_COLOR_ERROR       = Error Color
+STRID_COLORTHEME_COLOR_SURFACE_1   = Surface Level 1
+STRID_COLORTHEME_COLOR_SURFACE_2   = Surface Level 2
+STRID_COLORTHEME_COLOR_SURFACE_3   = Surface Level 3
+STRID_COLORTHEME_COLOR_SURFACE_4   = Surface Level 4
+STRID_COLORTHEME_COLOR_SURFACE_5   = Surface Level 5
+STRID_COLORTHEME_COLOR_SURFACE_6   = Surface Level 6
+STRID_COLORTHEME_COLOR_SURFACE_7   = Surface Level 7
+
+# examples/panel
+# Window and title bar
+STRID_PANEL_WINDOW_TITLE = Panel Control Example
+STRID_PANEL_APP_NAME = Panel
+
+# Panel titles (Panel does not support text_id; the sample sets them on language change)
+STRID_PANEL_TITLE_BASIC = Basic Panel (Static)
+STRID_PANEL_TITLE_COLLAPSIBLE = Collapsible Panel (Click Title Bar to Toggle)
+STRID_PANEL_TITLE_NESTED = Nested Panels (Outer Panel Contains Inner Panels)
+STRID_PANEL_TITLE_NESTED_INNER = Inner Panel (Collapsible)
+STRID_PANEL_TITLE_NESTED_HLAYOUT = Inner Panel (Horizontal Layout)
+STRID_PANEL_TITLE_CPP = C++ Controlled Panel (Collapsible)
+STRID_PANEL_TITLE_CPP_MODIFIED_FMT = C++ Controlled Panel (Modified %d Times)
+STRID_PANEL_TITLE_V = VPanel Demo (Vertical Box Layout)
+STRID_PANEL_TITLE_H = HPanel Demo (Horizontal Box Layout)
+STRID_PANEL_TITLE_STRETCH_A = Stretch Panel A
+STRID_PANEL_TITLE_STRETCH_B = Stretch Panel B (Initially Collapsed)
+STRID_PANEL_TITLE_VISIBLE = Child Visibility Retention (Rounded Corner Clipping)
+STRID_PANEL_TITLE_ARROW_ONLY = Arrow-Only Collapse (Title Text Does Not React)
+STRID_PANEL_TITLE_ACCORDION = Accordion Mode (group=settings)
+STRID_PANEL_TITLE_PROFILE = Profile
+STRID_PANEL_TITLE_NOTIFY = Notifications
+STRID_PANEL_TITLE_ABOUT = About
+STRID_PANEL_TITLE_CUSTOM_ARROW = Custom Arrow Images (Hover for Hover State)
+STRID_PANEL_TITLE_ARROW_LEFT = Arrow on the Left, Centered Title
+STRID_PANEL_TITLE_SLOT = Title Bar Slot (Right-Side Buttons Always Available)
+STRID_PANEL_TITLE_VETO = Protected Panel (Collapse Event Can Be Cancelled)
+
+# Description texts
+STRID_PANEL_DESC_BASIC = Note: The basic panel defines title bar styles through the XML attributes title / title_height / title_bk_color.
+STRID_PANEL_DESC_COLLAPSIBLE = Note: With collapsible='true', click the title bar to collapse or expand.
+STRID_PANEL_DESC_NESTED = Note: Panels can be nested; each inner panel has its own title bar and collapse state.
+STRID_PANEL_DESC_CPP = Note: The collapse animation duration (300ms) and event listeners of this panel are set in C++; 'Toggle Collapse' plays the animation, while 'Toggle Now' skips it (bPlayAnim=false of SetCollapsed).
+STRID_PANEL_DESC_V = Note: PanelVBox inherits VBox; children are arranged vertically and stretch to fill the width and height.
+STRID_PANEL_DESC_H = Note: PanelHBox inherits HBox; children are arranged horizontally.
+STRID_PANEL_DESC_STRETCH_A = After collapsing/expanding, this panel should refill the left half height (stretch mode must not be changed to a fixed height).
+STRID_PANEL_DESC_STRETCH_B = Initially collapsed; after expanding it should fill the right half, and collapse back to the title bar height.
+STRID_PANEL_DESC_VISIBLE = Steps: collapse then expand; the green label should stay hidden until 'Toggle Label' is clicked. The background must not overflow at the rounded corners of the title bar.
+STRID_PANEL_DESC_ARROW_ONLY = Steps: clicking the title text area does not collapse the panel; only the arrow on the far right toggles it.
+STRID_PANEL_DESC_ACCORDION = The following three panels share group=settings: expanding one automatically collapses the others; rapid clicks smoothly reverse the animation midway. All of them can be collapsed.
+STRID_PANEL_DESC_PROFILE = Profile settings such as nickname, avatar and signature.
+STRID_PANEL_DESC_NOTIFY = Notification preferences such as desktop notifications, sounds and do-not-disturb hours.
+STRID_PANEL_DESC_ABOUT = About information such as version number, update checks and open-source licenses.
+STRID_PANEL_DESC_CUSTOM_ARROW = The arrow uses normal/hovered state images instead of a glyph; the title text automatically avoids the arrow area, and an overly long title ends with an ellipsis.
+STRID_PANEL_DESC_ARROW_LEFT = arrow_align='left' places the arrow on the left of the title bar (like VSCode tree nodes); title_text_align='hcenter' centers the title. The arrow can show an accent color when hovered.
+STRID_PANEL_DESC_SLOT = Steps: click the empty area of the title bar to collapse/expand; clicking the 'Settings/Refresh' buttons on the right does not collapse it. The buttons remain on the title bar and stay clickable after collapsing.
+STRID_PANEL_DESC_VETO = How it works: the AttachCollapsing callback reads the checkbox state and returns false to cancel collapsing; expanding is unrestricted.
+
+# Buttons/options/labels
+STRID_PANEL_BTN_1 = Button 1
+STRID_PANEL_BTN_2 = Button 2
+STRID_PANEL_BTN_3 = Button 3
+STRID_PANEL_OPTION_A = Option A
+STRID_PANEL_OPTION_B = Option B
+STRID_PANEL_OPTION_C = Option C
+STRID_PANEL_SUB_OPTION_1 = Sub-option 1
+STRID_PANEL_SUB_OPTION_2 = Sub-option 2
+STRID_PANEL_SUB_OPTION_3 = Sub-option 3
+STRID_PANEL_ACTION_1 = Action 1
+STRID_PANEL_ACTION_2 = Action 2
+STRID_PANEL_ACTION_3 = Action 3
+STRID_PANEL_BTN_TOGGLE = Toggle Collapse
+STRID_PANEL_BTN_TOGGLE_NOANIM = Toggle Now
+STRID_PANEL_BTN_SET_TITLE = Change Title
+STRID_PANEL_ITEM_1 = Item 1
+STRID_PANEL_ITEM_2 = Item 2
+STRID_PANEL_ITEM_3 = Item 3
+STRID_PANEL_BTN_TOGGLE_LABEL = Toggle Label
+STRID_PANEL_HIDDEN_CHILD = I am a child control initially with visible=false
+STRID_PANEL_BTN_NO_COLLAPSE = A normal button below the title bar; clicking it does not collapse the panel
+STRID_PANEL_BTN_SLOT_SETTINGS = Settings
+STRID_PANEL_BTN_SLOT_REFRESH = Refresh
+STRID_PANEL_CHK_ALLOW_COLLAPSE = Allow collapsing this panel (when unchecked, clicking the title bar does nothing)
+
+# Dynamic status bar texts
+STRID_PANEL_STATUS_PREFIX = Status:
+STRID_PANEL_STATUS_READY = Ready
+STRID_PANEL_STATUS_CPP_EXPANDED = panel_cpp: Expanded (kEventExpand)
+STRID_PANEL_STATUS_CPP_COLLAPSED = panel_cpp: Collapsed (kEventCollapse)
+STRID_PANEL_STATUS_SLOT_SETTINGS = Title bar slot: 'Settings' clicked (panel not collapsed)
+STRID_PANEL_STATUS_SLOT_REFRESH = Title bar slot: 'Refresh' clicked (panel not collapsed)
+STRID_PANEL_STATUS_VETO_CANCELLED = Collapse cancelled: check 'Allow collapsing this panel' first
+STRID_PANEL_STATUS_VETO_COLLAPSED = Protected panel collapsed (the before-collapse event allowed it)
+
+# ============================================================
+# TabCtrl test window (examples/controls/TabCtrlForm)
+# Skin: controls/tabctrl.xml - key set must match zh_CN-examples.txt
+# ============================================================
+STRID_TABCTRL_WINDOW_TITLE = TabCtrl Test
+
+# Card titles
+STRID_TABCTRL_CARD_ORIENT = (1) Layout Orientation (switch horizontal / vertical at runtime)
+STRID_TABCTRL_CARD_FIXED = (2) Fixed Tabs (not draggable, no close button, always at the front)
+STRID_TABCTRL_CARD_HOVERFLOW = (3) Horizontal Overflow Scroll (bar width 300, tab width 96)
+STRID_TABCTRL_CARD_VOVERFLOW = (4) Vertical Overflow Scroll (bar height 110, tab height 36)
+STRID_TABCTRL_CARD_BADGE = (5) Tab Badges (count / 99+ / red dot / close button)
+
+# Buttons
+STRID_TABCTRL_BTN_VERT = Switch to Vertical
+STRID_TABCTRL_BTN_HORZ = Switch to Horizontal
+STRID_TABCTRL_BTN_OVERFLOW_ON = Overflow Scroll: On
+STRID_TABCTRL_BTN_OVERFLOW_OFF = Overflow Scroll: Off
+STRID_TABCTRL_BTN_FIX_ADD = Add Fixed Tab
+STRID_TABCTRL_BTN_FIX_TOGGLE = Fix / Unfix Selected
+STRID_TABCTRL_BTN_FIX_REMOVE = Remove Selected
+STRID_TABCTRL_BTN_RESET = Reset
+STRID_TABCTRL_BTN_FILL10 = Fill to 10
+STRID_TABCTRL_BTN_FILL8 = Fill to 8
+STRID_TABCTRL_BTN_HOME_LEFT = Scroll to Start
+STRID_TABCTRL_BTN_END_RIGHT = Scroll to End
+STRID_TABCTRL_BTN_PAGE_RIGHT = Page Right
+STRID_TABCTRL_BTN_HOME_UP = Scroll to Top
+STRID_TABCTRL_BTN_END_DOWN = Scroll to Bottom
+STRID_TABCTRL_BTN_PAGE_DOWN = Page Down
+STRID_TABCTRL_BTN_CLEAR = Clear
+
+# Tab titles (shared by cards 1/2/4/5 and programmatic creation)
+STRID_TAB_CTRL_HOME = Home
+STRID_TAB_CTRL_FAVORITE = Favorites
+STRID_TAB_CTRL_MSG = Messages
+STRID_TAB_CTRL_NOTIFY = Notifications
+STRID_TAB_CTRL_FEED = Feed
+STRID_TAB_CTRL_SETTINGS = Settings
+STRID_TABCTRL_TAB_1 = Tab 1
+STRID_TABCTRL_TAB_2 = Tab 2
+STRID_TABCTRL_TAB_3 = Tab 3
+STRID_TABCTRL_TAB_N = Tab %d
+STRID_TABCTRL_FIXED_N = Fixed%d
+
+# Initial state texts (refreshed by code once layout is done)
+STRID_TABCTRL_STATE_HORZ = Orientation: Horizontal
+STRID_TABCTRL_STATE_FIXED_INIT = Fixed tabs: 0
+STRID_TABCTRL_STATE_COUNT0 = Tabs: 0
+STRID_TABCTRL_RANGE_H_INIT = Visible width: 0  |  Content width: 0  |  Overflow: 0
+STRID_TABCTRL_RANGE_V_INIT = Visible height: 0  |  Content height: 0  |  Overflow: 0
+STRID_TABCTRL_POS_H_INIT = Scroll pos: 0 / 0  |  Scrollbar: none
+STRID_TABCTRL_POS_V_INIT = Scroll pos: 0 / 0  |  Scrollbar: none
+
+# Dynamic state texts (formatted by code, keep %d / %s order)
+STRID_TABCTRL_STATE_ORIENT = Orientation: %s
+STRID_TABCTRL_STATE_SCROLLBAR =  |  %s scrollbar: %s
+STRID_TABCTRL_STATE_DIR_VERT = Vertical
+STRID_TABCTRL_STATE_DIR_HORZ = Horizontal
+STRID_TABCTRL_STATE_AXIS_VERT = Vertical
+STRID_TABCTRL_STATE_AXIS_HORZ = Horizontal
+STRID_TABCTRL_STATE_BAR_SHOWN = shown (content overflows)
+STRID_TABCTRL_STATE_BAR_NONE = none
+STRID_TABCTRL_STATE_BAR_DISABLED = none (overflow scroll disabled)
+STRID_TABCTRL_STATE_FIXED = Tabs: %d  |  Fixed: %d
+STRID_TABCTRL_STATE_SELECTED =  |  Selected: %s (%s)
+STRID_TABCTRL_STATE_KIND_FIXED = Fixed
+STRID_TABCTRL_STATE_KIND_NORMAL = Normal
+STRID_TABCTRL_STATE_COUNT = Tabs: %d
+STRID_TABCTRL_STATE_OVERFLOW_OFF =  |  Overflow scroll disabled
+STRID_TABCTRL_RANGE_H = Visible width: %d  |  Content width: %d  |  Overflow: %d
+STRID_TABCTRL_RANGE_V = Visible height: %d  |  Content height: %d  |  Overflow: %d
+STRID_TABCTRL_POS = Scroll pos: %d / %d  |  Scrollbar: %s
+STRID_TABCTRL_BAR_SHOWN_SHORT = shown
+
+# Hints
+STRID_TABCTRL_TIP_ORIENT = Hint: in vertical mode tabs stretch to fill the bar width, height stays fixed
+STRID_TABCTRL_TIP_FIXED = Hint: drag grey normal tabs to reorder; fixed tabs on the left cannot be dragged
+STRID_TABCTRL_TIP_BADGE = Four badge types: count / 99+ overflow / red dot / close button on hover
+STRID_TABCTRL_TIP_CARD_ORIENT = Switch layout direction at runtime via SetTabCtrlOrientation
+STRID_TABCTRL_TIP_CARD_FIXED = Fixed tabs: not draggable, no close button
+STRID_TABCTRL_TIP_CARD_HOVERFLOW = A floating scrollbar appears on overflow; dragging a tab near the right edge auto-scrolls
+STRID_TABCTRL_TIP_CARD_VOVERFLOW = Vertical tab bar: a vertical floating scrollbar appears on overflow
+STRID_TABCTRL_TIP_CARD_VOVERFLOW2 = Hint: SetTabCtrlOrientation switches the overflow scrollbar axis automatically
+STRID_TABCTRL_TIP_CARD_BADGE = ui::TabCtrl + ui::TabCtrlItem (badge)
+
+# TabCtrl standalone test window entry (controls/test.xml)
+STRID_CONTROLS_TABCTRL_FULL = TabCtrl: Vertical / Fixed / Overflow / Badge
+STRID_CONTROLS_TABCTRL_TEST_BTN = TabCtrl Test
+STRID_CONTROLS_TABCTRL_TEST_TIP = Vertical tabs / Fixed tabs / Overflow scroll / Badges / Programmatic add-remove

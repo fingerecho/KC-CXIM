@@ -1,0 +1,267 @@
+#ifndef UI_CORE_WINDOWBUILDER_H_
+#define UI_CORE_WINDOWBUILDER_H_
+
+#include "duilib/Core/UiTypes.h"
+#include "duilib/Utils/FilePath.h"
+
+namespace pugi
+{
+    //XML 解析器相关定义
+    class xml_document;
+    class xml_node;
+}
+
+namespace ui 
+{
+
+class Box;
+class Window;
+class Control;
+class RichTextSlice;
+class RichTextImpl;
+class WindowCreateAttributes;
+class ColorManager;
+
+/** 创建控件的回调函数
+*/
+typedef std::function<Control* (const DString&)> CreateControlCallback;
+
+/** 用于支持XML预览的属性列表，部分属性在预览后需要从关联的窗口对象中删除，以恢复原始状态
+*/
+struct XmlPreviewAttributes
+{
+    /** XML中窗口标签（Window）的属性列表
+    */
+    std::map<DString, DString> m_windowAttributes;
+
+    /** 本次解析在窗口下添加的Class属性列表
+    */
+    std::vector<DString> m_windowClassList;
+
+    /** 本次解析在窗口下添加的ThemeColor属性列表
+    */
+    std::vector<DString> m_windowThemeColorList;
+
+    /** 本次解析在全局属性中添加的FontId属性列表
+    */
+    std::vector<DString> m_globalFontIdList;
+};
+
+/** 根据XML文件，解析并创建控件和布局
+*/
+class DUILIB_API WindowBuilder
+{
+public:
+    WindowBuilder();
+    ~WindowBuilder();
+
+    WindowBuilder(const WindowBuilder&) = delete;
+    WindowBuilder& operator = (const WindowBuilder&) = delete;
+
+public:
+    /** 解析XML文件内容
+    * @param [in] xmlFileData 是文件文本内容，字符串需要以字符 '<'开头;
+    * @param [in] xmlFilePath 可选参数，提供XML文件路径，当XML数据中含有Include标签时会按XML路径查找被包含的XML文件
+    * @return 解析成功返回true，否则返回false
+    */
+    bool ParseXmlData(const DString& xmlFileData, const FilePath& xmlFilePath = FilePath());
+    bool ParseXmlData(const std::vector<unsigned char>& xmlFileData, const FilePath& xmlFilePath = FilePath());
+
+    /** 解析XML文件内容
+    * @param [in] xmlFilePath XML文件的路径
+    * @param [in] windowResPath 窗口资源子目录, 用于查找XML文件（当不指定文件路径时）
+    * @return 解析成功返回true，否则返回false
+    */
+    bool ParseXmlFile(const FilePath& xmlFilePath, const FilePath& windowResPath = FilePath());
+
+    /** 使用缓存中已经解析过的XML文件或者数据创建窗口布局等（即CreateFromXmlData和CreateFromXmlFile解析后的结果）
+    * @param [in] pWindow 关联的窗口, 不允许为nullptr, 因DPI自适应需要对控件的大小等进行DPI缩放
+    * @param [in] pCallback 根据Class名称创建控件（或容器）的函数，适用于自定义控件
+    * @param [in] pParent 父容器，将该XML文件解析的节点，作为pParent容器的子节点
+    * @param [in] pUserDefinedBox 用户自定义的父容器，将该XML文件解析的节点，作为pUserDefinedBox容器的子节点
+    * @return 如果pUserDefinedBox不为nullptr, 返回pUserDefinedBox，否则返回解析XML后，生成的第一个节点接口（可能是Control，也可能是Box）
+    */
+    Control* CreateControls(Window* pWindow,
+                            CreateControlCallback pCallback = CreateControlCallback(),
+                            Box* pParent = nullptr, 
+                            Box* pUserDefinedBox = nullptr);
+
+    /** 将控件转换成容器, 内部做一些断言处理，确保转换失败的时候，能够报错
+    */
+    Box* ToBox(Control* pControl) const;
+
+    /** 解析出窗口的属性
+    *   (只解析出部分创建窗口依赖的属性，有些窗口属性只能在创建的时候指定，创建窗口后不支持修改，所以必须先读取出来，创建窗口时作为传入参数)
+    */
+    bool ParseWindowCreateAttributes(Window* pWindow, WindowCreateAttributes& createAttributes);
+
+    /** 从当前XML中解析出主题相关数据
+    * @param [out] themeName 主题名称
+    * @param [out] themeType 主题类型
+    * @param [out] themeStyle 主题风格
+    */
+    bool ParseThemeInfo(DString& themeName, DString& themeType, DString& themeStyle) const;
+
+    /** 从当前XML中解析出颜色主题相关数据，并添加到颜色管理器
+    */
+    bool ParseThemeColor(ColorManager& colorManager) const;
+
+    /** 读取XML文件内容
+    * @param [in] xmlFilePath XML文件的路径
+    * @param [in] windowResPath 窗口资源子目录, 用于查找XML文件（当不指定文件路径时）
+    * @return 读取成功返回XML文件的内容（一般为UTF8格式）
+    */
+    std::string ReadXmlFileData(const FilePath& xmlFilePath, const FilePath& windowResPath = FilePath()) const;
+
+public:
+    /** 解析出窗口的属性(属性名称保存在Map的Key中，属性的值保存在属性的Value中)
+    */
+    bool ParseWindowAttributes(std::map<DString, DString>& windowAttributes) const;
+
+    /** 获取本次解析在窗口下添加的Class属性列表
+    */
+    const std::vector<DString>& GetWindowClassList() const;
+
+    /** 获取本次解析在窗口下添加的ThemeColor属性列表
+    */
+    const std::vector<DString>& GetWindowThemeColorList() const;
+
+    /** 获取本次解析在全局属性中添加的FontId属性列表
+    */
+    const std::vector<DString>& GetGlobalFontIdList() const;
+
+public:
+    /** 解析带格式的文本内容，并设置到RichText Control对象
+    * @param [in] xmlText 带格式的文本内容
+    * @param [in] pControl RichText控件的接口
+    */
+    static bool ParseRichTextXmlText(const DString& xmlText, Control* pControl);
+    
+    /** 解析带格式的文本内容，并设置到RichText Control对象
+    * @param [in] xmlNode 带格式的文本内容对应的XML节点
+    * @param [in] pControl RichText控件的接口
+    * @param [in] pTextSlice 文本片段节点接口，如果pTextSlice不为nullptr，XML节点的解析结果将填充到pTextSlice中；否则填充到pControl中
+    */
+    static bool ParseRichTextXmlNode(const pugi::xml_node& xmlNode, Control* pControl, RichTextSlice* pTextSlice = nullptr);
+
+private:
+    /** 解析带格式的文本内容，并设置到RichText Control对象
+    * @param [in] xmlNode 带格式的文本内容对应的XML节点
+    * @param [in] pControl RichText控件的接口
+    * @param [in] pTextSlice 文本片段节点接口，如果pTextSlice不为nullptr，XML节点的解析结果将填充到pTextSlice中；否则填充到pControl中
+    */
+    static bool ParseRichTextXmlNode(const pugi::xml_node& xmlNode, RichTextImpl* pRichTextImpl, RichTextSlice* pTextSlice = nullptr);
+
+    /** 解析Include节点
+    * @param [in] xmlNode xml节点
+    * @param [in] pParent 父控件，可能是普通控件（参数只传入，未用到），也可能是容器（用时转换为容器）
+    * @param [in] pWindow 关联的窗口
+    * @return 返回第一个创建的节点，可能是普通控件，也可能是容器
+    */
+    Control* ParseIncludeXmlNode(const pugi::xml_node& node, Control* pParent, Window* pWindow) const;
+
+    /** 解析MenuBarItem节点
+    * @param [in] xmlNode xml节点
+    * @param [in] pParent 父控件，可能是普通控件（参数只传入，未用到），也可能是容器（用时转换为容器）
+    * @param [in] pWindow 关联的窗口
+    */
+    void ParseMenuBarItemXmlNode(const pugi::xml_node& node, Control* pParent, Window* pWindow) const;
+
+    /** 解析PropertyGridGroup节点
+    * @param [in] xmlNode xml节点
+    * @param [in] pParent 父控件，可能是普通控件（参数只传入，未用到），也可能是容器（用时转换为容器）
+    * @param [in] pWindow 关联的窗口
+    */
+    void ParsePropertyGridGroupXmlNode(const pugi::xml_node& node, Control* pParent, Window* pWindow) const;
+
+    /** 解析CheckComboText节点
+    * @param [in] xmlNode xml节点
+    * @param [in] pParent 父控件，可能是普通控件（参数只传入，未用到），也可能是容器（用时转换为容器）
+    * @param [in] pWindow 关联的窗口
+    */
+    void ParseCheckComboTextXmlNode(const pugi::xml_node& node, Control* pParent, Window* pWindow) const;
+
+    /** 解析ListCtrl数据节点
+    * @param [in] xmlNode xml节点
+    * @param [in] pParent 父控件，可能是普通控件（参数只传入，未用到），也可能是容器（用时转换为容器）
+    * @param [in] pWindow 关联的窗口
+    */
+    void ParseListCtrlXmlNode(const pugi::xml_node& node, Control* pParent, Window* pWindow) const;
+
+private:
+    /** 解析窗口的属性(根XML节点名称："Window")
+    */
+    void ParseWindowAttributes(Window* pWindow, const pugi::xml_node& root) const;
+
+    /** 解析窗口下的共享资源属性(根XML节点名称："Window")，这些属性只有本窗口能使用
+    */
+    void ParseWindowShareAttributes(Window* pWindow, const pugi::xml_node& root);
+
+    /** 解析全局资源的属性(根XML节点名称："Global")，这些属性，所有窗口都可以使用
+    */
+    void ParseGlobalAttributes(const pugi::xml_node& root);
+
+    /** 解析全局资源中的Include节点：引用同目录的XML文件，注册其中的全局资源（Var/Font/Class/ThemeColor等）
+    * @param [in] node 全局资源中的Include节点
+    */
+    void ParseGlobalIncludeXmlNode(const pugi::xml_node& node);
+
+    /** 解析XML节点的子节点
+    * @param [in] xmlNode xml节点
+    * @param [in] pParent 父控件，可能是普通控件（参数只传入，未用到），也可能是容器（用时转换为容器）
+    * @param [in] pWindow 关联的窗口
+    * @return 返回第一个创建的节点，可能是普通控件，也可能是容器
+    */
+    Control* ParseXmlNodeChildren(const pugi::xml_node& xmlNode, Control* pParent = nullptr, Window* pWindow = nullptr);
+
+    /** 根据控件的Class名称，创建控件（或容器）
+    */
+    Control* CreateControlByClass(const DString& strControlClass, Window* pWindow);
+
+    /** 创建XML事件（XML节点为<Event>或者<BubbledEvent>）
+    *   举例子：
+    *   <Option text="单项选择" margin="8,0,0,0" border_round="2,2" valign="center">
+    *       <Event type="buttonup" receiver="tree" apply_attribute="multi_select={false}" />
+    *   </Option>
+    */
+    void AttachXmlEvent(bool bBubbled, const pugi::xml_node& node, Control* pParent);
+
+    /** 解析字体节点
+    */
+    void ParseFontXmlNode(const pugi::xml_node& xmlNode);
+
+    /** 判断是否为忽略的节点名称
+    */
+    bool IsIgnoreNodeName(const DString& nodeName) const;
+
+private:
+    
+    /** 当前解析的XML文档对象
+    */
+    std::unique_ptr<pugi::xml_document> m_xml;
+
+    /** 创建Control的回调接口
+    */
+    CreateControlCallback m_createControlCallback;
+
+    /** 当前解析的XML文件路径
+    */
+    FilePath m_xmlFilePath;
+
+private:
+    /** 本次解析在窗口下添加的Class属性列表
+    */
+    std::vector<DString> m_windowClassList;
+
+    /** 本次解析在窗口下添加的ThemeColor属性列表
+    */
+    std::vector<DString> m_windowThemeColorList;
+
+    /** 本次解析在全局属性中添加的FontId属性列表
+    */
+    std::vector<DString> m_globalFontIdList;
+};
+
+} // namespace ui
+
+#endif // UI_CORE_WINDOWBUILDER_H_

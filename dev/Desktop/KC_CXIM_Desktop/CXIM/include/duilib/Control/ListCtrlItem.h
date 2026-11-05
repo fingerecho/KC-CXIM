@@ -1,0 +1,207 @@
+#ifndef UI_CONTROL_LIST_CTRL_ITEM_H_
+#define UI_CONTROL_LIST_CTRL_ITEM_H_
+
+#include "duilib/Box/ListBox.h"
+#include "duilib/Control/Label.h"
+#include "duilib/Core/ImageList.h"
+#include "duilib/Control/ListCtrlDefs.h"
+
+namespace ui
+{
+/** ListCtrl列表数据项UI控件（行）
+*    基本结构: <ListCtrlItem> <ListCtrlSubItem/> ... <ListCtrlSubItem/>  </ListCtrlItem>
+*    附加说明:
+*       1. ListCtrlItem 表示表格的某一行的UI控件
+*         (1) ListCtrlItem的父类的层级关系为：ListCtrlItemTemplate<HBox>: public ListBoxItemTemplate<HBox>: pubic OptionTemplate<HBox>)
+*         (2) ListCtrlItem中的子控件类型为ListCtrlSubItem，每个子控件代表一列中的一个格子
+*         (3) 当需要显示CheckBox的时候，ListCtrlItem设置自身的属性，显示CheckBox，因为它自身是OptionTemplate<HBox>的子类，有CheckBox的属性
+*       2. ListCtrlSubItem 表示表格的某行某列的一个格子的UI控件
+*         (1) ListCtrlSubItem的父类继承关系为：ListCtrlSubItem public : ListCtrlLabel: public CheckBoxTemplate<HBox>
+*         (2) ListCtrlSubItem继承自CheckBoxTemplate<HBox>，用于自身显示文本
+*         (3) 当需要显示CheckBox的时候，ListCtrlSubItem设置自身的属性，显示CheckBox，因为它自身是CheckBoxTemplate<HBox>的子类，有CheckBox的属性
+*         (4) 当显示图标时，使用ListCtrl的ImageList资源，自绘的方式实现
+*/
+class ListCtrl;
+class ListCtrlSubItem;
+class DUILIB_API ListCtrlItem : public ListCtrlItemBaseH
+{
+    typedef ListCtrlItemBaseH BaseClass;
+    friend class ListCtrlReportView;//开放部分protect接口
+public:
+    explicit ListCtrlItem(Window* pWindow);
+    virtual ~ListCtrlItem() override;
+
+    /** 获取控件类型
+    */
+    virtual DString GetType() const override;
+
+    /** 设置属性
+    */
+    virtual void SetAttribute(const DString& strName, const DString& strValue) override;
+
+    /** DPI发生变化，更新控件大小和布局
+    * @param [in] nOldDpiScale 旧的DPI缩放百分比
+    * @param [in] nNewDpiScale 新的DPI缩放百分比，与Dpi().GetScale()的值一致
+    */
+    virtual void ChangeDpiScale(uint32_t nOldDpiScale, uint32_t nNewDpiScale) override;
+
+    /** 事件处理函数
+    */
+    virtual void HandleEvent(const EventArgs& msg) override;
+
+    /** 判断控件类型是否为可选择的
+     * @return 默认返回false
+     */
+    virtual bool IsSelectableType() const override;
+
+    /** 设置是否可以选择(置顶数据不可选择，其他数据可选择)
+    */
+    void SetSelectableType(bool bSelectable);
+
+public:
+    /** 设置关联的ListCtrl接口
+    */
+    void SetListCtrl(ListCtrl* pListCtrl);
+
+    /** 获取关联的ListCtrl接口
+    */
+    ListCtrl* GetListCtrl() const;
+
+    /** 获取关联的数据项索引号, 代表关联哪一行的数据
+    * @return 返回数据项的索引号, 有效范围：[0, ListCtrl::GetDataItemCount())
+    */
+    size_t GetDataItemIndex() const;
+
+    /** 获取子控件的个数
+    */
+    size_t GetSubItemCount() const;
+
+    /** 获取第nSubItemIndex个子控件
+    * @param [in] nSubItemIndex 列索引序号：[0, GetSubItemCount())
+    */
+    ListCtrlSubItem* GetSubItem(size_t nSubItemIndex) const;
+
+    /** 获取鼠标所在位置的子控件
+    * @param [in] ptMouse 鼠标所在的位置，屏幕坐标点
+    */
+    ListCtrlSubItem* GetSubItem(const UiPoint& ptMouse) const;
+
+    /** 获取鼠标所在位置的子控件的列索引序号(哪一列)
+    * @param [in] ptMouse 鼠标所在的位置，屏幕坐标点
+    */
+    size_t GetSubItemIndex(const UiPoint& ptMouse) const;
+
+    /** 获取子控件的列索引序号(哪一列)
+    * @param [in] pSubItem 子控件的接口
+    */
+    size_t GetSubItemIndex(ListCtrlSubItem* pSubItem) const;
+
+    /** 设置是否在行首显示CheckBox
+    * @param [in] bShow true表示在行首显示CheckBox，false表示不显示
+    */
+    bool SetShowCheckBox(bool bShow);
+
+    /** 判断是否行首显示了CheckBox
+    */
+    bool IsShowCheckBox() const;
+
+    /** 判断当前行首的CheckBox是否处于勾选状态
+    */
+    bool IsCheckBoxChecked() const;
+
+    /** 设置关联图标Id, 如果为-1表示不显示图标，图标显示在文本前面
+    */
+    void SetImageId(int32_t imageId);
+
+    /** 获取关联图标Id
+    */
+    int32_t GetImageId() const;
+
+    /** 设置图标之间的间隔（像素）
+    */
+    void SetIconSpacing(int32_t nIconSpacing, bool bNeedDpiScale);
+
+    /** 获取图标之间的间隔（像素）
+    */
+    int32_t GetIconSpacing() const;
+
+protected:
+    /** 获取关联图标/CheckBox等所占的宽度(左侧)
+    */
+    int32_t GetItemPaddingLeft();
+
+    /** 加载图标资源
+    */
+    ImagePtr LoadItemImage() const;
+
+    /** 使得目标区域纵向对齐
+    */
+    void VAlignRect(UiRect& rc, uint32_t textStyle, int32_t nImageHeight);
+
+    /** 获取CheckBox的图片宽度
+    */
+    int32_t GetCheckBoxImageWidth();
+
+protected:
+    
+    /** 鼠标左键弹起事件
+    */
+    virtual bool ButtonUp(const EventArgs& msg) override;
+
+    /** 鼠标左键按下事件（单元格选择模式下跳过行选择逻辑）
+    */
+    virtual bool ButtonDown(const EventArgs& msg) override;
+
+    /** 鼠标进入事件（单元格选择模式下不进入行级悬停状态，避免行级高亮与悬停渐隐动画）
+    */
+    virtual bool MouseEnter(const EventArgs& msg) override;
+
+    /** 鼠标离开事件（单元格选择模式下不启动悬停渐隐动画，仅清除焦点带来的行级悬停状态）
+    */
+    virtual bool MouseLeave(const EventArgs& msg) override;
+
+    /** 是否支持勾选模式（目前是TreeView/ListCtrl在使用这个模式）
+        勾选模式是指：
+        （1）只有点击在CheckBox图片上的时候，勾选框图片才是选择状态（非勾选模式下，是点击在控件矩形内就选择）
+        （2）勾选状态和选择状态分离，是两个不同的状态
+    */
+    virtual bool SupportCheckMode() const override;
+
+    /** 将鼠标点（窗口客户区坐标）换算到用于判定CheckBox图标命中的控件坐标空间
+    *   行首的CheckBox和图标固定显示在行的最左侧，位于冻结列区域内（不随横向滚动移动），
+    *   存在冻结列时，横向的滚动量需要按0计，保证点击判定与冻结列的显示位置一致
+    * @param [in] ptMouse 鼠标点（窗口客户区坐标）
+    * @return 返回换算后的控件坐标空间中的点
+    */
+    virtual UiPoint GetCheckBoxMousePos(const UiPoint& ptMouse) const override;
+
+    /** 绘制函数
+    */
+    virtual void Paint(IRender* pRender, const UiRect& rcPaint) override;
+
+    /** 绘制控件的状态颜色
+    *   单元格选择模式下，屏蔽行级的悬停/按下状态颜色（行级高亮视觉是行选择模式专属）
+    */
+    virtual void PaintStateColors(IRender* pRender) override;
+
+private:
+    /** 是否可以选择（影响方向键切换选择项）
+    */
+    bool m_bSelectable;
+
+    /** 关联的ListCtrl接口
+    */
+    ListCtrl* m_pListCtrl;
+
+    /** 关联图标Id, 如果为-1表示不显示图标，图标显示在文本前面
+    */
+    int32_t m_imageId;
+
+    /** 图标之间的间隔
+    */
+    int32_t m_nIconSpacing;
+};
+
+}//namespace ui
+
+#endif //UI_CONTROL_LIST_CTRL_ITEM_H_

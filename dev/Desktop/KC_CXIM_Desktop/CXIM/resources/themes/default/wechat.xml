@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Window size="960,640" caption="0,0,0,40" round_corner="8,8" shadow_attached="false" layered_window="true" size_box="0,0,0,0">
+    <VBox width="stretch" height="stretch" bkcolor="#FFFFFFFF" border_size="1" border_color="#FF7EC8F5" border_round="8,8">
+        <HBox height="40" bkcolor="#FF6EC4F5" bkcolor2="#FF42A9EC" bkcolor2_direction="1">
+            <Box width="22" height="22" margin="12,0,0,0" border_round="5,5" bkcolor="#FFFFFFFF" valign="center">
+                <Control width="16" height="16" halign="center" valign="center" bkimage="logo.png" mouse_enabled="false"/>
+            </Box>
+            <Label text="铖信" margin="6,0,0,0" valign="center" font="system_bold_14" normal_text_color="#FFFFFFFF"/>
+            <Control width="20" height="20" margin="14,0,0,0" valign="center" bkimage="head.png" mouse_enabled="false"/>
+            <Label name="self_user_label" text="加载中..." margin="6,0,0,0" valign="center" font="system_regular_13" normal_text_color="#FFFFFFFF"/>
+            <Control width="stretch"/>
+            <Button name="btn_window_min" width="28" height="28" margin="0,6,2,6" border_round="4,4"
+                    normal_color="#00FFFFFF" hovered_color="#FF84CFF6" pressed_color="#FF6BBFEF"
+                    normal_text_color="#FFFFFFFF" font="system_regular_14" text="—" cursor_type="hand"/>
+            <Button name="btn_window_max" width="28" height="28" margin="0,6,2,6" border_round="4,4"
+                    normal_color="#00FFFFFF" hovered_color="#FF84CFF6" pressed_color="#FF6BBFEF"
+                    normal_text_color="#FFFFFFFF" font="system_regular_14" text="○" cursor_type="hand"/>
+            <Button name="btn_window_close" width="28" height="28" margin="0,6,10,6" border_round="4,4"
+                    normal_color="#00FFFFFF" hovered_color="#FFEE7C7C" pressed_color="#FFE36565"
+                    normal_text_color="#FFFFFFFF" font="system_regular_14" text="✕" cursor_type="hand"/>
+        </HBox>
+        <HBox width="stretch" height="stretch">
+            <VBox width="54" height="stretch" bkcolor="#FFFFFFFF">
+                <Option name="nav_chat" group="main_nav" width="36" height="36" margin="0,16,0,0" halign="center" border_round="8,8"
+                        normal_color="#00FFFFFF" hovered_color="#FFF2F8FE" pressed_color="#FFE8F4FD" selected_normal_color="#00FFFFFF"
+                        normal_image="file='wechat_nav_chat_off.svg' width='26' height='26' valign='center' halign='center'"
+                        selected_normal_image="file='wechat_nav_chat.svg' width='26' height='26' valign='center' halign='center'"
+                        selected="true" cursor_type="hand"/>
+                <Option name="nav_contacts" group="main_nav" width="36" height="36" margin="0,14,0,0" halign="center" border_round="8,8"
+                        normal_color="#00FFFFFF" hovered_color="#FFF2F8FE" pressed_color="#FFE8F4FD" selected_normal_color="#00FFFFFF"
+                        normal_image="file='wechat_nav_contacts.svg' width='26' height='26' valign='center' halign='center'"
+                        selected_normal_image="file='wechat_nav_contacts_on.svg' width='26' height='26' valign='center' halign='center'"
+                        cursor_type="hand"/>
+                <Control width="stretch" height="stretch"/>
+                <Label text="≡" height="24" margin="0,0,0,14" halign="center" valign="center" font="system_regular_16"
+                       normal_text_color="#FF6B7280" cursor_type="hand"/>
+            </VBox>
+            <Control width="1" height="stretch" bkcolor="#FFF0F2F5"/>
+            <TabBox name="main_pages" width="stretch" height="stretch" selected_id="chat_page" fade_switch="false">
+                <HBox name="chat_page" width="stretch" height="stretch">
+                    <VBox width="252" height="stretch" bkcolor="#FFF8F9FB">
+                        <HBox height="46" padding="10,7,10,7">
+                            <HBox width="stretch" height="32" border_round="8,8" bkcolor="#FFF0F2F5">
+                                <Control width="14" height="14" margin="9,0,0,0" valign="center" bkimage="search_icon.png" mouse_enabled="false"/>
+                                <RichEdit2 name="search_edit" width="stretch" height="stretch" bkcolor="#00FFFFFF" border_size="0,0,0,0" prompt_mode="true"
+                                           font="system_regular_12" text_align="left,vcenter" text_padding="4,0,4,0"
+                                           prompt_text="搜索" prompt_color="#FF9AA1AC"/>
+                            </HBox>
+                            <Button name="btn_add" width="32" height="32" margin="8,0,0,0" border_round="8,8"
+                                    normal_color="#FFF0F2F5" hovered_color="#FFE4E8ED" pressed_color="#FFD9E0E8"
+                                    normal_text_color="#FF7C8593" font="system_regular_16" text="+" cursor_type="hand"/>
+                        </HBox>
+                        <VListBox name="message_list" width="stretch" height="stretch" bkcolor="#FFF8F9FB" vscrollbar="true" padding="0,2,0,2"/>
+                    </VBox>
+                    <VBox width="stretch" height="stretch" bkcolor="#FFFFFFFF">
+                        <HBox height="60" padding="20,0,20,0">
+                            <Label name="chat_title_label" text="请选择好友" valign="center" font="system_bold_16" normal_text_color="#FF1F2329"/>
+                            <Control width="8" height="8" margin="8,0,0,0" valign="center" border_round="4,4" bkcolor="#FF34C759" mouse_enabled="false"/>
+                            <Control width="stretch"/>
+                            <Button name="btn_voice_call" width="28" height="28" valign="center" border_round="6,6"
+                                    normal_color="#00FFFFFF" hovered_color="#FFF2F4F7" pressed_color="#FFE7EBF0"
+                                    normal_image="file='wechat_icon_phone.svg' width='20' height='20' valign='center' halign='center'" cursor_type="hand"/>
+                            <Button name="btn_more" width="28" height="28" margin="6,0,0,0" valign="center" border_round="6,6"
+                                    normal_color="#00FFFFFF" hovered_color="#FFF2F4F7" pressed_color="#FFE7EBF0"
+                                    normal_image="file='wechat_icon_more.svg' width='20' height='20' valign='center' halign='center'" cursor_type="hand"/>
+                        </HBox>
+                        <Control width="stretch" height="1" bkcolor="#FFEFF1F4"/>
+                        <VListBox name="chat_message_list" width="stretch" height="stretch" bkcolor="#FFFFFFFF" vscrollbar="true" padding="12,8,12,8"/>
+                        <Control width="stretch" height="1" bkcolor="#FFEFF1F4"/>
+                        <VBox width="stretch" height="176">
+                            <HBox height="40" padding="16,10,16,0">
+                                <Button width="24" height="24" border_round="4,4" normal_color="#00FFFFFF" hovered_color="#FFF2F4F7" pressed_color="#FFE7EBF0"
+                                        normal_image="file='wechat_icon_smile.svg' width='20' height='20' valign='center' halign='center'" cursor_type="hand"/>
+                                <Button width="24" height="24" margin="8,0,0,0" border_round="4,4" normal_color="#00FFFFFF" hovered_color="#FFF2F4F7" pressed_color="#FFE7EBF0"
+                                        normal_image="file='wechat_icon_scissors.svg' width='20' height='20' valign='center' halign='center'" cursor_type="hand"/>
+                                <Button width="24" height="24" margin="8,0,0,0" border_round="4,4" normal_color="#00FFFFFF" hovered_color="#FFF2F4F7" pressed_color="#FFE7EBF0"
+                                        normal_image="file='wechat_icon_folder.svg' width='20' height='20' valign='center' halign='center'" cursor_type="hand"/>
+                                <Button width="24" height="24" margin="8,0,0,0" border_round="4,4" normal_color="#00FFFFFF" hovered_color="#FFF2F4F7" pressed_color="#FFE7EBF0"
+                                        normal_image="file='wechat_icon_image.svg' width='20' height='20' valign='center' halign='center'" cursor_type="hand"/>
+                                <Button width="24" height="24" margin="8,0,0,0" border_round="4,4" normal_color="#00FFFFFF" hovered_color="#FFF2F4F7" pressed_color="#FFE7EBF0"
+                                        normal_image="file='wechat_icon_camera.svg' width='20' height='20' valign='center' halign='center'" cursor_type="hand"/>
+                                <Button width="24" height="24" margin="8,0,0,0" border_round="4,4" normal_color="#00FFFFFF" hovered_color="#FFF2F4F7" pressed_color="#FFE7EBF0"
+                                        normal_image="file='wechat_icon_member.svg' width='20' height='20' valign='center' halign='center'" cursor_type="hand"/>
+                                <Button width="24" height="24" margin="8,0,0,0" border_round="4,4" normal_color="#00FFFFFF" hovered_color="#FFF2F4F7" pressed_color="#FFE7EBF0"
+                                        normal_image="file='wechat_icon_mic.svg' width='20' height='20' valign='center' halign='center'" cursor_type="hand"/>
+                                <Button width="24" height="24" margin="8,0,0,0" border_round="4,4" normal_color="#00FFFFFF" hovered_color="#FFF2F4F7" pressed_color="#FFE7EBF0"
+                                        normal_image="file='wechat_icon_group.svg' width='20' height='20' valign='center' halign='center'" cursor_type="hand"/>
+                            </HBox>
+                            <RichEdit2 name="message_edit" width="stretch" height="88" margin="20,6,20,0" border_size="0,0,0,0" prompt_mode="true"
+                                       bkcolor="#00FFFFFF" font="system_regular_13" text_align="left,top" text_padding="0,6,0,0"
+                                       multi_line="true" prompt_text="按住 Win + Alt，使用语音输入文字" prompt_color="#FF9AA1AC"/>
+                            <HBox height="36" margin="20,0,20,12">
+                                <Control width="stretch"/>
+                                <Button name="btn_send" width="82" height="32" border_round="6,6"
+                                        bkcolor="#FF6EC1F5" bkcolor2="#FF4DA9EE" bkcolor2_direction="1"
+                                        normal_text_color="#FFFFFFFF" font="system_regular_13" text="发送  ▾" cursor_type="hand"/>
+                            </HBox>
+                        </VBox>
+                    </VBox>
+                </HBox>
+                <HBox name="contacts_page" width="stretch" height="stretch">
+                    <VBox width="252" height="stretch" bkcolor="#FFFFFFFF">
+                        <HBox height="46" padding="10,7,10,7">
+                            <HBox width="stretch" height="32" border_round="8,8" bkcolor="#FFF0F2F5">
+                                <Control width="14" height="14" margin="9,0,0,0" valign="center" bkimage="search_icon.png" mouse_enabled="false"/>
+                                <RichEdit2 name="contacts_search" width="stretch" height="stretch" bkcolor="#00FFFFFF" border_size="0,0,0,0" prompt_mode="true"
+                                           font="system_regular_12" text_align="left,vcenter" text_padding="4,0,4,0"
+                                           prompt_text="搜索" prompt_color="#FF9AA1AC"/>
+                            </HBox>
+                            <Button name="btn_add_contact" width="32" height="32" margin="8,0,0,0" border_round="8,8"
+                                    normal_color="#FFF0F2F5" hovered_color="#FFE4E8ED" pressed_color="#FFD9E0E8"
+                                    normal_text_color="#FF7C8593" font="system_regular_16" text="+" cursor_type="hand"/>
+                        </HBox>
+                        <HBox width="stretch" height="34" margin="12,8,12,4" padding="2,2,2,2" bkcolor="#FFF0F2F5" border_round="6,6">
+                            <Option name="tab_friend" group="contacts_tab" width="stretch" height="stretch" border_round="4,4" selected="true"
+                                    normal_color="#00FFFFFF" hovered_color="#FFE8EDF3" selected_normal_color="#FFFFFFFF"
+                                    normal_text_color="#FF7A8494" selected_normal_text_color="#FF2C9BD6"
+                                    font="system_regular_12" text="好友" cursor_type="hand"/>
+                            <Option name="tab_group" group="contacts_tab" width="stretch" height="stretch" margin="2,0,0,0" border_round="4,4"
+                                    normal_color="#00FFFFFF" hovered_color="#FFE8EDF3" selected_normal_color="#FFFFFFFF"
+                                    normal_text_color="#FF7A8494" selected_normal_text_color="#FF2C9BD6"
+                                    font="system_regular_12" text="群聊" cursor_type="hand"/>
+                        </HBox>
+                        <TabBox name="contacts_list_pages" width="stretch" height="stretch" fade_switch="false">
+                            <VListBox name="friend_list" width="stretch" height="stretch" bkcolor="#FFFFFFFF" vscrollbar="true" padding="0,4,0,4"/>
+                            <VBox name="group_list" width="stretch" height="stretch" bkcolor="#FFFFFFFF"/>
+                        </TabBox>
+                    </VBox>
+                    <VBox width="stretch" height="stretch" bkcolor="#FFFFFFFF">
+                        <Control width="stretch" height="stretch"/>
+                        <Box name="add_friend_panel" width="320" height="160" halign="center" visible="false"
+                             border_size="1" border_color="#FFDCE3EC" border_round="8,8" bkcolor="#FFFFFFFF">
+                            <VBox width="stretch" height="stretch" padding="14,10,14,10">
+                                <HBox height="22">
+                                    <Label text="添加好友" width="stretch" valign="center" font="system_bold_14" normal_text_color="#FF1F2329"/>
+                                    <Button name="btn_close_add_friend" width="22" height="22" border_round="4,4"
+                                            normal_color="#00FFFFFF" hovered_color="#FFF2F4F7" pressed_color="#FFE7EBF0"
+                                            normal_text_color="#FF8A93A2" font="system_regular_12" text="✕" cursor_type="hand"/>
+                                </HBox>
+                                <HBox height="30" margin="0,6,0,0">
+                                    <RichEdit2 name="add_friend_search_edit" width="stretch" height="30" bkcolor="#FFF2F4F7" border_size="0,0,0,0" border_round="6,6"
+                                               prompt_mode="true" font="system_regular_12" text_align="left,vcenter" text_padding="8,0,8,0"
+                                               prompt_text="请输入用户ID" prompt_color="#FF9AA1AC"/>
+                                    <Button name="btn_search_friend" width="56" height="30" margin="8,0,0,0" border_round="6,6"
+                                            bkcolor="#FF5FB8F0" bkcolor2="#FF48A8E8" bkcolor2_direction="1" normal_text_color="#FFFFFFFF"
+                                            font="system_regular_12" text="搜索" cursor_type="hand"/>
+                                </HBox>
+                                <Label name="add_friend_hint" height="15" margin="0,4,0,0" font="system_regular_11" normal_text_color="#FF9AA1AC"/>
+                                <HBox name="add_friend_result" width="stretch" height="32" margin="0,4,0,0" padding="8,0,8,0"
+                                      visible="false" bkcolor="#FFF7F9FC" border_round="6,6">
+                                    <Label name="add_friend_user_id" width="stretch" valign="center" font="system_regular_12" normal_text_color="#FF1F2329"/>
+                                    <Button name="btn_add_friend" width="56" height="24" valign="center" border_round="4,4"
+                                            bkcolor="#FF5FB8F0" bkcolor2="#FF48A8E8" bkcolor2_direction="1" normal_text_color="#FFFFFFFF"
+                                            font="system_regular_11" text="添加" cursor_type="hand"/>
+                                    <Label name="add_friend_added" width="56" height="24" valign="center" visible="false" font="system_regular_11"
+                                           normal_text_color="#FF2C9BD6" text="已添加" text_align="hcenter,vcenter"/>
+                                </HBox>
+                            </VBox>
+                        </Box>
+                        <Control width="stretch" height="stretch"/>
+                    </VBox>
+                </HBox>
+            </TabBox>
+        </HBox>
+    </VBox>
+</Window>

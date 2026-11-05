@@ -1,0 +1,591 @@
+#ifndef UI_CONTROL_TABCTRL_H_
+#define UI_CONTROL_TABCTRL_H_
+
+#include "duilib/Box/ListBox.h"
+#include "duilib/Core/ControlDragable.h"
+#include "duilib/Control/IconControl.h"
+#include "duilib/Control/Badge.h"
+
+namespace ui
+{
+/** TabCtrl 的布局方向
+*/
+enum class TabCtrlOrientation
+{
+    kHorizontal = 0,  //水平方向（默认值）
+    kVertical        //垂直方向
+};
+
+/** 多标签控件（类似浏览器的多标签）
+*/
+class TabBox;
+class DUILIB_API TabCtrl: public ListBox
+{
+    typedef ListBox BaseClass;
+public:
+    explicit TabCtrl(Window* pWindow);
+
+    /** 获取控件类型
+    */
+    virtual DString GetType() const override;
+    virtual void SetAttribute(const DString& strName, const DString& strValue) override;
+
+public:
+    /** 设置绑定的TabBox控件名称
+    */
+    void SetTabBoxName(const DString& tabBoxName);
+
+    /** 获取绑定的TabBox控件名称
+    */
+    DString GetTabBoxName() const;
+
+    /** 设置绑定的TabBox接口
+    */
+    void SetTabBox(TabBox* pTabBox);
+
+    /** 获取绑定的TabBox接口
+    */
+    TabBox* GetTabBox() const;
+
+    /** 设置是否支持拖动改变控件的顺序
+    */
+    void SetEnableDragOrder(bool bEnable);
+
+    /** 判断是否支持拖动改变控件的顺序
+    */
+    bool IsEnableDragOrder() const;
+
+    /** 处理分割线的显示或者隐藏
+    */
+    void AdjustItemLineStatus();
+
+    /** 设置标签栏的布局方向（水平 / 垂直）
+    * @param [in] orientation 布局方向，默认水平
+    */
+    void SetTabCtrlOrientation(TabCtrlOrientation orientation);
+
+    /** 获取标签栏的布局方向
+    */
+    TabCtrlOrientation GetTabCtrlOrientation() const;
+
+    /** 设置是否启用溢出滚动（标签超出可视区域时显示滚动条）
+    * @param [in] bEnable true表示启用，默认启用
+    */
+    void SetEnableOverflowScroll(bool bEnable);
+
+    /** 判断是否启用溢出滚动
+    */
+    bool IsEnableOverflowScroll() const;
+
+    /** 获取固定标签的数量（固定标签恒位于标签栏前端，构成连续的固定块）
+    * @return 返回固定标签的数量
+    */
+    size_t GetFixedItemCount() const;
+
+public:
+    /** 设置选择标签项的外部轮廓边线的宽度
+    * @param [in] fOutlineWidth 外部轮廓边线的宽度，宽度值未进行DPI缩放
+    */
+    void SetSelectedTabItemOutlineWidth(float fOutlineWidth);
+
+    /** 获取选择标签项的外部轮廓边线的宽度
+    * @return 返回外部轮廓边线的宽度，宽度值未进行DPI缩放
+    */
+    float GetSelectedTabItemOutlineWidth() const;
+
+    /** 设置选择标签项的外部轮廓边线的颜色
+    * @param [in] outlineColor 轮廓边线的颜色
+    */
+    void SetSelectedTabItemOutlineColor(const DString& outlineColor);
+
+    /** 获取选择标签项的外部轮廓边线的颜色
+    */
+    const DString& GetSelectedTabItemOutlineColor() const;
+
+    /** 设置标签栏底部的边线高度（这个边线，选择标签的区域不绘制，其他区域绘制）
+    * @param [in] fLineHeight 标签栏底部的边线高度, 高度值未进行DPI缩放
+    */
+    void SetTabCtrlBottomLineHeight(float fLineHeight);
+
+    /** 获取标签栏底部的边线高度
+    * @return 标签栏底部的边线高度, 高度值未进行DPI缩放
+    */
+    float GetTabCtrlBottomLineHeight() const;
+
+    /** 设置标签栏底部的边线颜色(该底部边线，不包括选择标签项的区域)
+    * @param [in] lineColor 标签栏底部的边线颜色
+    */
+    void SetTabCtrlBottomLineColor(const DString& lineColor);
+
+    /** 设置标签栏底部的边线颜色
+    */
+    const DString& GetTabCtrlBottomLineColor() const;
+
+public:
+    /** 设置子项的位置索引
+     * @param [in] pControl 子项指针
+     * @param [in] iIndex 索引号，范围是：[0, GetItemCount())
+     */
+    virtual bool SetItemIndex(Control* pControl, size_t iIndex) override;
+
+    /** 追加一个子项到末尾
+     * @param [in] pControl 子项指针
+     */
+    virtual bool AddItem(Control* pControl) override;
+
+    /** 在指定位置之后插入一个子项
+     * @param [in] pControl 子项指针
+     * @param[in] iIndex 要插入的位置索引，范围是：[0, GetItemCount())
+     */
+    virtual bool AddItemAt(Control* pControl, size_t  iIndex) override;
+
+    /** 根据子项指针
+     * @param [in] pControl 子项指针
+     */
+    virtual bool RemoveItem(Control* pControl) override;
+
+    /** 根据索引移除一个子项
+     * @param [in] iIndex 子项索引，范围是：[0, GetItemCount())
+     */
+    virtual bool RemoveItemAt(size_t iIndex) override;
+
+    /** 移除所有子项
+     */
+    virtual void RemoveAllItems() override;
+
+protected:
+    /** 初始化接口
+    */
+    virtual void OnInit() override;
+
+    /** 消息处理函数
+    * @param [in] msg 消息内容
+    */
+    virtual void HandleEvent(const EventArgs& msg) override;
+
+    /** 绘制控件状态颜色的函数
+    */
+    virtual void PaintStateColors(IRender* pRender) override;
+
+private:
+    /** 固定标签归位：把固定标签稳定地移到标签栏前端（保持各自原有相对顺序）
+    */
+    void NormalizeFixedItems();
+
+    /** 默认选择的子项
+    */
+    size_t m_nSelectedId;
+
+    /** 绑定的TabBox名称
+    */
+    UiString m_tabBoxName;
+
+    /** 绑定的TabBox接口
+    */
+    TabBox* m_pTabBox;
+
+    /** 是否支持拖动改变列的顺序(功能开关)
+    */
+    bool m_bEnableDragOrder;
+
+    /** 标签栏的布局方向（水平/垂直）
+    */
+    TabCtrlOrientation m_orientation;
+
+    /** 是否启用溢出滚动（标签超出可视区域时显示滚动条）
+    */
+    bool m_bEnableOverflowScroll;
+
+    /** 选择标签项的外部轮廓边线的宽度，宽度值未进行DPI缩放
+    */
+    float m_fSelectedTabItemOutlineWidth;
+
+    /** 选择标签项的外部轮廓边线的颜色
+    */
+    DString m_selectedTabItemOutlineColor;
+
+    /** 标签栏底部的边线高度, 高度值未进行DPI缩放（这个边线，选择标签的区域不绘制，其他区域绘制）
+    */
+    float m_fTabCtrlBottomLineHeight;
+
+    /** 设置标签栏底部的边线颜色
+    */
+    DString m_tabCtrlBottomLineColor;
+};
+
+/** 多标签控件的一个标签页
+*/
+class DUILIB_API TabCtrlItem : public ControlDragableT<ListBoxItemH>
+{
+    typedef ControlDragableT<ListBoxItemH> BaseClass;
+public:
+    explicit TabCtrlItem(Window* pWindow);
+
+    /** 获取控件类型
+    */
+    virtual DString GetType() const override;
+    virtual void SetAttribute(const DString& strName, const DString& strValue) override;
+    virtual DString GetToolTipText() const override;
+
+public:
+    /** 设置图标
+    * @param [in] iconImageString 图标资源字符串
+    */
+    void SetIcon(const DString& iconImageString);
+
+    /** 获取图标
+    * @return 返回图标资源字符串
+    */
+    DString GetIcon() const;
+
+    /** 设置图标的位图数据(数据格式：ARGB格式，alpha type为kPremul_SkAlphaType)
+    * @param [in] nWidth 宽度
+    * @param [in] nHeight 高度
+    * @param [in] pPixelBits 位图数据
+    * @param [in] nPixelBitsSize 位图数据的长度（按字节）
+    */
+    bool SetIconData(int32_t nWidth, int32_t nHeight, const uint8_t* pPixelBits, int32_t nPixelBitsSize);
+
+    /** 清除图标数据
+    */
+    void ClearIconData();
+
+    /** 设置文字内容
+    */
+    void SetTitle(const DString& title);
+
+    /** 获取文字内容
+    */
+    DString GetTitle() const;
+
+    /** 设置文字内容ID（支持多语版）
+    */
+    void SetTitleId(const DString& titleId);
+
+    /** 获取文字内容（支持多语版）
+    */
+    DString GetTitleId() const;
+
+public:
+    /** 设置绑定的TabBox子项索引号
+    */
+    void SetTabBoxItemIndex(size_t nTabBoxItemIndex);
+
+    /** 获取绑定的TabBox子项ID索引号
+    */
+    size_t GetTabBoxItemIndex() const;
+
+public:
+    /** 获取图标控件
+    */
+    IconControl* GetIconControl() const { return m_pIcon; }
+
+    /** 获取文本控件
+    */
+    Label* GetTextLabel() const { return m_pLabel; }
+
+    /** 获取关闭按钮
+    */
+    Button* GetCloseButton() const { return m_pCloseBtn; }
+
+    /** 获取标签之间的分割线的控件
+    */
+    Control* GetLineControl() const { return m_pLine; }
+
+    /** 获取角标控件（未读数/小红点，未设置角标Class时返回nullptr）
+    */
+    Badge* GetBadgeControl() const { return m_pBadge; }
+
+public:
+    /** 设置角标数量：大于0时显示角标，小于等于0时自动隐藏
+    */
+    void SetBadgeCount(int64_t nCount);
+
+    /** 获取角标数量
+    */
+    int64_t GetBadgeCount() const;
+
+    /** 设置角标数量上限：超过上限时显示"上限+"（如"99+"），默认99
+    */
+    void SetBadgeMaxCount(int64_t nMaxCount);
+
+    /** 获取角标数量上限
+    */
+    int64_t GetBadgeMaxCount() const;
+
+    /** 设置角标是否为红点模式：true为纯小圆点，不显示数字
+    */
+    void SetBadgeDot(bool bDot);
+
+    /** 角标是否为红点模式
+    */
+    bool IsBadgeDot() const;
+
+    /** 角标控件的Class
+    */
+    void SetBadgeClass(const DString& badgeClass);
+    DString GetBadgeClass() const;
+
+public:
+    /** 图标控件的Class
+    */
+    void SetIconClass(const DString& iconClass);
+    DString GetIconClass() const;
+
+    /** 文本控件的Class
+    */
+    void SetTitleClass(const DString& titleClass);
+    DString GetTitleClass() const;
+
+    /** 关闭按钮控件的Class
+    */
+    void SetCloseButtonClass(const DString& closeButtonClass);
+    DString GetCloseButtonClass() const;
+
+    /** 分割线控件的Class
+    */
+    void SetLineClass(const DString& lineClass);
+    DString GetLineClass() const;
+
+public:
+    /** 设置选择状态的标签圆角大小
+    * @param [in] szCorner 圆角的宽度和高度
+    * @param [in] bNeedDpiScale 是否根据 DPI 自适应，默认为 true
+    */
+    void SetSelectedRoundCorner(UiSize szCorner, bool bNeedDpiScale);
+
+    /** 获取选择状态的标签圆角大小
+    */
+    UiSize GetSelectedRoundCorner() const;
+
+    /** 设置悬停状态的标签圆角大小
+    * @param [in] szCorner 圆角的宽度和高度
+    * @param [in] bNeedDpiScale 是否根据 DPI 自适应，默认为 true
+    */
+    void SetHoveredRoundCorner(UiSize szCorner, bool bNeedDpiScale);
+
+    /** 获取悬停状态的标签圆角大小
+    */
+    UiSize GetHoveredRoundCorner() const;
+
+    /** 设置Hovered状态的背景色的内边距
+    * @param [in] rcPadding 内边距数据
+    * @param [in] bNeedDpiScale 是否根据 DPI 自适应，默认为 true
+    */
+    void SetHoveredPadding(UiPadding rcPadding, bool bNeedDpiScale);
+
+    /** 获取Hovered状态的背景色的内边距
+    */
+    UiPadding GetHoveredPadding() const;
+
+    /** 设置关闭按钮是否自动隐藏
+    * @param [in] bAutoHideCloseBtn true表示自动隐藏关闭按钮，false表示关闭按钮始终显示
+    */
+    void SetAutoHideCloseButton(bool bAutoHideCloseBtn);
+
+    /** 获取关闭按钮是否自动隐藏
+    */
+    bool IsAutoHideCloseButton() const;
+
+    /** 处理分割线的显示或者隐藏
+    */
+    void AdjustItemLineStatus();
+
+    /** 当前标签的分割线是否处于显示状态
+    */
+    bool IsItemLineVisible() const;
+
+    /** 设置标签分割线的显示或者隐藏
+    */
+    void SetItemLineVisible(bool bVisible);
+
+public:
+    /** 判断是否支持拖动改变控件的顺序
+    */
+    virtual bool IsEnableDragOrder() const override;
+
+    /** 设置标签是否为固定标签（固定标签不可拖动、不可作为拖放目标，且不显示关闭按钮）
+    * @param [in] bFixed true表示为固定标签
+    */
+    void SetFixed(bool bFixed);
+
+    /** 判断标签是否为固定标签
+    */
+    bool IsFixed() const;
+
+protected:
+    /** 初始化接口
+    */
+    virtual void OnInit() override;
+
+    /** 消息处理函数
+    * @param [in] msg 消息内容
+    */
+    virtual void HandleEvent(const EventArgs& msg) override;
+
+    /** 处理鼠标移入消息
+    */
+    virtual bool MouseEnter(const EventArgs& msg) override;
+
+    /** 处理鼠标移出消息
+    */
+    virtual bool MouseLeave(const EventArgs& msg) override;
+
+    /** 鼠标左键按下消息
+    */
+    virtual bool ButtonDown(const EventArgs& msg) override;
+
+    /** 绘制控件状态颜色的函数
+    */
+    virtual void PaintStateColors(IRender* pRender) override;
+
+    /** 选择状态变化事件(m_bSelected变量发生变化)
+    */
+    virtual void OnPrivateSetSelected() override;
+
+    /** 绘制标签页(选择状态)
+    */
+    virtual void PaintTabItemSelected(IRender* pRender) ;
+
+    /** 绘制标签页(悬停状态)
+    */
+    virtual void PaintTabItemHovered(IRender* pRender);
+
+    /** 设置可见状态事件
+    * @param [in] bChanged true表示状态发生变化，false表示状态未发生变化
+    */
+    virtual void OnSetVisible(bool bChanged) override;
+
+protected:
+    /** 填充路径, 形成圆角矩形
+    */
+    void AddTabItemPath(IPath* path, const UiRect& rect, UiSize roundSize) const;
+
+    /** 调整子控件的顺序
+    */
+    void AdjustSubItemIndex();
+
+    /** 获取TabCtrl接口
+    */
+    TabCtrl* GetTabCtrl() const;
+
+    /** 更新关闭按钮的可见性（综合自动隐藏与固定标签两个因素）
+    */
+    void UpdateCloseButtonVisible();
+
+    /** 检查并设置图标的可见性
+    */
+    void CheckIconVisible();
+
+private:
+    /** 选择标签的圆角大小
+    */
+    struct RoundCorner
+    {
+        uint8_t cx; //圆角的宽度
+        uint8_t cy; //圆角的高度
+    };
+
+    /** Hovered标签的状态Padding值
+    */
+    struct HoveredPadding
+    {
+        uint8_t left;
+        uint8_t top;
+        uint8_t right;
+        uint8_t bottom;
+    };
+
+    /** 选择状态的标签圆角大小
+    */
+    RoundCorner m_rcSelected;
+
+    /** 悬停状态的标签圆角大小
+    */
+    RoundCorner m_rcHovered;
+
+    /** Hovered标签的状态Padding值
+    */
+    HoveredPadding m_hoveredPadding;
+
+    /** 关闭按钮是否自动隐藏
+    */
+    bool m_bAutoHideCloseBtn;
+
+    /** 是否为固定标签（固定标签不可拖动、不显示关闭按钮）
+    */
+    bool m_bFixed;
+
+    /** 图标控件
+    */
+    IconControl* m_pIcon;
+
+    /** 文本控件
+    */
+    Label* m_pLabel;
+
+    /** 关闭按钮
+    */
+    Button* m_pCloseBtn;
+
+    /** 标签之间的分割线
+    */
+    Control* m_pLine;
+
+    /** 角标控件（未读数/小红点）
+    */
+    Badge* m_pBadge;
+
+    /** 图标控件的Class
+    */
+    UiString m_iconClass;
+
+    /** 文本控件的Class
+    */
+    UiString m_titleClass;
+
+    /** 关闭按钮控件的Class
+    */
+    UiString m_closeBtnClass;
+
+    /** 分割线的Class
+    */
+    UiString m_lineClass;
+
+    /** 角标控件的Class
+    */
+    UiString m_badgeClass;
+
+    /** 角标数量（小于等于0时自动隐藏）
+    */
+    int64_t m_nBadgeCount;
+
+    /** 角标数量上限，超过时显示"上限+"（如"99+"）
+    */
+    int64_t m_nBadgeMaxCount;
+
+    /** 角标是否为红点模式（纯小圆点，不显示数字）
+    */
+    bool m_bBadgeDot;
+
+    /** 文本内容
+    */
+    UiString m_title;
+
+    /** 文本内容ID
+    */
+    UiString m_titleId;
+
+    /** 图标资源字符串
+    */
+    UiString m_iconImageString;
+
+private:
+    /** 绑定的TabBox子项索引号
+    */
+    size_t m_nTabBoxItemIndex;
+};
+
+}//namespace ui
+
+#endif //UI_CONTROL_TABCTRL_H_
