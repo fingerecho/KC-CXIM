@@ -1,7 +1,7 @@
 #ifndef CXIM_TENCENT_IM_SERVICE_H_
 #define CXIM_TENCENT_IM_SERVICE_H_
 
-#include "Resource.h"
+#include "CXIMAppConfig.h"
 
 #ifdef TENCENT_CLOUD_IM_SDK_VERSION
 

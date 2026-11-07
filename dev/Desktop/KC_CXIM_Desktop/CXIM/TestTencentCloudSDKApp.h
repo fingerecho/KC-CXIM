@@ -1,5 +1,6 @@
 #pragma once
-#include "Resource.h"
+#include "CXIMAppConfig.h"
+
 #ifdef TENCENT_CLOUD_IM_SDK_VERSION
 
 /** 主程序入口

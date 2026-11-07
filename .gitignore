@@ -9,7 +9,12 @@ dev/Desktop/KC_CXIM_Desktop/CXIM/logs
 dev/Desktop/KC_CXIM_Desktop/CXIM/third-party
 dev/Desktop/KC_CXIM_Desktop/CXIM/vcpkg_installed
 dev/Desktop/KC_CXIM_Desktop/CXIM/x64
+dev/Desktop/KC_CXIM_Desktop/CXIM/CXIMAppConfig.h
 dev/Desktop/KC_CXIM_Desktop/deployed
+dev/Desktop/KC_CXIM_Desktop/.bak
+
+dev/IMS/KC-CXIM-Svc/basic_service_20261107/build
+
 sdk/
 
 # User-specific files

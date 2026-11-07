@@ -4,6 +4,7 @@
 // duilib
 #include "duilib/duilib.h"
 
+#include "CXIMAppConfig.h"
 //#include "TIMCloud.h"
 
 #include <memory>

@@ -1,5 +1,7 @@
 # KC-CXIM 《铖信》即时通讯软件
 
+本软件仅供学习交流，禁止用于任何违法用途
+
 对接腾讯云即时通讯IM的SDK
 
 使用fingerecho0 fingerecho1 fingerecho2 及任意密码即可登录

@@ -237,6 +237,7 @@ xcopy /E /I /Y /D "$(ProjectDir)pre-resources\TIM_UserSigCfg\UserSig.csv" "$(Tar
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="ChatForm.h" />
+    <ClInclude Include="CXIMAppConfig.h" />
     <ClInclude Include="TencentImService.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="LoginForm.h" />
@@ -247,9 +248,7 @@ xcopy /E /I /Y /D "$(ProjectDir)pre-resources\TIM_UserSigCfg\UserSig.csv" "$(Tar
     <ClInclude Include="TestTencentCloudSDKApp.h" />
   </ItemGroup>
   <ItemGroup>
-    <Image Include="chat.ico" />
     <Image Include="CXIM.ico" />
-    <Image Include="small.ico" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="ChatForm.cpp" />
@@ -259,9 +258,6 @@ xcopy /E /I /Y /D "$(ProjectDir)pre-resources\TIM_UserSigCfg\UserSig.csv" "$(Tar
     <ClCompile Include="main_windows.cpp" />
     <ClCompile Include="TestApplication.cpp" />
     <ClCompile Include="TestTencentCloudSDKApp.cpp" />
-  </ItemGroup>
-  <ItemGroup>
-    <ResourceCompile Include="chat.rc" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

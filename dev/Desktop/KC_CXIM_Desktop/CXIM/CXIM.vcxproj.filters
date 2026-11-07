@@ -42,15 +42,12 @@
     <ClInclude Include="TestTencentCloudSDKApp.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="CXIMAppConfig.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <Image Include="small.ico">
-      <Filter>资源文件</Filter>
-    </Image>
     <Image Include="CXIM.ico">
-      <Filter>资源文件</Filter>
-    </Image>
-    <Image Include="chat.ico">
       <Filter>资源文件</Filter>
     </Image>
   </ItemGroup>
@@ -76,10 +73,5 @@
     <ClCompile Include="TestTencentCloudSDKApp.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-  </ItemGroup>
-  <ItemGroup>
-    <ResourceCompile Include="chat.rc">
-      <Filter>资源文件</Filter>
-    </ResourceCompile>
   </ItemGroup>
 </Project>

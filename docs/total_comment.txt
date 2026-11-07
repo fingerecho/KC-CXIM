@@ -1,0 +1,4 @@
+本项目Windows桌面端基于C++17与nim_duilib（Win32 DirectUI库，Skia渲染）开发，界面由XML布局和主题资源驱动，使用Visual Studio/MSVC、CMake与vcpkg构建并管理依赖；通信层封装腾讯云IM ImSDK（ImSDK.dll与TIMCloud C接口），完成登录、好友、单聊与历史消息；日志采用spdlog滚动文件，UserSig生成依赖Windows BCrypt和zlib。服务端规划用Drogon提供HTTP/WebSocket，后台前端用Vue，移动端采用Flutter。
+难点首先是将ImSDK的C风格异步回调安全桥接到C++：借助静态thunk、userData上下文与std::function封装，并及时释放堆上上下文以防泄漏。其次需处理SDK工作线程与UI线程的交互，代码用shared_ptr<bool>存活标志规避窗口销毁后的悬空回调。UserSig的TLS2.0本地签名也较关键，需串联HMAC-SHA256、Base64、zlib压缩与再次Base64；同时还要手写JSON转义与字段解析，并实现会话、好友及历史消息的排序与增量刷新。
+
+

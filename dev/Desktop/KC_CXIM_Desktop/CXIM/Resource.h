@@ -16,17 +16,6 @@
 #define IDC_STATIC                -1
 #endif
 
-#ifndef TENCENT_CLOUD_IM_SDK_VERSION
-#define TENCENT_CLOUD_IM_SDK_VERSION 
-#ifndef TIM_SDK_APPID
-#define TIM_SDK_APPID ("1600170831")
-#endif // !TIM_SDK_APPID
-#ifndef TIM_SDK_APPKEY
-#define TIM_SDK_APPKEY ("a347e73e902bf96a177449d188252c0fc134a7de475d5a31c93176056daecb9a")
-#endif // !TIM_SDK_APPKEY
-
-
-#endif // !TENCENT_CLOUD_IM_SDK_VERSION
 
 // 新对象的下一组默认值
 //
