@@ -39,6 +39,7 @@ endif()
 # （find_package(Boost ...) 是另一种更规范的方式，这里为了简单用环境变量。）
 #find_package(Boost 1.70 REQUIRED COMPONENTS system)
 
+#加入boost头文件
 include_directories(${BOOST_ROOT})
 
 # 加入 RapidJSON 头文件目录（全局生效，子目录也能用）。

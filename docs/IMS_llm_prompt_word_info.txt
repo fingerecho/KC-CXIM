@@ -15,7 +15,111 @@
 运行并告诉我哪里有错误，并同时在所有源码中尽可能地加上注释，我是个后端初学者，需要尽可能了解每一行代码的功能、机制、原理等；
 服务端运行的命令是./build/bin/Debug/tcp_echo_server.exe ， 客户端运行的命令是./build/bin/Debug/test_client.exe
 
+加一个定时器，一分钟内不发消息的连接自动踢掉。客户端需要实现断线重连。
+
+请step2_test_client目录下再写两个文件，test_client_A.cpp 和 test_client_B.cpp , 实现从命令行使用scanf读取内容，按回车发送到另一方。
+
 frame::MAX_BODY = 4096 对图片太小；图片建议只传 URL。
 SessionManager::size() 统计的是表项数，若连接异常销毁但没走 close()，会短暂多算一条；严格可遍历时 lock() 成功才计数。
 do_login 还没真正校验 token（content），生产环境必须在 add() 前验签/查库。
 目前是单线程 io.run()；将来多线程跑 io_context 时，每个 session 的写操作需要 strand 串行化。
+
+请分析我这个我这个即时通讯服务后端项目的代码和功能，告诉我距离这个后端项目(不含对接的客户端)上线还有哪些工作要做，能不能给我列一个详细的待办事项。
+
+请问在一台2核2G内存4MB带宽50G内存的腾讯云服务器上，我这个即时通信IM的后端的数据库怎么选型？是用MySQL还是PostgreSql,还是其它什么小型的数据库呢？
+
+请补充prepare_env_V0.sh这个安装与配置MariaDB的脚本，实现根据DBConfig.ini文件配置创建数据库User,数据库名，业务库的登录权限（测试阶段设置业务库为外网可登录），类似于这段代码：
+CREATE USER '用户名'@'所有主机' IDENTIFIED BY '一个强密码';
+GRANT ALL PRIVILEGES ON 数据库名.* TO '用户名'@'所有主机';
+FLUSH PRIVILEGES;
+MariaDB改用下面这行配置：
+[mysqld]
+# 内存与连接
+innodb_buffer_pool_size = 384M
+max_connections = 100
+performance_schema = OFF
+skip_name_resolve = ON
+
+# 可靠性（IM 消息不丢，保持默认 1）
+innodb_flush_log_at_trx_commit = 1
+
+# 开启 Binlog（MariaDB 参数名是 log_bin，不是 log-bin）
+server-id = 1
+log_bin = /var/log/mysql/mariadb-bin
+binlog_format = ROW
+expire_logs_days = 7
+总之要做到尽可能的自动化。
+
+请根据以下功能完成一份指定数据库建表语句的db/schema.sql文件，根据DBConfig.ini中的数据库建表（如果数据库不存在则建库），所建的数据表要尽可能简单，需要如下功能的数据表：
+- 选型并接入数据库（用户、好友关系、消息历史、会话）。
+- 离线消息：当前对离线用户只打印日志就丢弃（session.cpp:135）→ 必须落库，上线后补推。
+- 消息历史存储与拉取接口（分页）、消息序号（服务端单调 seq，用于排序/去重）。
+- 服务端分配 msg_id/ts（当前透传客户端的值，可被伪造）。
+- 消息投递/已读回执、消息去重。
+- 数据保留/清理策略、备份与恢复方案。
+请完成建表db/schema.sql文件，并加上建表原理、机制等中文注释，方便我查看修改。
+
+请问我这个即时通信服务适合创建MariaDB的连接池吗?还是选择单连接更好？
+
+# 角色
+你是一个熟悉 C++17、Boost.Asio、MariaDB Connector/C++ 的后端工程师。
+
+# 项目背景
+- 项目目录：dev/IMS/KC-CXIM-Svc/basic_service_20261107
+- 构建：bash build_step.sh（CMake + MSVC；另有 Ubuntu 分支）
+- 网络层：单线程 boost::asio::io_context，session/session_manager 管理连接
+- 现有 DB：能用但是尚未真正连库
+- 数据库：MariaDB 11.8.6；连接信息在 DBConfig.ini；表结构在 db/schema.sql
+  （users/friends/conversations/conversation_members/messages/offline_messages）
+- 环境：2核2G，MariaDB max_connections=100
+- 相关文件：step1_tcp_echo/session.cpp、session.h、session_manager.*、
+  message_codec.h、main.cpp、step1_tcp_echo/CMakeLists.txt、build_step.sh
+
+# 目标
+把登录、单聊发消息、离线消息、历史分页、投递/已读回执接入 MariaDB，
+并保证事务正确、不阻塞网络线程。
+
+# 必须实现的功能
+1. 启动时读取 DBConfig.ini，初始化连接池（4~8 条）和 DB 工作线程池。
+2. 登录：校验 users；未注册返回 Error；登录成功后维护在线状态。
+3. 发消息：同一事务内分配 conversations.last_seq、插入 messages、
+   对离线接收者写 offline_messages；用 (conversation_id, sender_id,
+   client_msg_id) 唯一键去重。
+4. 上线补推：登录后按 user_id 拉取 offline_messages，推送并收到 ACK 后删除。
+5. 历史拉取：按 conversation_id + seq 做 keyset 分页。
+6. 回执：更新 last_delivered_seq / last_read_seq（GREATEST 只增不减）。
+7. 单聊会话：用 conversations.dedup_key='u:<小id>:<大id>' 保证唯一。
+
+# 技术约束
+- 不改 db/schema.sql；如需改表先说明理由并等我确认。
+- DB 操作放到工作线程，结果用 boost::asio::post 回 io_context。
+- 事务独占连接；连接池 RAII 借还；提供断线重连/健康检查。
+- 密码从 DBConfig.ini 读取，不硬编码、不打印到日志。
+- 中文注释解释原理；尽量少改现有代码。
+
+# 事务与并发
+- 明确发送消息的 SQL 顺序和事务边界。
+- 说明 seq 原子分配与去重冲突处理。
+- 说明连接池和多线程下 session 写的串行化方案。
+
+# 不要做的事
+- 不改网络分帧协议和无关业务。
+- 不引入新第三方库。
+- 不一次性大重构，按可验证的小步骤进行。
+
+# 交付物
+- 新增/修改文件清单及职责。
+- 关键调用链和代码片段。
+- 构建 + 运行验证命令。
+
+# 验收标准
+1. bash build_step.sh 编译通过。
+2. A 发消息给在线的 B，B 能收到；B 离线时消息入库，B 上线能补推。
+3. 重复 client_msg_id 不产生两条消息。
+4. 历史接口按 seq 分页正确。
+5. DB 断开、并发发送、非法用户等异常有明确错误处理。
+6. 慢查询不阻塞其他连接的网络收发。
+
+# 工作方式
+先阅读上述文件，输出现状分析 + 分步实施计划 + 需要确认的问题；
+我确认后再改代码。

@@ -6,6 +6,10 @@
 #include <thread>
 #include <chrono>
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 // ============================================================================
 // 测试客户端
 // ----------------------------------------------------------------------------
@@ -54,9 +58,12 @@ static std::string recv_frame(tcp::socket& s) {
 }
 
 int main(int argc, char* argv[]) {
+    #ifdef _WIN32
+    SetConsoleOutputCP(CP_UTF8);
+    #endif
     std::string host = "127.0.0.1";
-    host = "v0.fyping.cn";
-    host = "110.40.206.253";
+//    host = "v0.fyping.cn";
+//    host = "110.40.206.253";
     unsigned short port = 8888;
 
     // 用法：test_client.exe [port]
@@ -77,23 +84,28 @@ int main(int argc, char* argv[]) {
             tcp::socket a(io), b(io);
             // 用命令行传入的 port，避免硬编码 8888 导致换端口就失效。
             a.connect({boost::asio::ip::make_address(host), port});
-            b.connect({boost::asio::ip::make_address(host), port});
+            //b.connect({boost::asio::ip::make_address(host), port});
 
             // 两个用户分别登录：type=100(Login)，from 就是 userId。
             send_frame(a, R"({"from":1001,"to":0,"type":100,"content":"tokenA"})");
             //send_frame(b, R"({"from":1002,"to":0,"type":100,"content":"tokenB"})");
 
             // 各自读取服务器返回的 LoginAck（type=101）。
-            std::cout << "A ack: " << recv_frame(a) << "\n";
+            //std::cout << "A ack: " << recv_frame(a) << "\n";
             //std::cout << "B ack: " << recv_frame(b) << "\n";
 
             // 关键验证：A 发给 1002，B 必须收到。
             // 若 B 收到，说明服务器确实按 userId 在 SessionManager 里找到了 B 的连接。
             send_frame(a, R"({"from":1001,"to":1002,"type":1,"msg_id":42,"content":"hi B, I'm A;"})");
-            //std::cout << "B recv: " << recv_frame(b) << "\n";
 
+            send_frame(a, R"({"from":1001,"to":1002,"type":1,"msg_id":43,"content":"hi B, I'm A; 你好？"})");
+            send_frame(a, R"({"from":1001,"to":1002,"type":1,"msg_id":44,"content":"hi B, I'm A; 请问你是谁？"})");
+            std::cout << "A recv: " << recv_frame(a) << "\n";
+            while(1){
+
+            }
             // 掉线验证：关闭 A，服务器应打印 logout 且在线人数减 1。
-            a.close();
+            //a.close();
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
         }
 
