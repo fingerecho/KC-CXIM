@@ -1,7 +1,8 @@
 #include "db.h"
 
 #include <mariadb/conncpp.hpp>          // MariaDB Connector/C++（同步阻塞 API）
-#include <boost/asio/post.hpp>
+#include <boost/asio/post.hpp>          // boost::asio::post：把结果投递回 io_context 线程
+#include <bcrypt/BCrypt.hpp>            // bcrypt：生成/校验密码哈希（重 CPU，必须在 worker 线程执行）
 
 #include <algorithm>
 #include <deque>
@@ -262,7 +263,114 @@ void Db::login(std::uint64_t userId, const std::string& credential, LoginCb cb) 
 }
 
 // ============================================================================
-// DAO 2：单聊发送（一个事务内完成 seq/消息/离线队列/游标）
+// DAO 2：注册（用户名唯一 + bcrypt 哈希 + 插入 users）
+// ----------------------------------------------------------------------------
+// 关键点：
+//   * bcrypt 是"故意慢"的算法（cost=12 约 200~300ms），必须在 worker 线程算；
+//   * 先查重给出友好提示，最终仍由 users.uk_users_username 唯一键兜底；
+//   * 插入后在同一连接上取 LAST_INSERT_ID()，拿到数据库分配的用户ID。
+// ============================================================================
+void Db::registerUser(const std::string& username, const std::string& password,
+                      RegisterCb cb) {
+    submit([this, username, password, cb]() {                                   // 把整个任务投递到 worker 线程
+        bool ok = false;                                                        // 默认失败
+        std::string err;                                                        // 失败原因
+        std::uint64_t userId = 0;                                               // 注册成功后的用户ID
+
+        try {
+            PooledConn pc(*pool_);                                              // 从连接池借一条连接（RAII 自动归还）
+            if (!pc) throw std::runtime_error("db pool unavailable");           // 池不可用直接走异常分支
+
+            sql::Connection* conn = pc.get();                                   // 取出裸连接指针，便于复用连接
+
+            // 1) 先查用户名是否已存在，给出明确错误。
+            {
+                std::unique_ptr<sql::PreparedStatement> st(                     // 预编译语句防注入
+                    conn->prepareStatement("SELECT id FROM users WHERE username=?"));
+                st->setString(1, username);                                     // 绑定用户名参数
+                std::unique_ptr<sql::ResultSet> rs(st->executeQuery());         // 执行查询
+                if (rs->next()) err = "username already exists";                // 有结果说明重复
+            }
+
+            // 2) 用户名可用：在 worker 线程计算 bcrypt 哈希（重 CPU，绝不放到 io 线程）。
+            if (err.empty()) {
+                const std::string hash = BCrypt::generateHash(password, 12);    // cost=12，返回 $2a$... 哈希串
+                std::unique_ptr<sql::PreparedStatement> st(                     // 预编译 INSERT
+                    conn->prepareStatement(
+                        "INSERT INTO users(username,password_hash,nickname) VALUES(?,?,?)"));
+                st->setString(1, username);                                     // 用户名
+                st->setString(2, hash);                                         // 只存哈希，禁止明文
+                st->setString(3, username);                                     // 昵称缺省用用户名
+                try {
+                    st->executeUpdate();                                        // 执行插入
+                } catch (sql::SQLException& e) {
+                    // 1062 = 唯一键冲突：并发注册同一用户名时由数据库兜底。
+                    if (e.getErrorCode() == 1062) err = "username already exists";   // 转成友好错误
+                    else throw;                                                 // 其他错误继续上抛
+                }
+                if (err.empty()) {                                             // 插入成功才取 ID
+                    userId = lastInsertId(conn);                               // 同一连接上取自增ID
+                    ok = (userId != 0);                                        // 取到ID视为成功
+                    if (!ok) err = "failed to create user";                    // 异常兜底
+                }
+            }
+        } catch (const std::exception& e) {
+            err = std::string("db error: ") + e.what();                        // 数据库/哈希异常统一报错
+        }
+
+        postToIo([cb, ok, err, userId]() { cb(ok, err, userId); });             // 结果回到 io_context 线程再回调
+    });
+}
+
+// ============================================================================
+// DAO 3：HTTP 登录（按 username 查用户 + 在 worker 里 bcrypt verify）
+// ============================================================================
+void Db::loginUser(const std::string& username, const std::string& password,
+                   LoginUserCb cb) {
+    submit([this, username, password, cb]() {                                   // 任务投递到 worker 线程
+        bool ok = false;                                                        // 默认失败
+        std::string err;                                                        // 失败原因
+        std::uint64_t userId = 0;                                               // 登录成功后的用户ID
+        std::string name = username;                                            // 登录成功后的用户名
+
+        try {
+            PooledConn pc(*pool_);                                              // 借连接
+            if (!pc) throw std::runtime_error("db pool unavailable");           // 池不可用
+
+            std::unique_ptr<sql::PreparedStatement> st(                         // 预编译查询
+                pc->prepareStatement(
+                    "SELECT id, username, password_hash, status FROM users WHERE username=?"));
+            st->setString(1, username);                                         // 绑定用户名
+            std::unique_ptr<sql::ResultSet> rs(st->executeQuery());             // 执行查询
+
+            if (!rs->next()) {
+                err = "user not found";                                         // 用户不存在
+            } else {
+                const std::uint64_t id = rs->getUInt64(1);                      // 用户ID
+                const std::string uname = sstr(rs->getString(2));               // 用户名
+                const std::string hash = sstr(rs->getString(3));                // 存储的 bcrypt 哈希
+                const int status = rs->getInt(4);                               // 账号状态
+
+                if (status != 1) {
+                    err = "account disabled";                                   // 被禁用则拒绝
+                } else if (BCrypt::validatePassword(password, hash)) {          // worker 线程里验证密码
+                    ok = true;                                                  // 校验通过
+                    userId = id;                                                // 返回用户ID
+                    name = uname;                                               // 返回用户名
+                } else {
+                    err = "bad credential";                                     // 密码错误
+                }
+            }
+        } catch (const std::exception& e) {
+            err = std::string("db error: ") + e.what();                        // 异常统一报错
+        }
+
+        postToIo([cb, ok, err, userId, name]() { cb(ok, err, userId, name); }); // 回到 io 线程回调
+    });
+}
+
+// ============================================================================
+// DAO 4：单聊发送（一个事务内完成 seq/消息/离线队列/游标）
 // ============================================================================
 void Db::sendMessage(std::uint64_t sender, std::uint64_t to, int type,
                      const std::string& content, std::uint64_t clientMsgId,

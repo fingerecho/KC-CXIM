@@ -13,6 +13,9 @@ add_executable(tcp_echo_server
     session_manager.cpp
     db_config.cpp
     db.cpp
+    jwt_config.cpp
+    token_service.cpp
+    http_server.cpp
 )
 
 # 把当前目录加入 include 路径，便于 #include "frame.h" 这类同目录头文件。
@@ -27,6 +30,15 @@ target_link_libraries(tcp_echo_server PRIVATE Threads::Threads)
 # 链接 MariaDB 数据库（库目录由 build_step.sh 通过 -DMariaDB_lib 传入）。
 target_link_directories(tcp_echo_server PRIVATE ${MariaDB_lib})
 target_link_libraries(tcp_echo_server PRIVATE mariadbcpp)
+
+#链接libbcrypt库
+target_link_libraries(tcp_echo_server PRIVATE bcrypt)
+
+#找到并链接OpenSSL库
+find_package(OpenSSL REQUIRED)
+target_link_libraries(tcp_echo_server PRIVATE
+    OpenSSL::Crypto
+)
 
 # ---------------------------------------------------------------------------
 # Windows：把 Connector 的 DLL 和认证插件复制到 exe 同目录，避免运行时找不到。

@@ -1,0 +1,4 @@
+{
+  "jwt_secret": "a3f8c2e1b94d7f60...（64位十六进制字符串）",
+  "jwt_issuer": "your-im-service"
+}

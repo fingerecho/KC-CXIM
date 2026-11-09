@@ -41,6 +41,13 @@ class ConnectionPool;   // 定义在 db.cpp 内部
 class Db {
 public:
     using LoginCb   = std::function<void(bool ok, const std::string& err)>;
+    // 注册回调：ok=false 时 err 为原因；成功时带回数据库生成的 userId。
+    using RegisterCb = std::function<void(bool ok, const std::string& err,
+                                          std::uint64_t userId)>;
+    // HTTP 登录回调：成功时带回 userId 与 username，供上层签发 JWT。
+    using LoginUserCb = std::function<void(bool ok, const std::string& err,
+                                           std::uint64_t userId,
+                                           const std::string& username)>;
     using SendCb    = std::function<void(bool ok, const std::string& err,
                                          const StoredMessage& msg)>;
     using MsgListCb = std::function<void(bool ok, const std::string& err,
@@ -56,7 +63,20 @@ public:
     Db& operator=(const Db&) = delete;
 
     // 登录校验：查 users.password_hash 与 credential 是否一致。
+    // 注意：这是旧的"把密码/哈希直接当 token"的实现，保留仅为兼容；
+    // 新的 HTTP 登录走 loginUser()，TCP 登录改为只验 JWT，不再调用本函数。
     void login(std::uint64_t userId, const std::string& credential, LoginCb cb);
+
+    // 注册：检查用户名是否重复 -> 在 worker 线程里用 bcrypt 计算哈希 -> 插入 users。
+    // 整个流程（尤其是 bcrypt 这种重 CPU 操作）都在 DB worker 线程执行，
+    // 绝不占用 io_context 线程，避免阻塞所有网络收发。
+    void registerUser(const std::string& username, const std::string& password,
+                      RegisterCb cb);
+
+    // HTTP 登录：按 username 查 users，在 worker 线程里用 bcrypt verify 校验密码。
+    // 成功后返回 userId/username；密码哈希计算同样不占用 io_context 线程。
+    void loginUser(const std::string& username, const std::string& password,
+                   LoginUserCb cb);
 
     // 单聊发送：同一事务内
     //   1) 取/建会话；2) 建成员；3) 去重检查；4) 分配 seq；5) 插消息；

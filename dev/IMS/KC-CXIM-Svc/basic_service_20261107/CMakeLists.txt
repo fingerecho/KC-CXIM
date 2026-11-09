@@ -45,9 +45,17 @@ include_directories(${BOOST_ROOT})
 # 加入 RapidJSON 头文件目录（全局生效，子目录也能用）。
 include_directories(${RapidJSON_Header})
 
+#加入libbcrypt头文件目录
+include_directories(third-party/libbcrypt/include)
+
+#加入third-party目录
+include_directories(third-party/jwt-cpp)
+
 # 线程库（部分平台需要显式链接 -pthread 之类）。
 find_package(Threads REQUIRED)
 
+# bcrypt加密库的构建
+add_subdirectory(third-party/libbcrypt)
 # 三个子模块：服务器、测试客户端、验证脚本。
 add_subdirectory(step1_tcp_echo)
 add_subdirectory(step2_test_client)

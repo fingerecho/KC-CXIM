@@ -120,6 +120,38 @@ expire_logs_days = 7
 5. DB 断开、并发发送、非法用户等异常有明确错误处理。
 6. 慢查询不阻塞其他连接的网络收发。
 
+请直接修改step1_tcp_echo/step2_test_client/step3_verify三个目录下的代码文件，允许新创建文件。
+
 # 工作方式
 先阅读上述文件，输出现状分析 + 分步实施计划 + 需要确认的问题；
 我确认后再改代码。
+
+请问既然我的注册登录功能走HTTP短连接，那么我是不是应该单独再起一个进程处理这些短连接，Token能够跨进程共享吗？
+答案：不应该再起一个进程处理。
+
+server 旁边再挂一个 HTTP acceptor同一事件循环 或者 io.run() 起多线程，哪一种解决方案更好？为什么？
+答案：io.run()单线程，即：server 旁边再挂一个 HTTP acceptor同一事件循环更好。原因是它恰好匹配现有的线程模型。
+
+这样操作io.run()单线程，单线程io_context 会被注册请求卡死吗？为什么？
+答案：不会因为"注册请求多"就卡死，但取决于 handler 里干了什么。异步本身不阻塞——accept/read/write 都是 async_*，回调只负责解析、入队、写回，很快返回；请求再多也只是排队。
+真正会卡死单 io 线程的是在回调里做阻塞或长时间 CPU 操作：
+1. 同步 DB 查询：会卡。但你现在的 Db 已经把 SQL 丢给 worker 线程（db.cpp:196-203，submit 只入队就返回），io 线程不碰 JDBC/MySQL，所以这块安全。
+2. 密码哈希（bcrypt/argon2）：这是注册/登录最典型的坑。bcrypt cost=12 一次约 200–300ms 纯 CPU，如果在 HTTP handler 或 DB 层"io 侧"算，这 200ms 内所有连接的读写全部停摆。必须把哈希放进 worker job 里算。
+3. RSA 签名、慢日志/同步文件 I/O、同步 DNS：同理，也都在 io 线程上会阻塞。HS256 签名很便宜，无所谓。
+4. 注意 db.cpp:251 现在是明文比较，暂时不吃 CPU；一旦改成 bcrypt 校验，如果忘了挪到 worker，就会踩上面第 2 条。
+另一个要注意的：submit 队列无界、不阻塞，io 线程不会被反压卡住；但 worker_count=2，如果哈希和 SQL 都塞进同一批 worker，慢哈希会造成队头阻塞，用户消息处理被拖慢。建议加密码/哈希时要么单独开一个 CPU 线程池，要么提高 worker 数并区分任务类型。
+一句话：单线程 io_context 不会被异步注册请求"卡死"，只会在你把阻塞/重 CPU 活放在 io 线程上时卡死。把哈希和 SQL 都留在 worker，io 线程只做收包、JSON 解析、入队、回写即可。
+
+在本项目（Boost.Asio 单 io_context 的 IM 服务）中实现注册/登录功能，遵循以下约束：
+1. 架构：同一进程、同一个单线程 io_context（io.run() 不增加线程）里，在现有 TCP acceptor 旁再挂一个 HTTP acceptor 处理注册/登录短连接，http服务使用Boost.Beast。
+2. Token：使用无状态 JWT（HS256），密钥放项目根目录的JWTConfig.json配置文件；签发与校验都只依赖该密钥，不使用进程内 map/共享内存，保证未来可跨进程序列化共享。
+3. 链路：HTTP 登录校验密码 → 签发 token；TCP 的 Login(MsgType::Login) 只验签+过期，不再校验密码。
+4. 密码：注册时用 bcrypt 存哈希（禁止明文，禁止直接存哈希本身），登录用 verify 校验。
+5. 线程：io 线程只做收包、JSON 解析、入队、回写；所有 SQL 和密码哈希/CPU 重活必须放进 Db 的 worker job（复用现有 submit/postToIo 机制），绝不能在 io 线程上阻塞或算哈希。
+6. 复用现有 Db、ConnectionPool、DbConfig、message/frame 协议与代码风格；注册/登录返回统一 JSON 结构。
+7. 不要引入 io.run() 多线程；若后续需要隔离，则另起独立 io_context 线程或进程，而非共享 io_context 多线程。
+8. 请在新添加的所有代码行加上该行代码的原理、机制、功能等注释，帮助我阅读理解代码。
+9. 编完代码请运行./build_step.sh测试功能。
+10.如果遇到缺少某个库的情况，请停止继续执行任务。
+
+请仿造step3_verify/verify_tcp.sh的脚本，创建一个verify_tcp_http.sh脚本，使用两个用户实现注册、登录、聊天互发消息、登出一个、再发离线消息、再登录离线的用户、再次互发消息、最后登出两个用户。

@@ -12,12 +12,15 @@
 
 namespace kc {
 
-class Db;   // 数据库访问层（定义在 db.h）
+class Db;            // 数据库访问层（定义在 db.h）
+class TokenService;  // JWT 签发/校验服务（定义在 token_service.h）
 
 class server {
 public:
     // 构造时就在指定端口开始监听，并投递第一个异步 accept。
-    server(boost::asio::io_context& io, unsigned short port, Db& db);
+    // tokens 用于把 JWT 校验能力注入给每条 TCP 连接。
+    server(boost::asio::io_context& io, unsigned short port, Db& db,
+           TokenService& tokens);
 
     // 打印监听信息（真正的事件循环在 main.cpp 里的 io.run()）。
     void run();
@@ -26,6 +29,7 @@ private:
     void do_accept();
 
     Db&            db_;          // 数据库层（引用，由 main 持有）
+    TokenService&  tokens_;      // JWT 服务（引用，由 main 持有）
     SessionManager sessions_;    // 全局在线用户表
     boost::asio::ip::tcp::acceptor acceptor_;
 };

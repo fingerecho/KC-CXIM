@@ -14,7 +14,9 @@ dev/Desktop/KC_CXIM_Desktop/deployed
 dev/Desktop/KC_CXIM_Desktop/.bak
 
 dev/IMS/KC-CXIM-Svc/basic_service_20261107/build
+dev/IMS/KC-CXIM-Svc/basic_service_20261107/vcpkg_installed
 dev/IMS/KC-CXIM-Svc/basic_service_20261107/DBConfig.ini
+dev/IMS/KC-CXIM-Svc/basic_service_20261107/JWTConfig.json
 
 sdk/
 

@@ -2,6 +2,7 @@
 #include "session_manager.h"
 #include "db.h"
 #include "message_codec.h"
+#include "token_service.h"   // JWT 校验：TCP 登录只验 token，不再查库比对密码
 
 #include <cstring>
 #include <iostream>
@@ -12,11 +13,13 @@ namespace kc {
 // 构造：接管 socket，保存在线表 / 数据库层引用。
 // idle_timer_ 必须用 socket_ 的 executor 构造，二者才会跑在同一个 io_context 上。
 // ---------------------------------------------------------------------------
-session::session(boost::asio::ip::tcp::socket socket, SessionManager& manager, Db& db)
+session::session(boost::asio::ip::tcp::socket socket, SessionManager& manager,
+                 Db& db, TokenService& tokens)
     : socket_(std::move(socket)),
       idle_timer_(socket_.get_executor()),
       manager_(manager),
-      db_(db) {}
+      db_(db),
+      tokens_(tokens) {}
 
 void session::start() {
     do_read_header();
@@ -117,54 +120,51 @@ void session::handle_message(const Message& msg) {
 }
 
 // ---------------------------------------------------------------------------
-// 登录：查 users 表校验凭据。注意这里把 result callback 放在 io_context 线程。
+// 登录：msg.content 是 HTTP 登录后签发的 JWT。这里只做验签 + 过期检查，
+// 不再查库、不再比对密码，因此完全不占用 DB worker，也不阻塞 io 线程。
+// 注意：身份以 token 里的 sub 为准，客户端传来的 msg.from 不再可信。
 // ---------------------------------------------------------------------------
 void session::do_login(const Message& msg) {
-    if (msg.from == 0) {
-        send_error("bad userId", msg.from);
-        return;
-    }
-    if (logged_in_ || logging_in_) {
-        send_error("already logged in", msg.from);
-        return;
+    if (logged_in_ || logging_in_) {                    // 已登录 / 正在登录
+        send_error("already logged in", msg.from);      // 拒绝重复登录
+        return;                                         // 直接返回
     }
 
-    logging_in_ = true;
-    auto self = shared_from_this();
-    const std::uint64_t uid = msg.from;
-    const std::string credential = msg.content;
+    std::uint64_t uid = 0;                              // 从 token 解析出的用户ID
+    std::string username;                               // 从 token 解析出的用户名（仅日志用）
 
-    db_.login(uid, credential, [this, self, uid](bool ok, const std::string& err) {
-        logging_in_ = false;
-        if (closed_) return;
+    // 同步验签：HS256 是微秒级运算，可以安全地放在 io_context 线程；
+    // 失败原因（签名错/过期/格式错）统一对外返回同一条错误，避免泄露细节。
+    if (!tokens_.verify(msg.content, uid, username)) {
+        send_error("invalid or expired token", msg.from);   // 校验失败
+        return;                                             // 结束
+    }
 
-        if (!ok) {
-            send_error(err.empty() ? "login failed" : err, uid);
-            return;
-        }
+    user_id_   = uid;                                   // 以 token 中的身份为准
+    logged_in_ = true;                                  // 标记已登录
+    logging_in_ = false;                                // 清除登录中标记
 
-        user_id_   = uid;
-        logged_in_ = true;
+    auto self = shared_from_this();                     // 取得自身的 shared_ptr
 
-        // 重复登录：踢掉旧连接。
-        auto old = manager_.add(uid, self);
-        if (old && old.get() != this) {
-            std::cout << "[login] user " << uid << " relogin, kick old" << std::endl;
-            old->close();
-        }
+    // 重复登录：踢掉旧连接。
+    auto old = manager_.add(uid, self);                 // 登记/替换在线表
+    if (old && old.get() != this) {                     // 存在另一条旧连接
+        std::cout << "[login] user " << uid << " relogin, kick old" << std::endl;   // 日志
+        old->close();                                   // 关闭旧连接
+    }
 
-        std::cout << "[login] user " << uid
-                  << " ok, online=" << manager_.size() << std::endl;
+    std::cout << "[login] user " << uid                   // 打印登录成功（附用户名）
+              << " (" << username << ") ok, online="
+              << manager_.size() << std::endl;
 
-        Message ack;
-        ack.type    = MsgType::LoginAck;
-        ack.to      = uid;
-        ack.content = "welcome";
-        send_message(ack);
+    Message ack;                                        // 构造登录成功回执
+    ack.type    = MsgType::LoginAck;                    // 类型：登录响应
+    ack.to      = uid;                                  // 接收者就是本人
+    ack.content = "welcome";                            // 欢迎语
+    send_message(ack);                                  // 发送回执
 
-        // 登录成功后补推离线消息。
-        push_offline();
-    });
+    // 登录成功后补推离线消息。
+    push_offline();                                     // 复用原有离线补推逻辑
 }
 
 // ---------------------------------------------------------------------------

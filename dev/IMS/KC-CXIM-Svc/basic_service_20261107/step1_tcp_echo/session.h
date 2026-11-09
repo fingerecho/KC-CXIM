@@ -31,13 +31,15 @@ namespace kc {
 
 class SessionManager;   // 前向声明，避免头文件循环包含
 class Db;               // 数据库访问层
+class TokenService;     // JWT 签发/校验服务
 
 class session : public std::enable_shared_from_this<session> {
 public:
     static constexpr std::chrono::seconds IDLE_TIMEOUT{60};
 
-    // 构造时接管一条已建立的 TCP 连接，并绑定在线用户表与数据库层。
-    session(boost::asio::ip::tcp::socket socket, SessionManager& manager, Db& db);
+    // 构造时接管一条已建立的 TCP 连接，并绑定在线用户表、数据库层与 JWT 服务。
+    session(boost::asio::ip::tcp::socket socket, SessionManager& manager,
+            Db& db, TokenService& tokens);
 
     void start();
 
@@ -51,7 +53,7 @@ private:
     void do_read_body(std::uint32_t body_len);
     void handle_message(const Message& msg);
 
-    void do_login(const Message& msg);      // 登录：查库校验
+    void do_login(const Message& msg);      // 登录：校验 JWT（不查库、不比对密码）
     void do_send(const Message& msg);       // 发消息：落库 + 在线投递
     void do_history(const Message& msg);    // 历史分页
     void do_ack(const Message& msg);        // 投递/已读回执
@@ -67,6 +69,7 @@ private:
 
     SessionManager&               manager_;
     Db&                           db_;
+    TokenService&                 tokens_;   // JWT 校验能力（登录时验签，不再查库比对密码）
 
     char                          header_[frame::HEADER_LEN];
     std::vector<char>             body_;
