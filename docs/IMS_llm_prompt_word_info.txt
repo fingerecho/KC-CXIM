@@ -166,6 +166,7 @@ server 旁边再挂一个 HTTP acceptor同一事件循环 或者 io.run() 起多
 4.快速开始：这部分必须做到命令可复制、步骤可验证；包括：环境要求、安装与启动、配置说明；
 5.通信协议与消息格式
 6.贡献指南：简述如何提交 Issue 和 PR，或链接到 CONTRIBUTING.md。
-7.许可证：明确 License 类型MIT, 并链接到 LICENSE 文件
-
+7.许可证：明确 License 类型MIT, 并链接到 LICENSE 文件。
 请优化readme.md文件，尽可能补充上面的内容，最好能够帮我生成一张architecture.png的架构图。
+
+帮我列出这个完整项目的docs/TODO-LIST.md,包括如何完善后端服务(消息类型、会话形态、实时能力、音视频能力等，同时参考docs/total_comment.txt的15~80行内容）、如何完善Web管理后台(包括采用的C++框架选型等)，如何完善Windows桌面端(换成Electron框架等)完善移动端放在最末尾。

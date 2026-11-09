@@ -442,6 +442,8 @@ Issue 地址：<https://github.com/fingerecho/KC-CXIM/issues>
 
 当前仓库暂无独立的 `CONTRIBUTING.md`，以上约定即为贡献流程；后续如有需要可单独拆分。
 
+当前仓库的待办事项： [`docs/TODO-LIST.md`](docs/TODO-LIST.md)
+
 ## 许可证
 
 本项目采用 [MIT License](LICENSE)。
