@@ -1,0 +1,178 @@
+:root {
+  --cx-primary: #2563eb;
+  --cx-primary-light: #3b82f6;
+  --cx-primary-soft: #eff6ff;
+  --cx-cyan: #06b6d4;
+  --cx-violet: #7c3aed;
+  --cx-emerald: #10b981;
+  --cx-amber: #f59e0b;
+  --cx-rose: #f43f5e;
+  --cx-ink: #0f172a;
+  --cx-text: #1e293b;
+  --cx-text-secondary: #64748b;
+  --cx-text-muted: #94a3b8;
+  --cx-border: #e8edf5;
+  --cx-bg: #f5f7fb;
+  --cx-card: #ffffff;
+  --cx-shadow-sm: 0 2px 8px rgba(15, 23, 42, 0.04);
+  --cx-shadow: 0 12px 32px rgba(15, 23, 42, 0.07);
+  --cx-shadow-lg: 0 24px 60px rgba(15, 23, 42, 0.12);
+  --cx-radius: 16px;
+  --cx-sidebar-width: 248px;
+  --cx-sidebar-collapsed: 84px;
+
+  --el-color-primary: #2563eb;
+  --el-color-primary-light-3: #3b82f6;
+  --el-color-primary-light-5: #60a5fa;
+  --el-color-primary-light-7: #93c5fd;
+  --el-color-primary-light-8: #bfdbfe;
+  --el-color-primary-light-9: #eff6ff;
+  --el-color-primary-dark-2: #1d4ed8;
+  --el-border-radius-base: 10px;
+  --el-border-radius-small: 8px;
+  --el-font-family: 'Inter', 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Inter', 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
+  color: var(--cx-text);
+  background: var(--cx-bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cx-card {
+  background: var(--cx-card);
+  border: 1px solid var(--cx-border);
+  border-radius: var(--cx-radius);
+  box-shadow: var(--cx-shadow-sm);
+}
+
+.page-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 22px;
+  flex-wrap: wrap;
+}
+
+.page-title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--cx-ink);
+}
+
+.page-subtitle {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--cx-text-secondary);
+}
+
+.section-card {
+  background: var(--cx-card);
+  border: 1px solid var(--cx-border);
+  border-radius: var(--cx-radius);
+  box-shadow: var(--cx-shadow-sm);
+  padding: 22px;
+}
+
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.section-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--cx-ink);
+}
+
+.section-desc {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--cx-text-muted);
+}
+
+.fade-slide-enter-active,
+.fade-slide-leave-active {
+  transition: opacity 0.24s ease, transform 0.24s ease;
+}
+
+.fade-slide-enter-from {
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+.fade-slide-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+
+.el-button--primary {
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.22);
+}
+
+.el-table {
+  --el-table-border-color: #eef2f8;
+  --el-table-header-bg-color: #f8fafc;
+  --el-table-row-hover-bg-color: #f8fbff;
+  font-size: 13px;
+}
+
+.el-table th.el-table__cell {
+  color: #64748b;
+  font-weight: 600;
+}
+
+.el-pagination {
+  justify-content: flex-end;
+  margin-top: 18px;
+}
+
+@media (max-width: 768px) {
+  .page-title {
+    font-size: 20px;
+  }
+}

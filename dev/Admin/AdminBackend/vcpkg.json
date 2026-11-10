@@ -1,0 +1,15 @@
+{
+  "name": "kc-cxim-admin-backend",
+  "version-string": "0.1.0",
+  "dependencies": [
+    {
+      "name": "drogon",
+      "features": [
+        "mysql"
+      ]
+    },
+    "nlohmann-json",
+    "openssl"
+  ],
+  "builtin-baseline": "faec714cabf6f54360493f0d16543cf89071be91"
+}

@@ -1,0 +1,10 @@
+build/
+cmake-build-*/
+out/
+logs/
+config.json
+*.log
+.vs/
+.vscode/
+*.user
+vcpkg_installed/

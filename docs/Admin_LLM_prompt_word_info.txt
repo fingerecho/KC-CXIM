@@ -1,0 +1,1489 @@
+我要写一个《铖信》即时通讯的管理后台，请帮我整理一份Admin-Requirement.md需求文档，结合docs下的所有文档，明确这份需求文档。
+
+
+请根据Admin-Requirement.md需求文档，在 D:/fkc/kc-cxim/dev/admin/AdminPanel目录下使用vue3生成《铖信》即时通信软件管理后台前端的骨架，至少需要登录界面和管理中心界面，界面尽量做得美观一些。
+
+任务：用 C++ Drogon 框架搭建一个 [kc-cxim-AdminBackend] 项目骨架。
+硬约束（违反任何一条的代码直接作废）：
+1. 框架只用 Drogon 1.9.x，JSON 只用 nlohmann/json，禁止引入其他网络库或 JSON 库。
+2. 目录分层：
+   - controllers/  路由与参数解析
+   - services/     业务校验与编排
+   - repositories/ 数据库访问（使用 Drogon 自带 dbClient）
+   - filters/      请求拦截器
+   禁止在 controller 或 handler 里直接拼 SQL。
+3. 所有 handler 必须是异步写法（Drogon 协程或回调均可，但项目内统一用一种）。
+   handler 内禁止任何同步阻塞调用（禁止 execSqlSync、sleep、同步文件 IO）。
+4. 每个 handler 外层必须有 try/catch，异常一律转成统一 JSON 错误返回，不允许异常逃逸到框架。
+5. 异步回调纪律：回调必须恰好调用一次；捕获变量时禁止用 [&] 或裸 [this]，需要延长生命周期时用 shared_from_this()。
+6. 统一错误格式：{"code": "...", "field": "...", "message": "..."}。
+   入参错误 400，未找到 404，内部错误 500 且不泄露内部细节。
+请参考以上提示词，根据Admin-Requirement.md文档和已经接近完成的使用vue3生成的管理后台前端项目源码D:/fkc/kc-cxim/dev/admin/AdminPanel项目，生成一份使用Drogon搭建[kc-cxim-AdminBackend]项目骨架的提示词，将生成的提示词内容追加到docs/Admin_LLM_prompt_word_info.txt中。
+
+================================================================================
+【新增提示词】使用 C++ Drogon 1.9.x 搭建 kc-cxim-AdminBackend 项目骨架
+生成日期：2026-11-10
+适用仓库：D:/fkc/kc-cxim
+================================================================================
+================================================================================
+提示词开始
+================================================================================
+# 角色
+
+你是一名精通 C++17、Drogon 1.9.x、MariaDB/MySQL、CMake、vcpkg 与异步回调编程的后端工程师。
+你需要为《铖信》即时通讯管理后台搭建一个“可编译、可运行、可联调”的 C++ 后端骨架，项目代码放置在D:/FKC/KC-CXIM/dev/Admin/AdminBackend。
+
+# 一、开工前必须先阅读（不要跳过）
+
+在写任何代码前，先阅读以下文件并总结现状：
+
+1. `docs/Admin-Requirement.md`
+   - 重点：第 4 章技术选型、第 6 章功能需求、第 7 章数据模型、第 8 章 API 规范、第 11 章安全。
+2. `docs/TODO-LIST.md` 第 4 章（Web 管理后台）。
+3. `docs/total_comment.txt` 第 15–80 行（后端 P0/P1/P2 与最小可上线路径）。
+4. 现有数据库表结构：
+   `dev/IMS/KC-CXIM-Svc/basic_service_20261107/db/schema.sql`
+   现有 6 张表：`users`、`friends`、`conversations`、`conversation_members`、`messages`、`offline_messages`。
+5. 已完成的 Vue 3 管理后台前端：
+   - `dev/Admin/AdminPanel/src/api/request.ts`
+   - `dev/Admin/AdminPanel/src/stores/auth.ts`
+   - `dev/Admin/AdminPanel/src/router/index.ts`
+   - `dev/Admin/AdminPanel/src/views/login/LoginView.vue`
+   - `dev/Admin/AdminPanel/src/views/dashboard/DashboardView.vue`
+   - `dev/Admin/AdminPanel/src/views/users/UserListView.vue`
+   注意：前端当前使用 Mock 数据，但接口路径、数据字段、错误处理应与本提示词定义的契约保持一致。
+
+# 二、任务目标
+
+在目录：
+
+```text
+D:/fkc/kc-cxim/dev/Admin/AdminBackend
+```
+
+创建名为 `kc-cxim-AdminBackend` 的 C++ Drogon 项目骨架，要求：
+
+1. 可独立编译、启动、访问。
+2. 完成管理后台的核心纵切：
+   - 管理员登录 / 刷新 / 登出
+   - 当前用户信息
+   - 用户列表 / 用户详情 / 封禁解禁 / 重置密码
+   - 统计概览 / 趋势数据
+   - 健康检查
+3. 完整落实分层、异步、统一错误、过滤器、参数化 SQL、日志与安全约束。
+4. 只创建或修改 `dev/Admin/AdminBackend` 目录，不得改动：
+   - `docs/`
+   - `dev/Admin/AdminPanel/`
+   - `dev/IMS/`
+   - `dev/Desktop/`、`dev/Mobile/`
+   - 现有 `db/schema.sql` 中的 6 张表
+5. 允许新增管理端专用表，但只能写在 `dev/Admin/AdminBackend/db/schema_admin.sql`，不要改动 IM 主库既有表结构。
+
+# 三、硬约束（违反任意一条，代码直接作废）
+
+## R1 依赖约束
+
+- 框架只用 **Drogon 1.9.x**。
+- 业务 JSON 只用 **nlohmann/json**。
+- 禁止引入其他网络库或 JSON 库，例如：
+  - 禁止 Crow、oatpp、cpp-httplib、Pistache、Boost.Beast、userver
+  - 禁止 RapidJSON、jsoncpp 业务用法、Boost.JSON、simdjson
+- Drogon 内部配置解析使用 jsoncpp 属于框架内部行为，允许；
+  但业务代码禁止出现 `Json::Value`、`getJsonObject()`、`newHttpJsonResponse()`。
+- 允许使用 OpenSSL（Drogon 已依赖）实现 HMAC-SHA256 / PBKDF2；
+  不得引入 jwt-cpp、bcrypt、libsodium 等新库。
+
+## R2 目录分层约束
+
+必须包含并使用以下目录：
+
+```text
+controllers/   路由注册与参数解析
+services/      业务校验与流程编排
+repositories/  数据库访问（只允许使用 Drogon 自带 dbClient）
+filters/       请求拦截器 / advice
+```
+
+硬性规则：
+
+- 禁止在 controller 或 handler 中直接拼 SQL、调用 `execSqlAsync`。
+- 所有 SQL 只能出现在 `repositories/`。
+- service 不得直接返回 Drogon 的 HTTP 响应，不得操作 `HttpResponse`。
+- controller 不得做业务规则校验（如状态枚举、分页范围、账号状态），只能做：
+  - 路由与 HTTP 方法
+  - 路径参数 / 查询参数 / JSON 体的类型解析
+  - 调用 service、把结果交给 `Responder`
+
+## R3 异步约束
+
+- 所有 handler 必须是异步写法。
+- 本骨架**统一采用回调式异步**：
+  - `HttpCallback` + Drogon `DbClient::execSqlAsync`
+  - **禁止**混用 Drogon 协程。
+- handler 内禁止任何同步阻塞调用，包括但不限于：
+  - `execSqlSync`
+  - `sleep` / `usleep` / `Sleep`
+  - 同步文件 IO（`std::ifstream`、`std::ofstream`、`fopen` 等）
+  - 同步 HTTP / socket 调用
+- 启动阶段读取配置、初始化日志允许同步；运行期 handler 内不允许。
+
+## R4 异常约束
+
+- 每个 handler 外层必须有 `try/catch`。
+- 每个异步回调内部也必须 `try/catch`。
+- 异常一律转换为统一 JSON 错误，不允许异常逃逸到 Drogon 框架。
+- 捕获顺序：
+  ```cpp
+  catch (const AppError& e)      -> 返回 e 对应状态码与统一错误
+  catch (const std::exception& e) -> 记录日志，返回 500 统一通用错误
+  catch (...)                    -> 记录日志，返回 500 统一通用错误
+  ```
+
+## R5 异步回调纪律
+
+- 回调必须**恰好调用一次**，成功或失败二选一，绝不允许：
+  - 成功回调后又调用异常回调
+  - 两个并发查询各自触发一次响应
+  - 超时/失败后再次回调
+- 捕获变量时**禁止**：
+  - `[&]`
+  - 裸 `[this]`
+- 需要延长生命周期时：
+  - service / repository 继承 `std::enable_shared_from_this<T>`，捕获 `auto self = shared_from_this();`
+  - controller / handler 不捕获 `this`，改为捕获 `std::shared_ptr<Responder>` 与按值参数
+- 推荐使用 `Responder`（见第十四章）作为“只响应一次”的守卫。
+
+## R6 统一错误格式
+
+错误响应体必须**恰好**是三个字段：
+
+```json
+{"code":"...","field":"...","message":"..."}
+```
+
+- 入参错误：HTTP 400
+- 资源未找到：HTTP 404
+- 内部错误：HTTP 500，且不得泄露 SQL、堆栈、异常原文、表名、文件路径
+- 允许并要求使用：401 未认证、403 无权限、409 冲突、501 未实现
+- 错误必须使用正确 HTTP 状态码，禁止 HTTP 200 包错误
+
+# 四、技术栈与构建
+
+| 项 | 要求 |
+| --- | --- |
+| 语言 | C++17 |
+| 框架 | Drogon 1.9.x |
+| JSON | nlohmann/json |
+| 数据库 | MariaDB ，通过 Drogon `dbClient` |
+| 构建 | CMake ≥ 3.16 |
+| 依赖管理 | vcpkg manifest |
+| 平台 | Windows（MSVC）与 Linux（GCC）均可编译 |
+| 加密 | OpenSSL（HS256、PBKDF2、随机数） |
+| 日志 | Drogon 内置日志 `LOG_INFO/LOG_WARN/LOG_ERROR` |
+
+CMake 要求：
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(kc-cxim-AdminBackend LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+find_package(Drogon 1.9 CONFIG REQUIRED)
+find_package(nlohmann_json CONFIG REQUIRED)
+find_package(OpenSSL REQUIRED)
+
+add_executable(kc-cxim-admin-backend
+    # 所有 src/**/*.cc，按目录分组列全
+)
+
+target_include_directories(kc-cxim-admin-backend PRIVATE src)
+target_link_libraries(kc-cxim-admin-backend PRIVATE
+    Drogon::Drogon
+    nlohmann_json::nlohmann_json
+    OpenSSL::Crypto
+)
+```
+
+`vcpkg.json`：
+
+```json
+{
+  "name": "kc-cxim-admin-backend",
+  "version-string": "0.1.0",
+  "dependencies": ["drogon", "nlohmann-json"]
+}
+```
+
+# 五、目录结构（强制）
+
+```text
+dev/Admin/AdminBackend/
+├── CMakeLists.txt
+├── vcpkg.json
+├── config.json.example
+├── README.md
+├── db/
+│   └── schema_admin.sql
+├── scripts/
+│   └── smoke_test.sh
+└── src/
+    ├── main.cc
+    ├── common/
+    │   ├── AppError.h
+    │   ├── ApiResponse.h
+    │   ├── Responder.h
+    │   ├── Result.h
+    │   ├── JwtCodec.h
+    │   ├── JwtCodec.cc
+    │   ├── PasswordHasher.h
+    │   ├── PasswordHasher.cc
+    │   └── ParamUtil.h
+    ├── config/
+    │   ├── AppConfig.h
+    │   └── AppConfig.cc
+    ├── models/
+    │   ├── AdminUser.h
+    │   ├── UserSummary.h
+    │   ├── Stats.h
+    │   └── ModelJson.h
+    ├── controllers/
+    │   ├── AuthController.h
+    │   ├── AuthController.cc
+    │   ├── UserController.h
+    │   ├── UserController.cc
+    │   ├── StatsController.h
+    │   ├── StatsController.cc
+    │   ├── HealthController.h
+    │   └── HealthController.cc
+    ├── services/
+    │   ├── AuthService.h
+    │   ├── AuthService.cc
+    │   ├── UserService.h
+    │   ├── UserService.cc
+    │   ├── StatsService.h
+    │   ├── StatsService.cc
+    │   └── AuditService.h
+    │   └── AuditService.cc
+    ├── repositories/
+    │   ├── AdminRepository.h
+    │   ├── AdminRepository.cc
+    │   ├── SessionRepository.h
+    │   ├── SessionRepository.cc
+    │   ├── UserRepository.h
+    │   ├── UserRepository.cc
+    │   ├── StatsRepository.h
+    │   ├── StatsRepository.cc
+    │   ├── AuditRepository.h
+    │   └── AuditRepository.cc
+    └── filters/
+        ├── RequestIdAdvice.h
+        ├── RequestIdAdvice.cc
+        ├── CorsAdvice.h
+        ├── CorsAdvice.cc
+        ├── AccessLogAdvice.h
+        ├── AccessLogAdvice.cc
+        ├── AuthFilter.h
+        ├── AuthFilter.cc
+        ├── RbacFilter.h
+        └── RbacFilter.cc
+```
+
+说明：
+
+- `filters/` 同时容纳 `HttpFilter` 与 `Advice`，二者都属于请求拦截器。
+- 若使用静态库导致控制器未自动注册，可在 `main.cc` 中引用控制器类型或显式注册。
+- 不得把业务代码堆到 `main.cc`，`main.cc` 只做：加载配置、初始化依赖、注册 advice/filter、启动。
+
+# 六、分层与依赖方向
+
+```text
+Controller  ->  Service  ->  Repository  ->  Drogon dbClient
+     |            |             |
+  参数解析      业务校验        参数化 SQL
+  响应封装      流程编排        行映射
+```
+
+## 6.1 Controller
+
+允许：
+
+- 解析 path/query/body
+- 调用 service
+- 通过 `Responder` 返回统一 JSON
+- 每个方法最外层 `try/catch`
+
+禁止：
+
+- 出现 `SELECT/INSERT/UPDATE/DELETE`
+- 调用 `execSqlAsync`
+- 出现业务规则判断
+- 同步等待数据库
+- 捕获 `this`
+
+## 6.2 Service
+
+允许：
+
+- 业务校验（分页范围、状态枚举、账号存在性）
+- 编排多个 repository
+- 抛/返回 `AppError`
+- 生成审计日志任务
+
+禁止：
+
+- 出现 SQL
+- 操作 `HttpResponse`
+- 同步 IO
+
+## 6.3 Repository
+
+允许：
+
+- 使用 `drogon::orm::DbClientPtr`
+- 使用 `execSqlAsync` 参数化 SQL
+- 动态条件：固定占位符、分支选择 SQL、或白名单排序
+- 行到模型映射
+- 抛出/返回 `AppError`
+
+禁止：
+
+- 把用户输入直接拼进 SQL
+- 使用 `execSqlSync`
+- 返回 `HttpResponse`
+- 生成业务 JSON（模型序列化放在 `models/ModelJson.h`）
+
+# 七、异步与生命周期规范（核心）
+
+## 7.1 统一回调式异步
+
+handler 签名统一为：
+
+```cpp
+void xxx(const drogon::HttpRequestPtr &req,
+         std::function<void(const drogon::HttpResponsePtr &)> &&callback);
+```
+
+数据库统一为：
+
+```cpp
+db->execSqlAsync(sql,
+    [/* 按值捕获 */](const drogon::orm::Result &result) { /* 成功 */ },
+    [/* 按值捕获 */](const drogon::orm::DrogonDbException &e) { /* 失败 */ },
+    param1, param2, ...);
+```
+
+## 7.2 响应只发一次
+
+统一使用 `Responder`：
+
+```cpp
+class Responder final {
+public:
+    using Callback = std::function<void(const drogon::HttpResponsePtr &)>;
+    explicit Responder(Callback cb) : cb_(std::move(cb)) {}
+
+    void ok(nlohmann::json data, std::string requestId = {}) {
+        if (done_.exchange(true)) return;
+        cb_(makeSuccess(std::move(data), std::move(requestId)));
+    }
+
+    void fail(const AppError &e) {
+        if (done_.exchange(true)) return;
+        cb_(makeError(e));
+    }
+
+    void failUnknown(const std::exception &e) {
+        if (done_.exchange(true)) return;
+        LOG_ERROR << "unhandled exception: " << e.what();
+        cb_(makeError(AppError::internal()));
+    }
+
+    void failUnknown() {
+        if (done_.exchange(true)) return;
+        LOG_ERROR << "unhandled unknown exception";
+        cb_(makeError(AppError::internal()));
+    }
+
+private:
+    std::atomic_bool done_{false};
+    Callback cb_;
+};
+```
+
+要求：
+
+- 控制器中不捕获 `this`。
+- 捕获 `std::shared_ptr<Responder>`，按值拷贝到异步回调。
+- 所有异步回调内部 `try/catch`，失败调用 `responder->fail(...)`。
+- 即使重复调用 `ok/fail`，`Responder` 也只发送一次。
+
+## 7.3 service / repository 生命周期
+
+service / repository 继承：
+
+```cpp
+class UserService : public std::enable_shared_from_this<UserService> {
+public:
+    void listUsers(..., Callback cb) {
+        auto self = shared_from_this();
+        repo_->query(..., [self, cb = std::move(cb)](Result r) mutable {
+            cb(std::move(r));
+        });
+    }
+};
+```
+
+禁止：
+
+```cpp
+[&] { ... }          // 禁止
+[this] { ... }       // 禁止
+[=] { this->x(); }   // 禁止（隐式 this）
+```
+
+## 7.4 多异步汇合时的 exactly-once
+
+当 count + list 两个查询都需要完成才响应时，使用共享状态：
+
+```cpp
+struct PageState {
+    std::atomic_int remaining{2};
+    std::atomic_bool done{false};
+    std::uint64_t total{0};
+    std::vector<UserSummary> rows;
+    std::function<void(std::variant<UserPage, AppError>)> cb;
+};
+```
+
+规则：
+
+- `remaining.fetch_sub(1) != 1` 时直接返回。
+- 最后一次完成时再次检查 `done.exchange(true)`。
+- 任一查询失败，先 `done.exchange(true)` 再回调错误，另一个查询的回调被丢弃。
+- 共享状态用 `std::shared_ptr` 管理，禁止裸指针。
+- 若担心可见性，用 `std::mutex` 保护 `total/rows`，或用默认 `seq_cst` 原子操作保证 happens-before。
+
+# 八、统一响应与错误
+
+## 8.1 成功响应
+
+HTTP 200：
+
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {},
+  "request_id": "..."
+}
+```
+
+说明：
+
+- 成功 `code` 使用数字 `0`，与现有前端 `request.ts` 的 `typeof body.code === 'number' && body.code !== 0` 兼容。
+- 错误绝不使用 HTTP 200。
+
+## 8.2 错误响应
+
+错误体必须恰好三个字段，不要额外加 `data`、`request_id`、`stack`：
+
+```json
+{"code":"INVALID_PARAM","field":"page","message":"页码必须大于 0"}
+```
+
+推荐错误码：
+
+| HTTP | code | 场景 | field |
+| --- | --- | --- | --- |
+| 400 | `INVALID_PARAM` | 参数缺失/类型错误/枚举非法 | 字段名 |
+| 400 | `INVALID_BODY` | JSON 解析失败 | 空字符串 |
+| 401 | `UNAUTHORIZED` | 未带 token / token 非法 | 空字符串 |
+| 401 | `TOKEN_EXPIRED` | token 过期 | 空字符串 |
+| 401 | `INVALID_CREDENTIALS` | 账号或密码错误 | `password` |
+| 403 | `FORBIDDEN` | 角色权限不足 | 空字符串 |
+| 404 | `NOT_FOUND` | 用户/资源不存在 | `id` |
+| 409 | `CONFLICT` | 状态冲突 | 字段名 |
+| 500 | `INTERNAL_ERROR` | 未预期异常 / 数据库失败 | 空字符串 |
+| 501 | `NOT_IMPLEMENTED` | 依赖后端能力未就绪 | 空字符串 |
+
+500 的 `message` 固定为：
+
+```text
+服务器内部错误，请稍后重试
+```
+
+严禁在 500 响应中返回：
+
+- SQL 语句
+- 数据库错误原文
+- 异常 `what()`
+- 堆栈
+- 文件路径
+- 表名 / 字段名
+
+详细信息只写服务器日志，并带 `request_id`。
+
+# 九、过滤器与拦截器
+
+## 9.1 RequestId
+
+- 在 pre-routing advice 中生成 UUID：
+  `drogon::utils::getUuid()`
+- 写入 `req->attributes()->insert("request_id", uuid)`
+- 在 pre-sending advice 中写入响应头：
+  `X-Request-Id: <uuid>`
+- 日志、审计统一使用该 id。
+
+## 9.2 CORS
+
+- 允许来源从配置读取，默认 `http://localhost:5173`。
+- 允许方法：`GET, POST, PATCH, PUT, DELETE, OPTIONS`。
+- 允许头：`Authorization, Content-Type, X-Request-Id`。
+- 暴露头：`X-Request-Id`。
+- `OPTIONS` 预检直接返回 `204 No Content`，不进入业务。
+- CORS 响应头通过 pre-sending advice 统一添加。
+
+## 9.3 AuthFilter
+
+- 读取 `Authorization: Bearer <token>`。
+- 校验 HS256 签名、`iss`、`exp`。
+- 校验通过后把以下内容写入 request attributes：
+  - `admin_id`
+  - `admin_username`
+  - `admin_role`
+- 失败返回 401 统一错误，**不调用** `fccb()`。
+- 成功调用 `fccb()`。
+- 只做 CPU 计算，不查库、不阻塞。
+- filter 内部也必须 `try/catch`。
+
+## 9.4 RbacFilter
+
+- 从 attributes 读取 `admin_role`。
+- 按请求路径/方法做角色白名单校验。
+- 失败返回 403 统一错误。
+- 至少覆盖：
+  - `/admin/api/admins*` 仅 `super_admin`
+  - `/admin/api/audit-logs*` 仅 `super_admin` / `auditor`
+- 其他接口允许 `super_admin` / `sys_admin` / `operator` / `moderator` / `support` / `auditor` 中按需配置。
+
+## 9.5 访问日志
+
+- pre-routing 记录开始时间。
+- pre-sending 记录：
+  - request_id
+  - method
+  - path
+  - status
+  - 耗时
+- 禁止记录：
+  - 请求体全文
+  - 响应体全文
+  - 密码、token、refreshToken
+  - 消息正文
+
+## 9.6 404 与 500 兜底
+
+- 使用自定义 404 页面返回统一错误：
+  ```json
+  {"code":"NOT_FOUND","field":"","message":"请求的资源不存在"}
+  ```
+- 建议 pre-sending advice 做兜底：
+  若响应为 500 且 body 不是统一错误格式，则替换为：
+  ```json
+  {"code":"INTERNAL_ERROR","field":"","message":"服务器内部错误，请稍后重试"}
+  ```
+
+# 十、配置与数据库
+
+## 10.1 配置
+
+提供 `config.json.example`，运行时复制为 `config.json`（不得提交真实密钥）：
+
+```json
+{
+  "listeners": [
+    { "address": "0.0.0.0", "port": 8080, "https": false }
+  ],
+  "db_clients": [
+    {
+      "name": "default",
+      "rdbms": "mysql",
+      "host": "127.0.0.1",
+      "port": 3306,
+      "dbname": "CXIMDB",
+      "user": "cx_admin",
+      "passwd": "CHANGE_ME",
+      "connection_number": 4,
+      "timeout": 5,
+      "auto_reconnect": true
+    }
+  ],
+  "app": {
+    "number_of_threads": 4,
+    "enable_server_header": false,
+    "log": {
+      "log_level": "DEBUG",
+      "log_path": "./logs",
+      "log_file": "admin-backend.log",
+      "log_size": 10485760,
+      "log_num": 5
+    }
+  },
+  "custom_config": {
+    "admin": {
+      "jwt_secret": "CHANGE_ME_32_BYTES_OR_MORE",
+      "jwt_issuer": "kc-cxim-admin",
+      "access_token_ttl_seconds": 900,
+      "refresh_token_ttl_seconds": 604800,
+      "cors_origin": "http://localhost:5173",
+      "dev_mode": true
+    }
+  }
+}
+```
+
+要求：
+
+- 启动时由 `AppConfig` 读取并校验必填项。
+- `AppConfig` 只在启动阶段接触 Drogon 的 jsoncpp 配置，业务代码只使用普通结构体/字符串。
+- 缺少 `jwt_secret`、数据库配置时，启动失败并打印明确原因。
+- 严禁把 `config.json`、密钥、密码提交到仓库。
+
+## 10.2 Drogon dbClient 使用规范
+
+- 通过 `drogon::app().getDbClient("default")` 获取 `DbClientPtr`。
+- 只使用 `execSqlAsync`。
+- 参数绑定必须使用 `?` 占位符：
+
+```cpp
+db_->execSqlAsync(
+    "SELECT id, username, nickname, status FROM users WHERE id = ? LIMIT 1",
+    [state](const drogon::orm::Result &r) { /* ... */ },
+    [state](const drogon::orm::DrogonDbException &e) { /* ... */ },
+    userId);
+```
+
+- 禁止：
+
+```cpp
+"SELECT * FROM users WHERE id = " + std::to_string(userId)   // 禁止
+"WHERE username = '" + username + "'"                        // 禁止
+```
+
+- 动态条件处理方式（二选一，均在 repository 内）：
+  1. 固定占位符 + `? = ''` / `? = 'all'` 判断；
+  2. 根据条件选择不同的固定 SQL 模板，参数数量保持静态。
+- 排序字段必须白名单，禁止用户输入直接进入 `ORDER BY`。
+- 分页使用 `LIMIT ? OFFSET ?`，参数绑定。
+
+## 10.3 管理端新增表
+
+在 `db/schema_admin.sql` 中新增（不要改动现有 6 张表）：
+
+```sql
+CREATE TABLE IF NOT EXISTS admin_users (
+    id            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    username      VARCHAR(64)     NOT NULL,
+    password_hash VARCHAR(255)    NOT NULL,
+    nickname      VARCHAR(64)     NOT NULL DEFAULT '',
+    role          VARCHAR(32)     NOT NULL DEFAULT 'super_admin',
+    status        TINYINT UNSIGNED NOT NULL DEFAULT 1,
+    last_login_at DATETIME(3)     NULL,
+    created_at    DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    updated_at    DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+                                  ON UPDATE CURRENT_TIMESTAMP(3),
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_admin_username (username)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS admin_sessions (
+    id                 BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    admin_id           BIGINT UNSIGNED NOT NULL,
+    refresh_token_hash CHAR(64)        NOT NULL,
+    ip                 VARCHAR(64)     NOT NULL DEFAULT '',
+    user_agent         VARCHAR(255)    NOT NULL DEFAULT '',
+    expires_at         DATETIME(3)     NOT NULL,
+    revoked            TINYINT UNSIGNED NOT NULL DEFAULT 0,
+    created_at         DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_admin_session_token (refresh_token_hash),
+    KEY idx_admin_session_admin (admin_id),
+    CONSTRAINT fk_admin_session_admin FOREIGN KEY (admin_id)
+        REFERENCES admin_users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    admin_id    BIGINT UNSIGNED NOT NULL,
+    admin_name  VARCHAR(64)     NOT NULL DEFAULT '',
+    action      VARCHAR(64)     NOT NULL,
+    module      VARCHAR(64)     NOT NULL,
+    target_type VARCHAR(64)     NOT NULL DEFAULT '',
+    target_id   VARCHAR(64)     NOT NULL DEFAULT '',
+    before_json TEXT            NULL,
+    after_json  TEXT            NULL,
+    ip          VARCHAR(64)     NOT NULL DEFAULT '',
+    user_agent  VARCHAR(255)    NOT NULL DEFAULT '',
+    request_id  VARCHAR(64)     NOT NULL DEFAULT '',
+    result      VARCHAR(32)     NOT NULL DEFAULT 'success',
+    created_at  DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    PRIMARY KEY (id),
+    KEY idx_audit_admin (admin_id),
+    KEY idx_audit_created (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+```
+
+要求：
+
+- 提供一条演示管理员种子数据，账号密码在 README 中写明，例如：
+  - 用户名：`admin`
+  - 密码：`Admin@123`
+- `password_hash` 使用 PBKDF2-HMAC-SHA256，格式：
+  `pbkdf2-sha256$<iterations>$<salt_base64>$<hash_base64>`
+- 禁止明文密码入库。
+- 种子哈希必须能通过项目内 `PasswordHasher::verify()`。
+- 如果种子数据使用脚本生成，脚本也放在 `scripts/`，且不得包含生产密钥。
+
+# 十一、API 契约（必须与 AdminPanel 对齐）
+
+基础路径：`/admin/api`，默认监听 `8080`。
+前端开发代理已配置：`/admin/api` -> `http://127.0.0.1:8080`。
+
+## 11.1 接口清单
+
+| 方法 | 路径 | 认证 | 说明 |
+| --- | --- | --- | --- |
+| GET | `/healthz` | 否 | 健康检查 |
+| POST | `/admin/api/auth/login` | 否 | 管理员登录 |
+| POST | `/admin/api/auth/refresh` | 否 | 刷新 token |
+| POST | `/admin/api/auth/logout` | 是 | 登出 / 吊销 refresh token |
+| GET | `/admin/api/auth/me` | 是 | 当前管理员信息 |
+| GET | `/admin/api/users` | 是 | 用户分页查询 |
+| GET | `/admin/api/users/{id}` | 是 | 用户详情 |
+| PATCH | `/admin/api/users/{id}/status` | 是 | 封禁 / 解禁 |
+| POST | `/admin/api/users/{id}/reset-password` | 是 | 重置密码（骨架可为 501） |
+| POST | `/admin/api/users/{id}/kick` | 是 | 强制下线（骨架可为 501） |
+| GET | `/admin/api/stats/overview` | 是 | 核心指标 |
+| GET | `/admin/api/stats/trend?days=7` | 是 | 趋势数据 |
+
+以下路由可只保留控制器骨架或返回 501，不要伪造数据：
+
+- `/admin/api/friends`
+- `/admin/api/groups`
+- `/admin/api/messages`
+- `/admin/api/moderation`
+- `/admin/api/push`
+- `/admin/api/files`
+- `/admin/api/configs`
+- `/admin/api/audit-logs`
+- `/admin/api/admins`
+- `/admin/api/roles`
+
+若暂不实现，统一返回：
+
+```json
+{"code":"NOT_IMPLEMENTED","field":"","message":"该功能尚未实现"}
+```
+
+HTTP 501。
+
+## 11.2 登录
+
+请求：
+
+```json
+{"username":"admin","password":"Admin@123"}
+```
+
+成功：
+
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "token": "<access-token>",
+    "refreshToken": "<refresh-token>",
+    "admin": {
+      "id": 1,
+      "username": "admin",
+      "name": "超级管理员",
+      "role": "super_admin",
+      "roleName": "超级管理员"
+    }
+  },
+  "request_id": "..."
+}
+```
+
+失败：
+
+```json
+{"code":"INVALID_CREDENTIALS","field":"password","message":"账号或密码错误"}
+```
+
+HTTP 401。
+
+## 11.3 刷新与登出
+
+刷新请求：
+
+```json
+{"refreshToken":"<refresh-token>"}
+```
+
+刷新成功返回新的 `token` 与 `refreshToken`，旧 refresh token 立即失效（旋转）。
+
+登出请求：
+
+```json
+{"refreshToken":"<refresh-token>"}
+```
+
+或带 `Authorization: Bearer <access-token>`。
+成功后数据库对应 session 标记 `revoked=1`。
+
+## 11.4 用户列表
+
+请求：
+
+```text
+GET /admin/api/users?page=1&page_size=8&keyword=alice&status=active
+```
+
+- `page`：≥ 1，默认 1
+- `page_size`：1–100，默认 20
+- `keyword`：可选，匹配 `id` / `username` / `nickname`
+- `status`：`all` / `active` / `banned`
+
+成功 `data`：
+
+```json
+{
+  "list": [
+    {
+      "id": 10001,
+      "username": "alice",
+      "nickname": "爱丽丝",
+      "status": "active",
+      "friends": 24,
+      "conversations": 18,
+      "messages": 1284,
+      "createdAt": "2026-08-12 10:24",
+      "lastActive": "2026-11-10 09:20"
+    }
+  ],
+  "total": 16,
+  "page": 1,
+  "pageSize": 8
+}
+```
+
+字段映射：
+
+- `users.status` 1 -> `"active"`，0 -> `"banned"`
+- `lastActive` 使用 `users.updated_at` 近似（现有表无 last_active 字段），在 README 中注明
+- `friends` / `conversations` / `messages` 使用子查询或聚合统计
+- 禁止返回 `password_hash`
+
+## 11.5 用户详情
+
+```text
+GET /admin/api/users/{id}
+```
+
+成功 `data` 为用户对象；不存在返回 404。
+
+## 11.6 封禁 / 解禁
+
+```text
+PATCH /admin/api/users/{id}/status
+Content-Type: application/json
+
+{"status":"banned"}
+```
+
+- `status` 仅允许 `active` / `banned`
+- 不存在返回 404
+- 非法枚举返回 400
+- 成功返回：
+  ```json
+  {"code":0,"message":"ok","data":{"id":10001,"status":"banned"},"request_id":"..."}
+  ```
+- 必须异步写入 `audit_logs`，不得阻塞响应：
+  - `action` = `ban` / `unban`
+  - `module` = `users`
+  - `target_type` = `user`
+  - `target_id` = userId
+  - `before_json` / `after_json` = 状态变更前后
+  - `request_id`、`ip`、`user_agent` 从请求获取
+
+## 11.7 统计概览
+
+```text
+GET /admin/api/stats/overview
+```
+
+成功 `data`：
+
+```json
+{
+  "onlineUsers": 0,
+  "onlineUsersAvailable": false,
+  "todayMessages": 48920,
+  "activeUsers": 3672,
+  "newUsers": 286
+}
+```
+
+说明：
+
+- `onlineUsers` 目前无共享数据源（IM 在线状态在进程内 `SessionManager`），
+  返回 0 且 `onlineUsersAvailable=false`，禁止伪造。
+- `todayMessages`：`messages` 今日条数
+- `activeUsers`：今日有发消息的去重用户数
+- `newUsers`：`users` 今日注册数
+- 所有统计 SQL 必须在 `StatsRepository`，使用参数化查询。
+
+## 11.8 趋势
+
+```text
+GET /admin/api/stats/trend?days=7
+```
+
+- `days` 仅允许 7 或 30，默认 7。
+- 返回：
+
+```json
+{
+  "dates": ["11/04", "11/05"],
+  "messages": [42100, 43800],
+  "actives": [3100, 3260]
+}
+```
+
+- 按日期分组统计，使用参数化查询，避免全表扫描。
+
+# 十二、认证、安全与审计
+
+## 12.1 密码
+
+- 使用 PBKDF2-HMAC-SHA256（OpenSSL），迭代次数 ≥ 120000。
+- 盐使用 `RAND_bytes` 生成，至少 16 字节。
+- 存储格式：
+  `pbkdf2-sha256$<iterations>$<salt_base64>$<hash_base64>`
+- 比较使用常量时间比较（`CRYPTO_memcmp`）。
+- 禁止在日志、响应、审计中输出明文密码或哈希。
+- 生产环境建议替换为 Argon2/bcrypt，但本骨架禁止为此引入新库；
+  在 README 中标注 TODO。
+
+## 12.2 JWT
+
+- HS256。
+- Claims 至少包含：
+  - `sub`：admin id
+  - `username`
+  - `role`
+  - `iss`
+  - `iat`
+  - `exp`
+  - `jti`
+- 使用 OpenSSL HMAC-SHA256 + base64url，不引入 JWT 库。
+- 校验时使用常量时间比较签名，并校验 `iss`、`exp`。
+- Access token 默认 900 秒；Refresh token 默认 7 天。
+- Refresh token 使用 `RAND_bytes` 生成 32 字节随机值，
+  数据库只存 SHA-256 哈希。
+- 刷新时旋转 refresh token，旧的标记 revoked。
+
+## 12.3 审计
+
+- 所有写操作（封禁、解禁、重置密码、配置变更等）必须写 `audit_logs`。
+- 审计写入异步执行，失败只记录日志，不影响主流程响应。
+- 审计内容不得包含密码、token、消息正文等敏感信息。
+- 审计操作必须带 `request_id`、管理员 id、IP、User-Agent。
+
+## 12.4 输入与输出安全
+
+- JSON 解析使用 `nlohmann::json::parse` 并捕获 `parse_error`。
+- 禁止使用 `req->getJsonObject()`（jsoncpp）。
+- 禁止使用 `newHttpJsonResponse()`（jsoncpp）。
+- 响应体统一：
+  ```cpp
+  auto resp = drogon::HttpResponse::newHttpResponse();
+  resp->setStatusCode(status);
+  resp->setContentTypeCode(drogon::CT_APPLICATION_JSON);
+  resp->setBody(body.dump());
+  ```
+- 响应头建议：
+  - `X-Content-Type-Options: nosniff`
+  - `X-Frame-Options: DENY`
+  - `Referrer-Policy: no-referrer`
+- 敏感字段（手机号、邮箱）返回前脱敏。
+
+# 十三、日志与可观测
+
+- 使用 Drogon `LOG_INFO` / `LOG_WARN` / `LOG_ERROR`。
+- 每条关键日志带 `request_id`。
+- 记录：
+  - 启动配置摘要（不含密钥）
+  - 数据库异常（服务端日志，不返回客户端）
+  - 登录失败次数（按用户名/IP，避免记录密码）
+  - 审计写入失败
+- 禁止：
+  - `std::cout` / `printf` 作为业务日志
+  - 记录请求体全文、响应体全文
+  - 记录 token、password、refreshToken、消息正文
+- 提供 `/healthz`，返回：
+  ```json
+  {"code":0,"message":"ok","data":{"status":"up"}}
+  ```
+
+# 十四、关键代码骨架（可直接采用）
+
+## 14.1 AppError
+
+```cpp
+#pragma once
+
+#include <stdexcept>
+#include <string>
+#include <drogon/HttpTypes.h>
+
+class AppError final : public std::runtime_error {
+public:
+    AppError(std::string code,
+             std::string field,
+             std::string message,
+             drogon::HttpStatusCode status)
+        : std::runtime_error(message),
+          code_(std::move(code)),
+          field_(std::move(field)),
+          message_(std::move(message)),
+          status_(status) {}
+
+    const std::string &code() const noexcept { return code_; }
+    const std::string &field() const noexcept { return field_; }
+    const std::string &message() const noexcept { return message_; }
+    drogon::HttpStatusCode status() const noexcept { return status_; }
+
+    static AppError invalidParam(std::string field, std::string message) {
+        return {"INVALID_PARAM", std::move(field), std::move(message), drogon::k400BadRequest};
+    }
+    static AppError unauthorized(std::string message = "未登录或登录已过期") {
+        return {"UNAUTHORIZED", "", std::move(message), drogon::k401Unauthorized};
+    }
+    static AppError forbidden(std::string message = "无权限执行该操作") {
+        return {"FORBIDDEN", "", std::move(message), drogon::k403Forbidden};
+    }
+    static AppError notFound(std::string field, std::string message) {
+        return {"NOT_FOUND", std::move(field), std::move(message), drogon::k404NotFound};
+    }
+    static AppError internal() {
+        return {"INTERNAL_ERROR", "", "服务器内部错误，请稍后重试", drogon::k500InternalServerError};
+    }
+    static AppError notImplemented() {
+        return {"NOT_IMPLEMENTED", "", "该功能尚未实现", drogon::k501NotImplemented};
+    }
+
+private:
+    std::string code_;
+    std::string field_;
+    std::string message_;
+    drogon::HttpStatusCode status_;
+};
+```
+
+## 14.2 ApiResponse
+
+```cpp
+#pragma once
+
+#include <nlohmann/json.hpp>
+#include <drogon/HttpResponse.h>
+#include "common/AppError.h"
+
+inline drogon::HttpResponsePtr makeJsonResponse(
+    drogon::HttpStatusCode status,
+    const nlohmann::json &body) {
+    auto resp = drogon::HttpResponse::newHttpResponse();
+    resp->setStatusCode(status);
+    resp->setContentTypeCode(drogon::CT_APPLICATION_JSON);
+    resp->setBody(body.dump());
+    resp->addHeader("X-Content-Type-Options", "nosniff");
+    resp->addHeader("X-Frame-Options", "DENY");
+    resp->addHeader("Referrer-Policy", "no-referrer");
+    return resp;
+}
+
+inline drogon::HttpResponsePtr makeSuccess(
+    nlohmann::json data,
+    std::string requestId = {}) {
+    nlohmann::json body{
+        {"code", 0},
+        {"message", "ok"},
+        {"data", std::move(data)}
+    };
+    if (!requestId.empty()) {
+        body["request_id"] = std::move(requestId);
+    }
+    return makeJsonResponse(drogon::k200OK, body);
+}
+
+inline drogon::HttpResponsePtr makeError(const AppError &e) {
+    // 错误体必须恰好三个字段
+    nlohmann::json body{
+        {"code", e.code()},
+        {"field", e.field()},
+        {"message", e.message()}
+    };
+    return makeJsonResponse(e.status(), body);
+}
+```
+
+## 14.3 Controller 标准模板
+
+```cpp
+void UserController::list(
+    const drogon::HttpRequestPtr &req,
+    std::function<void(const drogon::HttpResponsePtr &)> &&callback) {
+
+    auto responder = std::make_shared<Responder>(std::move(callback));
+
+    try {
+        const int page = parseIntParam(req, "page", 1, 1, 1000000);
+        const int pageSize = parseIntParam(req, "page_size", 20, 1, 100);
+        const std::string keyword = req->getParameter("keyword");
+        const std::string status = req->getParameter("status");
+
+        auto service = AppContext::instance().userService();
+        service->listUsers(
+            page, pageSize, keyword, status,
+            [responder](std::variant<UserPage, AppError> result) {
+                try {
+                    if (std::holds_alternative<AppError>(result)) {
+                        responder->fail(std::get<AppError>(result));
+                        return;
+                    }
+                    responder->ok(toJson(std::get<UserPage>(result)));
+                } catch (const AppError &e) {
+                    responder->fail(e);
+                } catch (const std::exception &e) {
+                    responder->failUnknown(e);
+                } catch (...) {
+                    responder->failUnknown();
+                }
+            });
+    } catch (const AppError &e) {
+        responder->fail(e);
+    } catch (const std::exception &e) {
+        responder->failUnknown(e);
+    } catch (...) {
+        responder->failUnknown();
+    }
+}
+```
+
+## 14.4 Repository 双查询 exactly-once 模板
+
+```cpp
+void UserRepository::countAndList(
+    int page, int pageSize, const std::string &keyword, const std::string &status,
+    std::function<void(std::variant<UserPage, AppError>)> cb) {
+
+    struct State {
+        std::atomic_int remaining{2};
+        std::atomic_bool done{false};
+        std::uint64_t total{0};
+        std::vector<UserSummary> rows;
+        std::function<void(std::variant<UserPage, AppError>)> cb;
+    };
+    auto state = std::make_shared<State>();
+    state->cb = std::move(cb);
+
+    auto finish = [state]() {
+        if (state->remaining.fetch_sub(1) != 1) return;
+        if (state->done.exchange(true)) return;
+        state->cb(UserPage{state->total, std::move(state->rows)});
+    };
+    auto onError = [state](const drogon::orm::DrogonDbException &e) {
+        if (state->done.exchange(true)) return;
+        LOG_ERROR << "db error: " << e.base().what();
+        state->cb(AppError::internal());
+    };
+
+    db_->execSqlAsync(countSql, [state, finish](const drogon::orm::Result &r) {
+        try {
+            state->total = r[0]["total"].as<std::uint64_t>();
+            finish();
+        } catch (...) {
+            if (state->done.exchange(true)) return;
+            state->cb(AppError::internal());
+        }
+    }, onError, /* 参数 */);
+
+    db_->execSqlAsync(listSql, [state, finish](const drogon::orm::Result &r) {
+        try {
+            for (const auto &row : r) {
+                state->rows.push_back(mapUserRow(row));
+            }
+            finish();
+        } catch (...) {
+            if (state->done.exchange(true)) return;
+            state->cb(AppError::internal());
+        }
+    }, onError, /* 参数 */);
+}
+```
+
+注意：两个查询必须使用同一套过滤条件与参数计数；参数数量必须与占位符严格一致。
+
+## 14.5 main.cc 初始化顺序
+
+```cpp
+int main(int argc, char **argv) {
+    const std::string configPath = argc > 1 ? argv[1] : "./config.json";
+
+    drogon::app().loadConfigFile(configPath);
+
+    AppConfig cfg = AppConfig::fromDrogon();          // 校验并转换
+    auto db = drogon::app().getDbClient("default");
+    if (!db) {
+        LOG_FATAL << "db client 'default' is not configured";
+        return 1;
+    }
+
+    AppContext::instance().init(cfg, db);             // 构造 shared_ptr service/repository
+
+    drogon::app().registerFilter(std::make_shared<AuthFilter>(cfg));
+    drogon::app().registerFilter(std::make_shared<RbacFilter>());
+
+    registerRequestIdAdvice();                        // filters/RequestIdAdvice
+    registerCorsAdvice(cfg.corsOrigin);               // filters/CorsAdvice
+    registerAccessLogAdvice();                        // filters/AccessLogAdvice
+
+    // 自定义 404，返回统一错误 JSON
+    // 可选：pre-sending 兜底 500
+
+    drogon::app().run();
+    return 0;
+}
+```
+
+# 十七、禁止事项
+
+1. 禁止修改 `docs/`、`dev/Admin/AdminPanel/`、`dev/IMS/`、现有 6 张 IM 表。
+2. 禁止在 controller 或 handler 中写 SQL。
+3. 禁止同步数据库、同步文件 IO、`sleep`。
+4. 禁止 `[&]`、`[this]`、隐式 `this` 捕获。
+5. 禁止异常逃逸到框架。
+6. 禁止错误响应泄露内部细节。
+7. 禁止引入 Drogon、nlohmann-json、OpenSSL 之外的网络/JSON 库。
+8. 禁止使用 `newHttpJsonResponse`、`getJsonObject`、`Json::Value` 处理业务 JSON。
+9. 禁止把明文密码、token、密钥写入代码、日志、响应、数据库。
+10. 禁止提交 `config.json`、日志、构建产物。
+11. 禁止用 HTTP 200 返回错误。
+12. 禁止伪造未实现模块的数据。
+13. 禁止一次性大重构；按可验证的小步骤推进。
+
+# 十八、工作方式与交付
+1.先完成项目代码，再根据我的指示修补。
+
+如果你对 Drogon 1.9.x 的某个 API 名称、过滤器注册方式、`execSqlAsync` 重载不确定，
+请先在代码中做最小验证或明确标注 TODO，不要臆造不存在的接口。
+
+================================================================================
+【提示词结束】
+================================================================================
+
+
+--------------------------------------------------------------------------------
+# 十五、构建、运行与验收
+
+## 15.1 构建
+
+Windows（Git Bash）：
+
+```bash
+cd dev/Admin/AdminBackend
+cmake -S . -B build \
+  -DCMAKE_TOOLCHAIN_FILE="<vcpkg>/scripts/buildsystems/vcpkg.cmake"
+cmake --build build --config Debug -j
+```
+
+Linux：
+
+```bash
+cd dev/Admin/AdminBackend
+cmake -S . -B build \
+  -DCMAKE_TOOLCHAIN_FILE="<vcpkg>/scripts/buildsystems/vcpkg.cmake"
+cmake --build build -j
+```
+
+## 15.2 初始化数据库
+
+```bash
+mysql -u root -p < db/schema_admin.sql
+```
+
+同时在 `config.json` 中配置管理端数据库账号，建议使用独立账号，
+不要复用 IM 服务的业务账号。
+
+## 15.3 启动
+
+Windows：
+
+```bash
+./build/Debug/kc-cxim-admin-backend.exe ./config.json
+```
+
+Linux：
+
+```bash
+./build/kc-cxim-admin-backend ./config.json
+```
+
+启动日志必须包含：
+
+```text
+[admin] config loaded, listen 0.0.0.0:8080
+[admin] db client ready
+[admin] filters registered
+```
+
+## 15.4 冒烟测试
+
+提供 `scripts/smoke_test.sh`，至少覆盖：
+
+1. `GET /healthz` -> 200
+2. `POST /admin/api/auth/login` -> 200 + token
+3. `GET /admin/api/users?page=1&page_size=8` -> 200 + list
+4. 无 token 访问 `/admin/api/users` -> 401 统一错误
+5. 不存在的用户 `/admin/api/users/999999999` -> 404 统一错误
+6. 非法分页 `/admin/api/users?page=0` -> 400 统一错误
+7. `GET /admin/api/stats/overview` -> 200
+8. `GET /admin/api/stats/trend?days=30` -> 200
+
+脚本期望输出最后一行：
+
+```text
+[smoke] ALL PASS
+```
+
+## 15.5 验收标准
+
+### 编译与运行
+
+- [ ] CMake 配置成功、编译无错误。
+- [ ] 服务启动成功，`/healthz` 返回 200。
+- [ ] 数据库连接失败时有明确日志，不崩溃、不泄露细节。
+
+### 分层
+
+- [ ] controller 中无 SQL、无 `execSqlAsync`。
+- [ ] service 中无 SQL、无 `HttpResponse`。
+- [ ] repository 中无 HTTP 逻辑。
+- [ ] 所有 SQL 均为参数化，无字符串拼接用户输入。
+
+### 异步
+
+- [ ] 全项目无 `execSqlSync`、无 `sleep`、无同步文件 IO。
+- [ ] 全项目无 `[&]`、无 `[this]`、无隐式 `this` 捕获。
+- [ ] 每个 handler 与每个异步回调都有 `try/catch`。
+- [ ] 重复回调不会导致重复响应（`Responder` 验证）。
+
+### 错误
+
+- [ ] 400/401/403/404/500/501 均返回统一错误格式。
+- [ ] 错误体恰好包含 `code`、`field`、`message` 三个字段。
+- [ ] 500 响应不包含 SQL、堆栈、异常原文。
+- [ ] 错误使用正确 HTTP 状态码，不用 200 包错误。
+
+### 依赖
+
+- [ ] CMake/vcpkg 只新增 Drogon、nlohmann-json。
+- [ ] 业务代码无 `Json::Value`、无 `getJsonObject()`、无 `newHttpJsonResponse()`。
+- [ ] 无其他网络库、JSON 库。
+
+### 安全
+
+- [ ] 密码哈希存储，无明文密码。
+- [ ] 日志不含密码、token、refreshToken、消息正文。
+- [ ] `config.json` 不在版本控制中。
+- [ ] 管理端接口默认需要鉴权，健康检查除外。
+- [ ] 写操作有审计记录。
+
+# 十六、自检命令（生成代码后必须执行）
+
+在 `dev/Admin/AdminBackend` 下执行并修复所有命中项：
+
+```bash
+# 1. 禁止同步数据库
+grep -rn "execSqlSync" src/ || true
+
+# 2. 禁止 sleep
+grep -rn "sleep\|Sleep\|usleep" src/ || true
+
+# 3. 禁止引用捕获
+grep -rn "\[&\]" src/ || true
+
+# 4. 禁止裸 this 捕获
+grep -rn "\[this\]" src/ || true
+
+# 5. 禁止 jsoncpp 业务用法
+grep -rn "newHttpJsonResponse\|getJsonObject\|Json::Value" src/ || true
+
+# 6. 禁止业务日志用 cout/printf
+grep -rn "std::cout\|printf(" src/ || true
+
+# 7. 检查 controller/service 是否出现 SQL
+grep -rniE "select |insert |update |delete " src/controllers/ src/services/ || true
+
+# 8. 检查是否用了非允许库
+grep -rn "boost/beast\|rapidjson\|jsoncpp\|crow\|oatpp\|cpp-httplib" src/ || true
+```
+
+要求：
+
+- 第 1–6 条必须 0 命中。
+- 第 7 条只允许出现在注释/字符串常量中，不允许真实 SQL。
+- 第 8 条必须 0 命中。
+
+--------------------------------------------------------------------------------
+# 十八、工作方式与交付
+
+请严格按以下顺序工作：
+
+1. 阅读本文档与前述参考文件。
+2. 先输出：
+   - 你对现有前端契约、数据库表、管理端缺口的理解；
+   - 计划创建的文件清单与职责；
+   - 需要确认的问题（如有）。
+3. 我确认后再开始生成代码。
+4. 按“可编译的最小纵切”顺序实现：
+   - 第一步：CMake + 配置 + main + 健康检查 + 统一响应/错误；
+   - 第二步：管理端表 + 登录 + JWT + AuthFilter；
+   - 第三步：用户列表/详情/状态变更 + 审计；
+   - 第四步：统计概览/趋势；
+   - 第五步：冒烟脚本与 README。
+5. 每完成一步，运行编译与冒烟测试，报告结果。
+6. 最终交付：
+   - 完整文件树；
+   - 构建与运行命令；
+   - 冒烟测试输出；
+   - 自检命令输出；
+   - 未实现项与依赖说明。
+--------------------------------------------------------------------------------
+
+请阅读并分析Admin_backend_drogon_prompt_word.txt这个后端项目的提示词，在D:/fkc/kc-cxim/dev/Admin/AdminBackend目录生成完整的项目代码，注意不要测试运行。
+
+我已经配置好使用 cd D:/fkc/kc-cxim/dev/Admin/AdminBackend && ./build.sh && ./build/Debug/kc-cxim-admin-backend.exe ./config.json 即可完成构建和执行，但是前后端没有联调测试成功，请问前后端怎么联调测试，注意前后端联调请告诉我方法不要修改配置源码，另外使用以下命令报错如下：
+curl -s -X POST http://127.0.0.1:8080/admin/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"Admin@123"}'
+{"code":"INTERNAL_ERROR","field":"","message":"服务器内部错误，请稍后重试"}
+
+我已经配置好命令，使用 cd D:/fkc/kc-cxim/dev/Admin/AdminBackend && ./build.sh && ./build/Debug/kc-cxim-admin-backend.exe ./config.json 即可完成构建和执行，但是前后端没有联调测试成功，请问前后端怎么联调测试，注意前后端联调请告诉我方法不要修改配置源码。
+
+请直接修改D:/fkc/kc-cxim/dev/Admin/AdminPanel的代码，实现前后端联调，最小改动是让 auth.login() 调用 /admin/api/auth/login，把返回的 data.token 存入 localStorage；用户列表和仪表盘再把 Mock 数组换成 /admin/api/users、/admin/api/stats/overview、/admin/api/stats/trend。写完之后不要测试，让我自己来测。

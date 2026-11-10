@@ -414,6 +414,15 @@ else
     info "未发现 ${SCHEMA_FILE}，跳过建表（后续可放在该路径自动导入）。"
 fi
 
+# 可选：自动导入业务表结构
+ADMIN_SCHEMA_FILE="${SCRIPT_DIR}/../../../Admin/AdminBackend/db/schema_admin.sql"
+if [[ -f "$ADMIN_SCHEMA_FILE" ]]; then
+    info "发现Admin业务表结构，自动导入：$ADMIN_SCHEMA_FILE"
+    mysql_root "$DB_NAME" < "$ADMIN_SCHEMA_FILE"
+    ok "Admin表结构导入完成"
+else
+    info "未发现 ${ADMIN_SCHEMA_FILE}，跳过建表（后续可放在该路径自动导入）。"
+fi
 # ---------------------------------------------------------------------------
 # 10. 以业务账号走 TCP 回连验证（模拟外网登录，避免把密码写进进程列表）
 # ---------------------------------------------------------------------------
