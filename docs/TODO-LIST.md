@@ -292,14 +292,14 @@
 
 **协议选型结论**：好友关系的事实变更走 HTTP，变更后的实时事件走 TCP 长连接推送。
 
-- [ ] **BE-FRIEND-01** 用户搜索：HTTP `GET /api/users/search?keyword=...`，支持按用户名/用户ID（手机号等需先定隐私策略），分页 + 限流 + 只返回允许公开的字段（userId、昵称、头像，禁止返回密码哈希、token、手机号等）。
-- [ ] **BE-FRIEND-02** 好友申请表与状态机：复用 `friends.status`（0=申请中、1=好友、2=拉黑），明确申请人/被申请人、方向、过期时间、重复申请幂等；现有 `friends` 表无法表达“谁申请谁”，需评估新增 `requester_id` 或独立 `friend_requests` 表（改表前先评审）；建立 (A,B)/(B,A) 两行时必须在同一事务内保证状态一致。
-- [ ] **BE-FRIEND-03** 添加好友：HTTP `POST /api/friends/requests`，入参 `toUserId` + 可选验证消息；校验不能加自己、已是好友、已拉黑、重复申请；返回统一错误码。
-- [ ] **BE-FRIEND-04** 处理申请：HTTP `POST /api/friends/requests/{id}/accept`、`POST /api/friends/requests/{id}/reject`；通过时事务内写入双向好友关系并清理申请状态；拒绝只更新申请人一侧。
-- [ ] **BE-FRIEND-05** 好友列表与维护：HTTP `GET /api/friends`（列表、备注、在线状态可合并）、`PATCH /api/friends/{id}`（备注）、`DELETE /api/friends/{id}`（删除）、拉黑/解除拉黑。
-- [ ] **BE-FRIEND-06** 实时事件推送：申请、通过、拒绝、拉黑等事件通过现有 TCP 长连接（后续 WS）下发，新增消息类型如 `FriendRequest=130`、`FriendRequestResult=131`、`FriendListChanged=132`，避免客户端轮询；离线事件与离线消息一样补偿。
+- [x] **BE-FRIEND-01** 用户搜索：HTTP `GET /api/users/search?keyword=...`，支持按用户名/用户ID（手机号等需先定隐私策略），分页 + 限流 + 只返回允许公开的字段（userId、昵称、头像，禁止返回密码哈希、token、手机号等）。
+- [x] **BE-FRIEND-02** 好友申请表与状态机：复用 `friends.status`（0=申请中、1=好友、2=拉黑），明确申请人/被申请人、方向、过期时间、重复申请幂等；现有 `friends` 表无法表达“谁申请谁”，需评估新增 `requester_id` 或独立 `friend_requests` 表（改表前先评审）；建立 (A,B)/(B,A) 两行时必须在同一事务内保证状态一致。
+- [x] **BE-FRIEND-03** 添加好友：HTTP `POST /api/friends/requests`，入参 `toUserId` + 可选验证消息；校验不能加自己、已是好友、已拉黑、重复申请；返回统一错误码。
+- [x] **BE-FRIEND-04** 处理申请：HTTP `POST /api/friends/requests/{id}/accept`、`POST /api/friends/requests/{id}/reject`；通过时事务内写入双向好友关系并清理申请状态；拒绝只更新申请人一侧。
+- [x] **BE-FRIEND-05** 好友列表与维护：HTTP `GET /api/friends`（列表、备注、在线状态可合并）、`PATCH /api/friends/{id}`（备注）、`DELETE /api/friends/{id}`（删除）、拉黑/解除拉黑。
+- [x] **BE-FRIEND-06** 实时事件推送：申请、通过、拒绝、拉黑等事件通过现有 TCP 长连接（后续 WS）下发，新增消息类型如 `FriendRequest=130`、`FriendRequestResult=131`、`FriendListChanged=132`，避免客户端轮询；离线事件与离线消息一样补偿。
 - [ ] **BE-FRIEND-07** 权限与防滥用：只能给好友发消息（落地 BE-AUTH-08/BE-CONV-05）、申请频率限制、黑名单拦截、搜索接口限流与审计。
-- [ ] **BE-FRIEND-08** 测试与验收：搜索分页、重复申请、双向一致性、并发通过/拒绝、申请人离线后上线补偿、越权访问他人申请等用例。
+- [x] **BE-FRIEND-08** 测试与验收：搜索分页、重复申请、双向一致性、并发通过/拒绝、申请人离线后上线补偿、越权访问他人申请等用例。
 
 **为什么这样分工**：
 

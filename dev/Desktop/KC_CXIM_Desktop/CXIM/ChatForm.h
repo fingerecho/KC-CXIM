@@ -4,8 +4,12 @@
 // duilib
 #include "duilib/duilib.h"
 
-#include "TIMCloud.h"
 #include "CXIMAppConfig.h"
+
+#ifdef TENCENT_CLOUD_IM_SDK_VERSION
+#include "TIMCloud.h"
+#endif //!TENCENT_CLOUD_IM_SDK_VERSION
+
 
 #include <memory>
 #include <map>

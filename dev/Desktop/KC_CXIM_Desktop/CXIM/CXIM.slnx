@@ -1,10 +1,14 @@
 <Solution>
   <Configurations>
+    <BuildType Name="CX_IMS_Release" />
     <BuildType Name="Debug" />
     <BuildType Name="Release" />
     <BuildType Name="tencent_cloud_SDK_Release" />
     <Platform Name="x64" />
     <Platform Name="x86" />
   </Configurations>
-  <Project Path="CXIM.vcxproj" Id="71d3b119-c863-4c52-b76d-dc1de00cb887" />
+  <Project Path="CXIM.vcxproj" Id="71d3b119-c863-4c52-b76d-dc1de00cb887">
+    <BuildType Solution="CX_IMS_Release|x64" Project="Debug" />
+    <Build Solution="CX_IMS_Release|x86" Project="false" />
+  </Project>
 </Solution>

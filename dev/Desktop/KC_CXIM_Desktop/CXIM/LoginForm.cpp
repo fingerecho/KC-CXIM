@@ -1,14 +1,13 @@
 #include "LoginForm.h"
 #include "ChatForm.h"
+#include "HttpClient.h"
+#include "RegisterForm.h"
 #include "TencentImService.h"
 
-#ifdef TENCENT_CLOUD_IM_SDK_VERSION
+#include <spdlog/spdlog.h>
 
-#include <Windows.h>
 #include <algorithm>
 #include <cctype>
-#include <filesystem>
-#include <fstream>
 #include <string>
 
 namespace {
@@ -23,6 +22,16 @@ std::string TrimString(const std::string& value)
     result.erase(std::find_if(result.rbegin(), result.rend(), notSpace).base(), result.end());
     return result;
 }
+
+} // namespace
+
+#ifdef TENCENT_CLOUD_IM_SDK_VERSION
+
+#include <Windows.h>
+#include <filesystem>
+#include <fstream>
+
+namespace {
 
 std::filesystem::path GetExecutableDirectory()
 {
@@ -92,6 +101,101 @@ DString LoginForm::GetSkinFile()
 
 void LoginForm::OnInitWindow()
 {
+    ui::Button* btnRegister = dynamic_cast<ui::Button*>(FindControl(_T("register_account")));
+    if (btnRegister != nullptr) {
+        ui::Window* loginWindow = this;
+        btnRegister->AttachClick([loginWindow](const ui::EventArgs&) {
+            RegisterForm::ShowCustomWindow(_T("register"), _T(""), _T("register.xml"), loginWindow);
+            return true;
+        });
+    }
+
+#ifdef CXIM_IMS_CORE_SDK_VERSION
+    ui::RichEdit2* userEdit = dynamic_cast<ui::RichEdit2*>(FindControl(_T("username")));
+    ui::RichEdit2* passwordEdit = dynamic_cast<ui::RichEdit2*>(FindControl(_T("password")));
+    ui::Button* btnLogin = dynamic_cast<ui::Button*>(FindControl(_T("btn_login")));
+    ui::Label* errorLabel = dynamic_cast<ui::Label*>(FindControl(_T("login_error")));
+
+    if ((btnLogin == nullptr) || (userEdit == nullptr) || (passwordEdit == nullptr)) {
+        return;
+    }
+
+    auto alive = m_alive;
+    btnLogin->AttachClick([=](const ui::EventArgs&) {
+        if (!*alive) {
+            return true;
+        }
+
+        if (errorLabel != nullptr) {
+            errorLabel->SetVisible(false);
+        }
+
+        const std::string username = TrimString(ui::StringConvert::TToUTF8(userEdit->GetText()));
+        const std::string password = ui::StringConvert::TToUTF8(passwordEdit->GetText());
+        if (username.empty() || password.empty()) {
+            if (errorLabel != nullptr) {
+                errorLabel->SetText(_T("登录失败"));
+                errorLabel->SetVisible(true);
+            }
+            return true;
+        }
+
+        btnLogin->SetEnabled(false);
+        btnLogin->SetText(_T("登录中..."));
+
+        auto logger = spdlog::get("im_file_logger");
+        if (logger) {
+            logger->info("开始 HTTP 登录，账号: {}", username);
+        }
+
+        int statusCode = 0;
+        std::string responseBody;
+        HttpClient::LoginResult loginResult;
+        const bool requestOk = HttpClient::Instance().Login(username, password, statusCode, responseBody, loginResult);
+
+        if (!*alive) {
+            return true;
+        }
+
+        if (requestOk && (statusCode == 200) && (loginResult.userId != 0) && !loginResult.token.empty()) {
+            if (logger) {
+                logger->info("登录成功，账号: {}, userId: {}", username, loginResult.userId);
+            }
+
+            ChatForm* chatForm = new ChatForm(_T("basic_layout"), _T(""), _T("wechat.xml"));
+            if (chatForm->CreateWnd(nullptr, ui::WindowCreateParam(_T("克铖多媒体"), true))) {
+                chatForm->PostQuitMsgWhenClosed(true);
+                chatForm->ShowWindow(ui::kSW_SHOW_NORMAL);
+
+                btnLogin->SetEnabled(true);
+                btnLogin->SetText(_T("登录"));
+                PostQuitMsgWhenClosed(false);
+                CloseWnd();
+            }
+            else {
+                delete chatForm;
+                btnLogin->SetEnabled(true);
+                btnLogin->SetText(_T("登录"));
+                if (errorLabel != nullptr) {
+                    errorLabel->SetText(_T("登录失败"));
+                    errorLabel->SetVisible(true);
+                }
+            }
+        }
+        else {
+            if (logger) {
+                logger->error("登录失败，账号: {}, status: {}, body: {}", username, statusCode, responseBody);
+            }
+            btnLogin->SetEnabled(true);
+            btnLogin->SetText(_T("登录"));
+            if (errorLabel != nullptr) {
+                errorLabel->SetText(_T("登录失败"));
+                errorLabel->SetVisible(true);
+            }
+        }
+        return true;
+    });
+#endif
 #ifdef TENCENT_CLOUD_IM_SDK_VERSION
     ui::RichEdit2* userEdit = dynamic_cast<ui::RichEdit2*>(FindControl(_T("username")));
     ui::Button* btnLogin = dynamic_cast<ui::Button*>(FindControl(_T("btn_login")));

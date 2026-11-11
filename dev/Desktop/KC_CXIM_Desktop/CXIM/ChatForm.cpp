@@ -31,11 +31,12 @@ DString ChatForm::GetSkinFile()
 
 void ChatForm::OnInitWindow()
 {
-    m_version_label = dynamic_cast<ui::Label*>(FindControl(_T("my_version_label")));
-    const char* labelText = TIMGetSDKVersion();
-    if (m_version_label != nullptr) {
-        m_version_label->SetText(ui::StringConvert::UTF8ToT(labelText));
-    }
+    //版本号示例代码
+    //m_version_label = dynamic_cast<ui::Label*>(FindControl(_T("my_version_label")));
+    //const char* labelText = TIMGetSDKVersion();
+    //if (m_version_label != nullptr) {
+    //    m_version_label->SetText(ui::StringConvert::UTF8ToT(labelText));
+    //}
 
     ui::TabBox* mainPages = dynamic_cast<ui::TabBox*>(FindControl(_T("main_pages")));
     ui::Option* navChat = dynamic_cast<ui::Option*>(FindControl(_T("nav_chat")));

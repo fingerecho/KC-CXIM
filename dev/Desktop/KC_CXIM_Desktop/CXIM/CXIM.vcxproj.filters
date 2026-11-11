@@ -36,10 +36,10 @@
     <ClInclude Include="LoginForm.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="TencentImService.h">
+    <ClInclude Include="HttpClient.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="TestTencentCloudSDKApp.h">
+    <ClInclude Include="RegisterForm.h">
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="CXIMAppConfig.h">
@@ -67,10 +67,10 @@
     <ClCompile Include="LoginForm.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="TencentImService.cpp">
+    <ClCompile Include="HttpClient.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="TestTencentCloudSDKApp.cpp">
+    <ClCompile Include="RegisterForm.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>

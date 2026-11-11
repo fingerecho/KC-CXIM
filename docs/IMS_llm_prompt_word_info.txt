@@ -178,3 +178,8 @@ server 旁边再挂一个 HTTP acceptor同一事件循环 或者 io.run() 起多
 请根据docs/TODO-LIST.md中的3.6.5 好友关系模块的待办事项，在dev/IMS/KC-CXIM-Svc/basic_service_20261107/step1_tcp_echo/目录下补充文件或代码内容完成BE-FRIEND-01、BE-FRIEND-02、BE-FRIEND-03、BE-FRIEND-04、BE-FRIEND-05、BE-FRIEND-06的功能，在dev/IMS/KC-CXIM-Svc/basic_service_20261107目录下的step2_test_client和step3_verify目录下补充文件或代码内容完成BE-FRIEND-08的功能,必要时请直接修改dev/IMS/KC-CXIM-Svc/basic_service_20261107/db/schema.sql数据库文件，注意增加的文件或者内容需要加上详细的注释解释原理、机制等技术细节。
 
 请根据现有源码补充dev/IMS/KC-CXIM-Svc/basic_service_20261107/readme.md文件，重点补充所有HTTP的API的使用及示例，以及TCP接口的使用示例。
+github:更新：根据TODO-LIST中的3.6.5好友关系模块使用HTTP实现相应功能
+
+请在build.sh中补充脚本内容实现功能：当系统为Linux时，将build/bin目录下的内容打包成.deb的格式，要能实现解压.deb之后build/bin下的内容拷贝到/opt/CXIM/bin/目录下；同时生成一个system 的 CXIM.service文件在当前目录，执行build.sh时拷贝到deb包内的CXIM/目录下，CXIM.service使用bin/目录下的tcp_echo_server作为执行目标；在.deb的postinst脚本中将/opt/CXIM/CXIM.service拷贝到~/.config/systemd/user/，然后在postinst脚本中执行systemctl daemon-reload；请完成整个部署的闭环。
+
+请模仿test_friend_client.cpp，造一个可配置并发数的压测程序test_stress_01.cpp ——每个线程跑一遍完整的好友流程（注册→TCP登录→发申请→对方通过→发消息→查列表→删好友），循环执行，最后统计总成功次数和耗时。

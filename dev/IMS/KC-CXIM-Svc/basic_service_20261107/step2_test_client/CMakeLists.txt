@@ -12,11 +12,28 @@ add_executable(test_client_another test_client_another.cpp)
 add_executable(test_friend_client test_friend_client.cpp)
 target_include_directories(test_friend_client PRIVATE ${CMAKE_SOURCE_DIR}/step1_tcp_echo)
 
+# ----------------------------------------------------------------------------
+# 好友全链路并发压测客户端：
+#   每个线程循环执行 注册 -> TCP 登录 -> 发申请 -> 通过 -> 发消息
+#   -> 查列表 -> 删除，最后统计成功次数与耗时。
+# ----------------------------------------------------------------------------
+add_executable(test_stress_01 test_stress_01.cpp)
+target_include_directories(test_stress_01 PRIVATE ${CMAKE_SOURCE_DIR}/step1_tcp_echo)
+
+# ----------------------------------------------------------------------------
+# 好友全链路并发压测客户端：
+#   iter/s 反映完整链路吞吐，tcp/http 分位数分别反映两条链路的延迟分布。
+# ----------------------------------------------------------------------------
+add_executable(test_stress_02 test_stress_02.cpp)
+target_include_directories(test_stress_02 PRIVATE ${CMAKE_SOURCE_DIR}/step1_tcp_echo)
+
 # 用到 std::thread / sleep_for，需要线程库。
 target_link_libraries(test_client PRIVATE Threads::Threads)
 
 target_link_libraries(test_client_another PRIVATE Threads::Threads)
 target_link_libraries(test_friend_client PRIVATE Threads::Threads)
+target_link_libraries(test_stress_01 PRIVATE Threads::Threads)
+target_link_libraries(test_stress_02 PRIVATE Threads::Threads)
 
 # ----------------------------------------------------------------------------
 # 交互式聊天客户端 A / B：

@@ -19,3 +19,10 @@
 请继续完善功能：从消息列表隐藏那些没有用的仅作展示的消息；
 请继续完善功能：右侧消息内容区每次打开之后最新的消息出现在最顶端，请调整顺序，最新的消息应该在最底端。如果有滚动条，请滚动到最底端。
 请继续完善功能：点击消息列表中的某一行，右侧同样展示对应的用户聊天历史，与点击好友列表效果是一样的；
+
+2026.11.11
+请实现注册的UI界面：仿照D:/FKC/KC-CXIM/dev/Desktop/KC_CXIM_Desktop/CXIM/resources/themes/default/login.xml的风格，在login.xml所在目录下实现同样尺寸的register.xml界面，实现注册功能。注册界面包含三项内容：用户名、密码、确认密码；以及按钮：取消、完成；密码栏设置为password模式；在xml中实现，当确认密码栏与密码栏不一致时，实时在底部（取消、完成按钮上方）提示“两次密码输入不匹配”。同时实现C++代码，流程是点击login.xml的"注册账号“按钮则进入register.xml界面。
+
+请继续完善注册界面：结合D:/fkc/kc-cxim/dev/IMS/KC-CXIM-Svc/basic_service_20261107/test_friend_client.cpp的注册逻辑，实现对接本地127.0.0.1的8080端口的注册API接口，必要时增加一个http接口的对接cpp文件；使用CXIM_Desktop_config.ini配置对接的主机和端口，在main入口处解析读取这个ini文件；另外，点击取消时没有完全退出.exe程序，点击取消时需要正常退出整个程序，包括释放资源等。
+
+请完善功能：仿照D:/FKC/KC-CXIM/dev/Desktop/KC_CXIM_Desktop/CXIM/LoginForm.cpp文件的第108~220行，结合D:/fkc/kc-cxim/dev/IMS/KC-CXIM-Svc/basic_service_20261107/test_friend_client.cpp的登录逻辑，在105行的CXIM_IMS_CORE_SDK_VERSION宏中实现HTTP的登录逻辑，尽量复用HttpClient这个类。
