@@ -48,6 +48,65 @@ StoredMessage readStored(sql::ResultSet& rs) {
     return m;
 }
 
+// ---- 好友模块：行读取与业务异常 --------------------------------------------
+// BizError 用来区分“业务规则拒绝”和“数据库异常”：
+//   * BizError 直接把 what() 作为给客户端的友好提示，例如 "already friends"；
+//   * 其他 std::exception 统一包成 "db error: ..."，方便定位基础设施问题。
+struct BizError : std::runtime_error {
+    explicit BizError(const std::string& msg) : std::runtime_error(msg) {}
+};
+
+// SQL 必须 SELECT：id, username, nickname, avatar_url
+UserInfo readUserInfo(sql::ResultSet& rs) {
+    UserInfo u;
+    u.id         = rs.getUInt64(1);
+    u.username   = sstr(rs.getString(2));
+    u.nickname   = sstr(rs.getString(3));
+    u.avatar_url = sstr(rs.getString(4));
+    return u;
+}
+
+// SQL 必须 SELECT：id, username, nickname, avatar_url, remark, status
+FriendInfo readFriendInfo(sql::ResultSet& rs) {
+    FriendInfo f;
+    f.id         = rs.getUInt64(1);
+    f.username   = sstr(rs.getString(2));
+    f.nickname   = sstr(rs.getString(3));
+    f.avatar_url = sstr(rs.getString(4));
+    f.remark     = sstr(rs.getString(5));
+    f.status     = rs.getInt(6);
+    return f;
+}
+
+// 好友申请的标准 SELECT 列顺序：
+//   fr.id, fr.requester_id, fr.target_id,
+//   ru.username, ru.nickname, tu.username, tu.nickname,
+//   fr.message, fr.status, ts(ms)
+FriendRequestInfo readFriendRequestInfo(sql::ResultSet& rs) {
+    FriendRequestInfo r;
+    r.id                 = rs.getUInt64(1);
+    r.requester_id       = rs.getUInt64(2);
+    r.target_id          = rs.getUInt64(3);
+    r.requester_username = sstr(rs.getString(4));
+    r.requester_nickname = sstr(rs.getString(5));
+    r.target_username    = sstr(rs.getString(6));
+    r.target_nickname    = sstr(rs.getString(7));
+    r.message            = sstr(rs.getString(8));
+    r.status             = rs.getInt(9);
+    r.created_ts         = rs.getUInt64(10);
+    return r;
+}
+
+// 所有好友申请查询共用这段 SELECT，避免列顺序在多个 DAO 里漂移。
+const char* kRequestSelect =
+    "SELECT fr.id, fr.requester_id, fr.target_id, "
+    "       ru.username, ru.nickname, tu.username, tu.nickname, "
+    "       fr.message, fr.status, "
+    "       CAST(UNIX_TIMESTAMP(fr.created_at)*1000 AS UNSIGNED) "
+    "FROM friend_requests fr "
+    "LEFT JOIN users ru ON ru.id = fr.requester_id "
+    "LEFT JOIN users tu ON tu.id = fr.target_id ";
+
 } // namespace
 
 // ============================================================================
@@ -655,6 +714,696 @@ void Db::updateReceipt(std::uint64_t userId, std::uint64_t conversationId,
                 try { conn->rollback(); } catch (...) {}
                 err = std::string("db error: ") + e.what();
             }
+        } catch (const std::exception& e) {
+            err = std::string("db error: ") + e.what();
+        }
+
+        postToIo([cb, ok, err]() { cb(ok, err); });
+    });
+}
+
+// ============================================================================
+// 好友 DAO 1：用户搜索（BE-FRIEND-01）
+// ----------------------------------------------------------------------------
+// 搜索是典型的“低频只读”操作，因此：
+//   * 走 HTTP GET，天然分页、可缓存、可限流；
+//   * SQL 只 SELECT 公开字段，绝不把 password_hash / token 带出去；
+//   * 排除自己，避免“结果里出现自己”这种无效条目；
+//   * 同时支持用户名、昵称、精确用户ID 三种命中方式，便于客户端“输入即搜索”。
+// ============================================================================
+void Db::searchUsers(std::uint64_t selfId, const std::string& keyword,
+                     int limit, UserListCb cb) {
+    submit([this, selfId, keyword, limit, cb]() mutable {
+        bool ok = false;
+        std::string err;
+        std::vector<UserInfo> users;
+
+        try {
+            PooledConn pc(*pool_);
+            if (!pc) throw std::runtime_error("db pool unavailable");
+
+            if (limit <= 0)  limit = 20;
+            if (limit > 50)  limit = 50;          // 防止一次拉取过多，给 DB/网络留余量
+            const std::string like = "%" + keyword + "%";
+
+            std::unique_ptr<sql::PreparedStatement> st(pc->prepareStatement(
+                "SELECT id, username, nickname, avatar_url FROM users "
+                "WHERE status=1 AND id<>? "
+                "  AND (username LIKE ? OR nickname LIKE ? OR CAST(id AS CHAR)=?) "
+                "ORDER BY (username=?) DESC, id ASC "
+                "LIMIT ?"));
+            st->setUInt64(1, selfId);
+            st->setString(2, like);
+            st->setString(3, like);
+            st->setString(4, keyword);
+            st->setString(5, keyword);            // 用户名精确命中的排前面
+            st->setInt(6, limit);
+
+            std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
+            while (rs->next()) users.push_back(readUserInfo(*rs));
+            ok = true;
+        } catch (const std::exception& e) {
+            err = std::string("db error: ") + e.what();
+        }
+
+        postToIo([cb, ok, err, users = std::move(users)]() mutable {
+            cb(ok, err, std::move(users));
+        });
+    });
+}
+
+// ============================================================================
+// 好友 DAO 2：创建好友申请（BE-FRIEND-02 / BE-FRIEND-03）
+// ----------------------------------------------------------------------------
+// 事务内的检查顺序（任何一步失败都回滚）：
+//   1) 不能加自己；
+//   2) 目标用户必须存在且状态正常；
+//   3) 双方不能已经是好友；
+//   4) 如果对方已经拉黑我，禁止申请；
+//   5) 如果对方已经向我发过待处理申请，提示直接去处理，避免互相刷申请；
+//   6) 同一方向的历史申请：pending 则拒绝重复提交，accepted 则说明已是好友，
+//      rejected/canceled 则重置为 pending（允许重新申请）。
+// 这样既保证幂等，又不会因为“被拒过一次”就永远无法再次申请。
+// ============================================================================
+void Db::createFriendRequest(std::uint64_t requesterId, std::uint64_t targetId,
+                             const std::string& message, RequestCb cb) {
+    submit([this, requesterId, targetId, message, cb]() {
+        bool ok = false;
+        std::string err;
+        FriendRequestInfo out;
+
+        try {
+            PooledConn pc(*pool_);
+            if (!pc) throw std::runtime_error("db pool unavailable");
+
+            sql::Connection* conn = pc.get();
+            conn->setAutoCommit(false);
+
+            std::uint64_t reqId = 0;
+
+            try {
+                if (requesterId == targetId) throw BizError("cannot add yourself");
+
+                // 目标用户必须存在且未被禁用。
+                {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "SELECT 1 FROM users WHERE id=? AND status=1"));
+                    st->setUInt64(1, targetId);
+                    std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
+                    if (!rs->next()) throw BizError("target user not found");
+                }
+
+                // 检查双方现有的最终关系：已是好友 / 被对方拉黑。
+                {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "SELECT user_id, status FROM friends "
+                        "WHERE (user_id=? AND friend_id=?) OR (user_id=? AND friend_id=?)"));
+                    st->setUInt64(1, requesterId);
+                    st->setUInt64(2, targetId);
+                    st->setUInt64(3, targetId);
+                    st->setUInt64(4, requesterId);
+
+                    std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
+                    while (rs->next()) {
+                        const std::uint64_t owner = rs->getUInt64(1);
+                        const int status = rs->getInt(2);
+                        if (status == 1) throw BizError("already friends");
+                        if (status == 2 && owner == targetId)
+                            throw BizError("blocked by target user");
+                    }
+                }
+
+                // 反向待处理申请：对方已经申请过我，应该让我直接处理，而不是互相申请。
+                {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "SELECT 1 FROM friend_requests "
+                        "WHERE requester_id=? AND target_id=? AND status=0"));
+                    st->setUInt64(1, targetId);
+                    st->setUInt64(2, requesterId);
+                    std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
+                    if (rs->next())
+                        throw BizError("target already sent you a pending request");
+                }
+
+                // 同一方向的已有申请。
+                int oldStatus = -1;
+                {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "SELECT id, status FROM friend_requests "
+                        "WHERE requester_id=? AND target_id=? FOR UPDATE"));
+                    st->setUInt64(1, requesterId);
+                    st->setUInt64(2, targetId);
+                    std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
+                    if (rs->next()) {
+                        reqId     = rs->getUInt64(1);
+                        oldStatus = rs->getInt(2);
+                    }
+                }
+
+                if (reqId != 0) {
+                    if (oldStatus == 0) throw BizError("request already pending");
+                    if (oldStatus == 1) throw BizError("already friends");
+
+                    // 被拒绝/取消后允许重新申请：复用同一行，重置状态与时间。
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "UPDATE friend_requests "
+                        "SET message=?, status=0, result_notified=0, "
+                        "    created_at=CURRENT_TIMESTAMP(3) "
+                        "WHERE id=?"));
+                    st->setString(1, message);
+                    st->setUInt64(2, reqId);
+                    st->executeUpdate();
+                } else {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "INSERT INTO friend_requests"
+                        "(requester_id,target_id,message,status,result_notified) "
+                        "VALUES(?,?,?,0,0)"));
+                    st->setUInt64(1, requesterId);
+                    st->setUInt64(2, targetId);
+                    st->setString(3, message);
+                    st->executeUpdate();
+                    reqId = lastInsertId(conn);
+                }
+
+                conn->commit();
+            } catch (...) {
+                try { conn->rollback(); } catch (...) {}
+                throw;                                // 交给外层区分 BizError / DB 异常
+            }
+
+            // 事务提交后读回完整信息（含双方用户名/昵称），供 HTTP 响应和 TCP 事件使用。
+            {
+                std::string sql = std::string(kRequestSelect) + "WHERE fr.id=?";
+                std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(sql));
+                st->setUInt64(1, reqId);
+                std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
+                if (!rs->next()) throw std::runtime_error("request not found after create");
+                out = readFriendRequestInfo(*rs);
+            }
+            ok = true;
+        } catch (const BizError& e) {
+            err = e.what();
+        } catch (const std::exception& e) {
+            err = std::string("db error: ") + e.what();
+        }
+
+        postToIo([cb, ok, err, out]() { cb(ok, err, out); });
+    });
+}
+
+// ============================================================================
+// 好友 DAO 3：处理好友申请（BE-FRIEND-04）
+// ----------------------------------------------------------------------------
+// 关键点：
+//   * 必须校验“当前登录用户 == 申请的被申请人”，防止越权替别人通过申请；
+//   * SELECT ... FOR UPDATE 锁住申请行，避免同一申请被并发通过两次；
+//   * 通过时在同一事务里写 friends 双向两行，保证“关系成立”是原子操作；
+//   * 结果先写 result_notified=0，若申请人离线，登录时再补推。
+// ============================================================================
+void Db::handleFriendRequest(std::uint64_t userId, std::uint64_t requestId,
+                             bool accept, RequestCb cb) {
+    submit([this, userId, requestId, accept, cb]() {
+        bool ok = false;
+        std::string err;
+        FriendRequestInfo out;
+
+        try {
+            PooledConn pc(*pool_);
+            if (!pc) throw std::runtime_error("db pool unavailable");
+
+            sql::Connection* conn = pc.get();
+            conn->setAutoCommit(false);
+
+            try {
+                std::uint64_t requesterId = 0;
+                int status = -1;
+
+                {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "SELECT requester_id, status FROM friend_requests "
+                        "WHERE id=? AND target_id=? FOR UPDATE"));
+                    st->setUInt64(1, requestId);
+                    st->setUInt64(2, userId);
+                    std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
+                    if (!rs->next()) throw BizError("request not found");
+                    requesterId = rs->getUInt64(1);
+                    status      = rs->getInt(2);
+                }
+
+                if (status != 0) throw BizError("request already handled");
+
+                if (accept) {
+                    // 双向写入好友关系。ON DUPLICATE KEY 兼容“历史行已存在”的情况。
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "INSERT INTO friends(user_id,friend_id,status) VALUES(?,?,1),(?,?,1) "
+                        "ON DUPLICATE KEY UPDATE status=1"));
+                    st->setUInt64(1, userId);
+                    st->setUInt64(2, requesterId);
+                    st->setUInt64(3, requesterId);
+                    st->setUInt64(4, userId);
+                    st->executeUpdate();
+                }
+
+                {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "UPDATE friend_requests "
+                        "SET status=?, result_notified=0 "
+                        "WHERE id=?"));
+                    st->setInt(1, accept ? 1 : 2);
+                    st->setUInt64(2, requestId);
+                    st->executeUpdate();
+                }
+
+                conn->commit();
+            } catch (...) {
+                try { conn->rollback(); } catch (...) {}
+                throw;
+            }
+
+            {
+                std::string sql = std::string(kRequestSelect) + "WHERE fr.id=?";
+                std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(sql));
+                st->setUInt64(1, requestId);
+                std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
+                if (!rs->next()) throw std::runtime_error("request not found after handle");
+                out = readFriendRequestInfo(*rs);
+            }
+            ok = true;
+        } catch (const BizError& e) {
+            err = e.what();
+        } catch (const std::exception& e) {
+            err = std::string("db error: ") + e.what();
+        }
+
+        postToIo([cb, ok, err, out]() { cb(ok, err, out); });
+    });
+}
+
+// ============================================================================
+// 好友 DAO 4：申请列表（BE-FRIEND-05）
+// ----------------------------------------------------------------------------
+// direction 语义：
+//   incoming：我收到的申请（target_id = 我）
+//   outgoing：我发出的申请（requester_id = 我）
+//   all     ：两者都返回
+// 按 created_at 倒序，客户端做“最近申请”列表更自然。
+// ============================================================================
+void Db::listFriendRequests(std::uint64_t userId, const std::string& direction,
+                            RequestListCb cb) {
+    submit([this, userId, direction, cb]() {
+        bool ok = false;
+        std::string err;
+        std::vector<FriendRequestInfo> reqs;
+
+        try {
+            PooledConn pc(*pool_);
+            if (!pc) throw std::runtime_error("db pool unavailable");
+
+            std::string sql = kRequestSelect;
+            if (direction == "outgoing") {
+                sql += "WHERE fr.requester_id=? ";
+            } else if (direction == "all") {
+                sql += "WHERE (fr.requester_id=? OR fr.target_id=?) ";
+            } else {
+                sql += "WHERE fr.target_id=? ";
+            }
+            sql += "ORDER BY fr.created_at DESC LIMIT 200";
+
+            std::unique_ptr<sql::PreparedStatement> st(pc->prepareStatement(sql));
+            if (direction == "all") {
+                st->setUInt64(1, userId);
+                st->setUInt64(2, userId);
+            } else {
+                st->setUInt64(1, userId);
+            }
+
+            std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
+            while (rs->next()) reqs.push_back(readFriendRequestInfo(*rs));
+            ok = true;
+        } catch (const std::exception& e) {
+            err = std::string("db error: ") + e.what();
+        }
+
+        postToIo([cb, ok, err, reqs = std::move(reqs)]() mutable {
+            cb(ok, err, std::move(reqs));
+        });
+    });
+}
+
+// ============================================================================
+// 好友 DAO 5：好友列表（BE-FRIEND-05）
+// ----------------------------------------------------------------------------
+// 因为 friends 表是“双向各一行”，查我的好友只需要 WHERE user_id=?，
+// 再 JOIN users 取公开资料，最后按 userId 排序，结果稳定、便于客户端 diff。
+// ============================================================================
+void Db::listFriends(std::uint64_t userId, FriendListCb cb) {
+    submit([this, userId, cb]() {
+        bool ok = false;
+        std::string err;
+        std::vector<FriendInfo> friends;
+
+        try {
+            PooledConn pc(*pool_);
+            if (!pc) throw std::runtime_error("db pool unavailable");
+
+            std::unique_ptr<sql::PreparedStatement> st(pc->prepareStatement(
+                "SELECT u.id, u.username, u.nickname, u.avatar_url, f.remark, f.status "
+                "FROM friends f JOIN users u ON u.id=f.friend_id "
+                "WHERE f.user_id=? AND f.status=1 "
+                "ORDER BY u.id ASC"));
+            st->setUInt64(1, userId);
+
+            std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
+            while (rs->next()) friends.push_back(readFriendInfo(*rs));
+            ok = true;
+        } catch (const std::exception& e) {
+            err = std::string("db error: ") + e.what();
+        }
+
+        postToIo([cb, ok, err, friends = std::move(friends)]() mutable {
+            cb(ok, err, std::move(friends));
+        });
+    });
+}
+
+// ============================================================================
+// 好友 DAO 6：修改备注（BE-FRIEND-05）
+// ----------------------------------------------------------------------------
+// 备注是“私有的”：只更新 user_id=我 的那一行，不影响好友自己的列表。
+// ============================================================================
+void Db::updateFriendRemark(std::uint64_t userId, std::uint64_t friendId,
+                            const std::string& remark, StatusCb cb) {
+    submit([this, userId, friendId, remark, cb]() {
+        bool ok = false;
+        std::string err;
+
+        try {
+            PooledConn pc(*pool_);
+            if (!pc) throw std::runtime_error("db pool unavailable");
+
+            sql::Connection* conn = pc.get();
+            conn->setAutoCommit(false);
+            try {
+                {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "SELECT 1 FROM friends WHERE user_id=? AND friend_id=? AND status=1"));
+                    st->setUInt64(1, userId);
+                    st->setUInt64(2, friendId);
+                    std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
+                    if (!rs->next()) throw BizError("friend not found");
+                }
+                {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "UPDATE friends SET remark=? WHERE user_id=? AND friend_id=? AND status=1"));
+                    st->setString(1, remark);
+                    st->setUInt64(2, userId);
+                    st->setUInt64(3, friendId);
+                    st->executeUpdate();
+                }
+                conn->commit();
+                ok = true;
+            } catch (...) {
+                try { conn->rollback(); } catch (...) {}
+                throw;
+            }
+        } catch (const BizError& e) {
+            err = e.what();
+        } catch (const std::exception& e) {
+            err = std::string("db error: ") + e.what();
+        }
+
+        postToIo([cb, ok, err]() { cb(ok, err); });
+    });
+}
+
+// ============================================================================
+// 好友 DAO 7：删除好友（BE-FRIEND-05）
+// ----------------------------------------------------------------------------
+// 删除必须双向进行，否则只删一行会出现“我删了他、他还看得到我”的不一致。
+// 同时清理双方待处理申请，避免删好友后又被一条旧申请“加回来”。
+// ============================================================================
+void Db::deleteFriend(std::uint64_t userId, std::uint64_t friendId, StatusCb cb) {
+    submit([this, userId, friendId, cb]() {
+        bool ok = false;
+        std::string err;
+
+        try {
+            PooledConn pc(*pool_);
+            if (!pc) throw std::runtime_error("db pool unavailable");
+
+            sql::Connection* conn = pc.get();
+            conn->setAutoCommit(false);
+            try {
+                {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "DELETE FROM friends "
+                        "WHERE (user_id=? AND friend_id=?) OR (user_id=? AND friend_id=?)"));
+                    st->setUInt64(1, userId);
+                    st->setUInt64(2, friendId);
+                    st->setUInt64(3, friendId);
+                    st->setUInt64(4, userId);
+                    st->executeUpdate();
+                }
+                {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "DELETE FROM friend_requests "
+                        "WHERE (requester_id=? AND target_id=?) "
+                        "   OR (requester_id=? AND target_id=?)"));
+                    st->setUInt64(1, userId);
+                    st->setUInt64(2, friendId);
+                    st->setUInt64(3, friendId);
+                    st->setUInt64(4, userId);
+                    st->executeUpdate();
+                }
+                conn->commit();
+                ok = true;
+            } catch (...) {
+                try { conn->rollback(); } catch (...) {}
+                throw;
+            }
+        } catch (const std::exception& e) {
+            err = std::string("db error: ") + e.what();
+        }
+
+        postToIo([cb, ok, err]() { cb(ok, err); });
+    });
+}
+
+// ============================================================================
+// 好友 DAO 8：拉黑 / 取消拉黑（BE-FRIEND-05）
+// ----------------------------------------------------------------------------
+// 拉黑：
+//   1) 删除双方好友行（拉黑意味着关系解除）；
+//   2) 写入 (我,对方,status=2) 的单向拉黑行；
+//   3) 清理双方申请，防止对方用旧申请绕过拉黑。
+// 取消拉黑：
+//   只删除自己那条 status=2 的行；之后需要重新走加好友流程。
+// ============================================================================
+void Db::setFriendBlocked(std::uint64_t userId, std::uint64_t friendId,
+                          bool blocked, StatusCb cb) {
+    submit([this, userId, friendId, blocked, cb]() {
+        bool ok = false;
+        std::string err;
+
+        try {
+            PooledConn pc(*pool_);
+            if (!pc) throw std::runtime_error("db pool unavailable");
+
+            sql::Connection* conn = pc.get();
+            conn->setAutoCommit(false);
+            try {
+                if (blocked) {
+                    if (userId == friendId) throw BizError("cannot block yourself");
+
+                    {
+                        std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                            "SELECT 1 FROM users WHERE id=? AND status=1"));
+                        st->setUInt64(1, friendId);
+                        std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
+                        if (!rs->next()) throw BizError("target user not found");
+                    }
+                    {
+                        std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                            "DELETE FROM friends "
+                            "WHERE (user_id=? AND friend_id=?) OR (user_id=? AND friend_id=?)"));
+                        st->setUInt64(1, userId);
+                        st->setUInt64(2, friendId);
+                        st->setUInt64(3, friendId);
+                        st->setUInt64(4, userId);
+                        st->executeUpdate();
+                    }
+                    {
+                        std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                            "INSERT INTO friends(user_id,friend_id,status,remark) "
+                            "VALUES(?,?,2,'') ON DUPLICATE KEY UPDATE status=2"));
+                        st->setUInt64(1, userId);
+                        st->setUInt64(2, friendId);
+                        st->executeUpdate();
+                    }
+                    {
+                        std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                            "DELETE FROM friend_requests "
+                            "WHERE (requester_id=? AND target_id=?) "
+                            "   OR (requester_id=? AND target_id=?)"));
+                        st->setUInt64(1, userId);
+                        st->setUInt64(2, friendId);
+                        st->setUInt64(3, friendId);
+                        st->setUInt64(4, userId);
+                        st->executeUpdate();
+                    }
+                } else {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "DELETE FROM friends WHERE user_id=? AND friend_id=? AND status=2"));
+                    st->setUInt64(1, userId);
+                    st->setUInt64(2, friendId);
+                    st->executeUpdate();
+                }
+                conn->commit();
+                ok = true;
+            } catch (...) {
+                try { conn->rollback(); } catch (...) {}
+                throw;
+            }
+        } catch (const BizError& e) {
+            err = e.what();
+        } catch (const std::exception& e) {
+            err = std::string("db error: ") + e.what();
+        }
+
+        postToIo([cb, ok, err]() { cb(ok, err); });
+    });
+}
+
+// ============================================================================
+// 好友 DAO 9：登录补推——待处理申请（BE-FRIEND-06）
+// ----------------------------------------------------------------------------
+// 用户离线期间可能收到多条申请。申请本身已经持久化在 friend_requests，
+// 登录时按“待处理 + 按时间升序”拉出来逐条推送，即可实现离线补偿。
+// ============================================================================
+void Db::fetchPendingIncoming(std::uint64_t userId, int limit, RequestListCb cb) {
+    submit([this, userId, limit, cb]() mutable {
+        bool ok = false;
+        std::string err;
+        std::vector<FriendRequestInfo> reqs;
+
+        try {
+            PooledConn pc(*pool_);
+            if (!pc) throw std::runtime_error("db pool unavailable");
+
+            if (limit <= 0)  limit = 100;
+            if (limit > 200) limit = 200;
+
+            std::string sql = std::string(kRequestSelect) +
+                "WHERE fr.target_id=? AND fr.status=0 "
+                "ORDER BY fr.created_at ASC LIMIT ?";
+            std::unique_ptr<sql::PreparedStatement> st(pc->prepareStatement(sql));
+            st->setUInt64(1, userId);
+            st->setInt(2, limit);
+
+            std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
+            while (rs->next()) reqs.push_back(readFriendRequestInfo(*rs));
+            ok = true;
+        } catch (const std::exception& e) {
+            err = std::string("db error: ") + e.what();
+        }
+
+        postToIo([cb, ok, err, reqs = std::move(reqs)]() mutable {
+            cb(ok, err, std::move(reqs));
+        });
+    });
+}
+
+// ============================================================================
+// 好友 DAO 10：登录补推——未通知的申请结果（BE-FRIEND-06）
+// ----------------------------------------------------------------------------
+// 申请被通过/拒绝时，如果申请人不在线，result_notified 会保持 0。
+// 申请人登录后把 status IN (1,2) 且未通知的结果推给他，然后由
+// markResultsNotified() 统一置 1。
+// ============================================================================
+void Db::fetchUnnotifiedResults(std::uint64_t userId, int limit, RequestListCb cb) {
+    submit([this, userId, limit, cb]() mutable {
+        bool ok = false;
+        std::string err;
+        std::vector<FriendRequestInfo> reqs;
+
+        try {
+            PooledConn pc(*pool_);
+            if (!pc) throw std::runtime_error("db pool unavailable");
+
+            if (limit <= 0)  limit = 100;
+            if (limit > 200) limit = 200;
+
+            std::string sql = std::string(kRequestSelect) +
+                "WHERE fr.requester_id=? AND fr.status IN (1,2) "
+                "  AND fr.result_notified=0 "
+                "ORDER BY fr.updated_at ASC LIMIT ?";
+            std::unique_ptr<sql::PreparedStatement> st(pc->prepareStatement(sql));
+            st->setUInt64(1, userId);
+            st->setInt(2, limit);
+
+            std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
+            while (rs->next()) reqs.push_back(readFriendRequestInfo(*rs));
+            ok = true;
+        } catch (const std::exception& e) {
+            err = std::string("db error: ") + e.what();
+        }
+
+        postToIo([cb, ok, err, reqs = std::move(reqs)]() mutable {
+            cb(ok, err, std::move(reqs));
+        });
+    });
+}
+
+// ============================================================================
+// 好友 DAO 11：精确标记某条申请结果已通知（BE-FRIEND-06）
+// ----------------------------------------------------------------------------
+// 用于“申请人正好在线，HTTP 处理完申请后已经实时推送”的场景。
+// 只更新这一条申请，避免把同一个人其他还没推的结果一起标记掉。
+// ============================================================================
+void Db::markRequestResultNotified(std::uint64_t requestId, StatusCb cb) {
+    submit([this, requestId, cb]() {
+        bool ok = false;
+        std::string err;
+
+        try {
+            PooledConn pc(*pool_);
+            if (!pc) throw std::runtime_error("db pool unavailable");
+
+            std::unique_ptr<sql::PreparedStatement> st(pc->prepareStatement(
+                "UPDATE friend_requests SET result_notified=1 "
+                "WHERE id=? AND status IN (1,2)"));
+            st->setUInt64(1, requestId);
+            st->executeUpdate();
+            ok = true;
+        } catch (const std::exception& e) {
+            err = std::string("db error: ") + e.what();
+        }
+
+        postToIo([cb, ok, err]() { cb(ok, err); });
+    });
+}
+
+// ============================================================================
+// 好友 DAO 12：批量标记申请结果已通知（BE-FRIEND-06）
+// ----------------------------------------------------------------------------
+// 用于登录补偿：一次性拉取并推送后，把该用户所有“已产生结果且未通知”的
+// 行置 1。WHERE 条件保证重复调用是幂等的，不会重复推送。
+// ============================================================================
+void Db::markResultsNotified(std::uint64_t userId, StatusCb cb) {
+    submit([this, userId, cb]() {
+        bool ok = false;
+        std::string err;
+
+        try {
+            PooledConn pc(*pool_);
+            if (!pc) throw std::runtime_error("db pool unavailable");
+
+            std::unique_ptr<sql::PreparedStatement> st(pc->prepareStatement(
+                "UPDATE friend_requests SET result_notified=1 "
+                "WHERE requester_id=? AND status IN (1,2) AND result_notified=0"));
+            st->setUInt64(1, userId);
+            st->executeUpdate();
+            ok = true;
         } catch (const std::exception& e) {
             err = std::string("db error: ") + e.what();
         }

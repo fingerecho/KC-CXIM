@@ -170,3 +170,11 @@ server 旁边再挂一个 HTTP acceptor同一事件循环 或者 io.run() 起多
 请优化readme.md文件，尽可能补充上面的内容，最好能够帮我生成一张architecture.png的架构图。
 
 帮我列出这个完整项目的docs/TODO-LIST.md,包括如何完善后端服务(消息类型、会话形态、实时能力、音视频能力等，同时参考docs/total_comment.txt的15~80行内容）、如何完善Web管理后台(包括采用的C++框架选型等)，如何完善Windows桌面端(换成Electron框架等)完善移动端放在最末尾。
+
+请问服务端IMS中搜索好友和添加好友的功能为什么没做，并且为什么没有加入到TODO-LIST.md中去？不要改动文件，告诉我原因，并且告诉我搜索好友和添加好友使用HTTP好还是TCP好以及理由。
+
+请根据以上的关于搜索添加好友的回答结论补充内容到docs/TODO-LIST.md，注意不要删任何TODO-LIST.md的内容。
+
+请根据docs/TODO-LIST.md中的3.6.5 好友关系模块的待办事项，在dev/IMS/KC-CXIM-Svc/basic_service_20261107/step1_tcp_echo/目录下补充文件或代码内容完成BE-FRIEND-01、BE-FRIEND-02、BE-FRIEND-03、BE-FRIEND-04、BE-FRIEND-05、BE-FRIEND-06的功能，在dev/IMS/KC-CXIM-Svc/basic_service_20261107目录下的step2_test_client和step3_verify目录下补充文件或代码内容完成BE-FRIEND-08的功能,必要时请直接修改dev/IMS/KC-CXIM-Svc/basic_service_20261107/db/schema.sql数据库文件，注意增加的文件或者内容需要加上详细的注释解释原理、机制等技术细节。
+
+请根据现有源码补充dev/IMS/KC-CXIM-Svc/basic_service_20261107/readme.md文件，重点补充所有HTTP的API的使用及示例，以及TCP接口的使用示例。

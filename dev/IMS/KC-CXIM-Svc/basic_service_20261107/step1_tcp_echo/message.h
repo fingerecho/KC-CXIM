@@ -34,6 +34,15 @@ enum class MsgType : std::uint16_t {
     HistoryResp = 111,   // 历史消息响应：content = JSON 数组（见 serialize_history）
     Ack         = 112,   // 投递/已读回执：conversation_id + seq；content 可选 "delivered"
     SendAck     = 113,   // 服务端对"发送成功"的确认：msg_id/seq/ts 为服务端分配值
+
+    // ---- 好友模块：好友操作走 HTTP，下面三种类型只用于服务端 -> 客户端推送 ----
+    // FriendRequest      ：收到新的好友申请 / 登录时补推待处理申请。
+    // FriendRequestResult：自己发出的申请被通过或拒绝（支持离线补推）。
+    // FriendListChanged  ：好友列表发生变化（通过、删除、备注、拉黑等）。
+    // content 都是一段 JSON 文本，具体字段见 friend_types.h 里的序列化函数。
+    FriendRequest       = 130,   // 收到好友申请
+    FriendRequestResult = 131,   // 好友申请处理结果
+    FriendListChanged   = 132,   // 好友列表变化通知
 };
 
 // 一条消息的完整描述。所有字段都有默认值，避免未初始化读取。

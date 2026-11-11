@@ -58,6 +58,7 @@ private:
     void do_history(const Message& msg);    // 历史分页
     void do_ack(const Message& msg);        // 投递/已读回执
     void push_offline();                    // 登录成功后补推离线消息
+    void push_friend_events();              // 登录成功后补推好友申请/处理结果
 
     void send_message(const Message& msg);  // 组帧后入写队列
     void send_error(const std::string& text, std::uint64_t to);

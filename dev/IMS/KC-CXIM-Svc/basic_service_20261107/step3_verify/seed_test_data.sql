@@ -16,6 +16,7 @@ TRUNCATE TABLE offline_messages;
 TRUNCATE TABLE messages;
 TRUNCATE TABLE conversation_members;
 TRUNCATE TABLE conversations;
+TRUNCATE TABLE friend_requests;
 TRUNCATE TABLE friends;
 
 DELETE FROM users

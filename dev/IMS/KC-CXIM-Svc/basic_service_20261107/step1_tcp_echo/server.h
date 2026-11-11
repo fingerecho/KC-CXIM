@@ -25,6 +25,10 @@ public:
     // 打印监听信息（真正的事件循环在 main.cpp 里的 io.run()）。
     void run();
 
+    // 暴露在线用户表给 HTTP 层：好友操作走 HTTP 完成后，
+    // HTTP 层需要通过 SessionManager 找到目标用户的 TCP 连接并推送事件。
+    SessionManager& sessions() { return sessions_; }
+
 private:
     void do_accept();
 

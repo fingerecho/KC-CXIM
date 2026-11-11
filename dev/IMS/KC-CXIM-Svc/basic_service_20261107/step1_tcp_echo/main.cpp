@@ -65,7 +65,9 @@ int main(int argc, char* argv[]) {
 
         // 同一个 io_context 里挂两个 acceptor：TCP 长连接 + HTTP 短连接。
         kc::server srv(io, port, db, tokens);                    // 创建 TCP 监听
-        kc::http_server http(io, httpPort, db, tokens);          // 创建 HTTP 监听
+        // HTTP 层与 TCP 层共享同一个 SessionManager：
+        // 好友申请/通过等写操作走 HTTP，完成后通过在线表把事件推给 TCP 长连接。
+        kc::http_server http(io, httpPort, db, tokens, srv.sessions());
         srv.run();                                               // 打印 TCP 端口
         http.run();                                              // 打印 HTTP 端口
         io.run();                                                // 单线程运行，不引入 io.run() 多线程

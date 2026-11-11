@@ -1,6 +1,7 @@
 #include "session.h"
 #include "session_manager.h"
 #include "db.h"
+#include "friend_types.h"    // 好友事件 JSON 序列化
 #include "message_codec.h"
 #include "token_service.h"   // JWT 校验：TCP 登录只验 token，不再查库比对密码
 
@@ -165,6 +166,11 @@ void session::do_login(const Message& msg) {
 
     // 登录成功后补推离线消息。
     push_offline();                                     // 复用原有离线补推逻辑
+
+    // 好友事件的离线补偿：待处理申请 + 申请人还没收到的处理结果。
+    // 这两类事件不适合塞进 offline_messages（那是聊天消息表），
+    // 因此直接用 friend_requests 的状态字段作为“持久化事件队列”。
+    push_friend_events();
 }
 
 // ---------------------------------------------------------------------------
@@ -326,6 +332,84 @@ void session::push_offline() {
                 std::cout << "[offline] pushed " << msgs.size()
                           << " message(s) to user " << uid << std::endl;
             }
+        });
+}
+
+// ---------------------------------------------------------------------------
+// 登录后补推好友事件
+// ---------------------------------------------------------------------------
+// 顺序：
+//   1) 拉取“别人发给我的待处理申请”，逐条推 FriendRequest(event=pending)；
+//   2) 拉取“我发出的申请里已通过/已拒绝但还没通知我的”，推 FriendRequestResult；
+//   3) 把第 2 步的结果标记为已通知，避免下次登录重复推送。
+//
+// 为什么用两级回调而不是一次性 join？
+//   两类数据来自同一张表的两种查询条件，分开查语义更清晰，也方便分别限流。
+//   回调都在 io_context 线程执行，send_message() 内部只操作本连接的写队列，
+//   不存在跨线程竞争。
+// ---------------------------------------------------------------------------
+void session::push_friend_events() {
+    const std::uint64_t uid = user_id_;
+    auto self = shared_from_this();
+
+    db_.fetchPendingIncoming(uid, 100,
+        [this, self, uid](bool ok, const std::string& err,
+                          std::vector<FriendRequestInfo> reqs) {
+            if (closed_) return;
+            if (!ok) {
+                std::cerr << "[friend] fetch pending failed: " << err << std::endl;
+            } else {
+                for (const auto& r : reqs) {
+                    Message m;
+                    m.type    = MsgType::FriendRequest;
+                    m.from    = r.requester_id;
+                    m.to      = uid;
+                    m.msg_id  = r.id;          // 复用 msg_id 携带 request_id，便于客户端处理
+                    m.ts      = r.created_ts;
+                    m.content = serialize_friend_request_event(r, "pending");
+                    send_message(m);
+                }
+                if (!reqs.empty()) {
+                    std::cout << "[friend] pushed " << reqs.size()
+                              << " pending request(s) to user " << uid << std::endl;
+                }
+            }
+
+            // 第 2 步：补推“已处理、未通知”的结果。
+            db_.fetchUnnotifiedResults(uid, 100,
+                [this, self, uid](bool ok2, const std::string& err2,
+                                  std::vector<FriendRequestInfo> results) {
+                    if (closed_) return;
+                    if (!ok2) {
+                        std::cerr << "[friend] fetch results failed: " << err2 << std::endl;
+                        return;
+                    }
+
+                    for (const auto& r : results) {
+                        Message m;
+                        m.type    = MsgType::FriendRequestResult;
+                        m.from    = r.target_id;
+                        m.to      = uid;
+                        m.msg_id  = r.id;
+                        m.ts      = r.created_ts;
+                        m.content = serialize_friend_result_event(
+                                        r, r.status == 1 ? "accepted" : "rejected");
+                        send_message(m);
+                    }
+
+                    if (!results.empty()) {
+                        std::cout << "[friend] pushed " << results.size()
+                                  << " request result(s) to user " << uid << std::endl;
+                        // 标记已通知：即使本次连接随后断开，也不会重复推送。
+                        db_.markResultsNotified(uid,
+                            [](bool ok3, const std::string& err3) {
+                                if (!ok3) {
+                                    std::cerr << "[friend] mark notified failed: "
+                                              << err3 << std::endl;
+                                }
+                            });
+                    }
+                });
         });
 }
 

@@ -93,6 +93,19 @@ inline bool parse_message(const std::vector<char>& body, Message& out, std::stri
             assign_json_string(doc["content"], out.content);
         break;
 
+    case MsgType::FriendRequest:
+    case MsgType::FriendRequestResult:
+    case MsgType::FriendListChanged:
+        // 好友事件是“服务端 -> 客户端”的下行消息，content 是一段 JSON 文本。
+        // 服务端不会接收这三类消息；这里支持解析主要是让测试客户端/多端 SDK
+        // 能复用同一套 message_codec，而不需要各自再写一份解析逻辑。
+        if (!doc.HasMember("content") || !doc["content"].IsString()) {
+            err = "missing friend event content";
+            return false;
+        }
+        assign_json_string(doc["content"], out.content);
+        break;
+
     default:
         // 未知类型直接拒绝，避免服务器处理不认识的协议。
         err = "unknown type"; return false;

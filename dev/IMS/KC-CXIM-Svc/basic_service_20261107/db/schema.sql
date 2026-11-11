@@ -5,13 +5,14 @@
 -- 目标：用尽可能少的表，支撑「用户 / 好友 / 会话 / 消息历史 / 离线消息 /
 --       投递与已读回执 / 消息去重」这些功能。
 --
--- 表一览（共 6 张）：
---   1) users                 用户账号
---   2) friends               好友关系（双向各一行）
---   3) conversations         会话（单聊 / 群聊），并保存 seq 生成器
---   4) conversation_members  会话成员 + 投递/已读游标（回执）
---   5) messages              消息历史（服务端 msg_id / seq / ts 都在这里生成）
---   6) offline_messages      离线消息队列（上线后补推，推送完删除）
+-- 表一览（共 7 张）：
+--   1)   users                 用户账号
+--   2)   friends               好友关系（双向各一行）
+--   2.1) friend_requests       好友申请（单向，带待处理/通过/拒绝状态机）
+--   3)   conversations         会话（单聊 / 群聊），并保存 seq 生成器
+--   4)   conversation_members  会话成员 + 投递/已读游标（回执）
+--   5)   messages              消息历史（服务端 msg_id / seq / ts 都在这里生成）
+--   6)   offline_messages      离线消息队列（上线后补推，推送完删除）
 --
 -- 重要约定：
 --   * 本文件以 DBConfig.ini 里的 dbname=CXIMDB 为例，下面直接
@@ -69,12 +70,17 @@ CREATE TABLE IF NOT EXISTS users (
 --       查询“我的好友”时只需 WHERE user_id=?，非常简单直观。
 --   * 缺点是要保证两行状态一致（应用层放在同一个事务里更新）。
 --     若想只存一行，可改成 user_id < friend_id，但查询要用 OR，复杂度更高。
---   * status：0=申请中，1=已成为好友，2=已拉黑。
+--   * status：0=保留（申请状态改由 friend_requests 表保存），1=已成为好友，2=已拉黑。
+--     说明：引入 friend_requests 后，friends 表只表达“最终关系”：
+--       - 申请过程的待处理/拒绝/取消都在 friend_requests 里，避免两行关系表
+--         因为“谁先申请”而出现状态歧义；
+--       - 拉黑只写一行 (A,B,status=2)，同时删除 B->A 的好友行，
+--         这样 B 的“我的好友”查询里不会再看到 A。
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS friends (
     user_id    BIGINT UNSIGNED  NOT NULL                    COMMENT '关系拥有者 userId',
     friend_id  BIGINT UNSIGNED  NOT NULL                    COMMENT '对方 userId',
-    status     TINYINT UNSIGNED NOT NULL DEFAULT 0          COMMENT '0=申请中，1=好友，2=拉黑',
+    status     TINYINT UNSIGNED NOT NULL DEFAULT 0          COMMENT '0=保留，1=好友，2=拉黑',
     remark     VARCHAR(64)      NOT NULL DEFAULT ''         COMMENT '好友备注名',
     created_at DATETIME(3)      NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     updated_at DATETIME(3)      NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
@@ -85,6 +91,53 @@ CREATE TABLE IF NOT EXISTS friends (
     CONSTRAINT fk_friends_friend FOREIGN KEY (friend_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   COMMENT='好友关系（双向各一行）';
+
+
+-- ============================================================================
+-- 2.1) friend_requests：好友申请（单向、带状态机）
+-- ----------------------------------------------------------------------------
+-- 为什么需要独立一张表？
+--   friends 表用“双向各一行”表达最终关系，但一个申请天然是单向的：
+--   A 申请 B，只应有一条 A->B 的申请记录，且需要记录“谁申请谁、附言、
+--   待处理/通过/拒绝/取消”的状态变化。如果把申请状态塞进 friends.status，
+--   两行关系会在“A 申请 B、B 又申请 A”时产生歧义，因此拆表更清晰。
+--
+-- 状态机：
+--   0 pending  ：待被申请人处理
+--   1 accepted ：已通过（friends 表已写入双向好友行）
+--   2 rejected ：已拒绝
+--   3 canceled ：申请人或系统取消（保留字段，当前接口未开放取消）
+--
+-- 唯一键 (requester_id,target_id)：
+--   * 同一个方向只保留一条申请记录，避免刷屏；
+--   * 被拒绝后允许重新申请：应用层把旧记录重置为 pending，而不是插入新行。
+--   * 反向申请 (B,A) 是另一条记录，应用层会提示“对方已向你发送申请”。
+--
+-- result_notified：
+--   申请结果需要实时推给申请人。如果处理申请时申请人不在线，
+--   该列保持 0；申请人下次 TCP 登录时服务端补推结果并置 1，
+--   用最小成本实现“离线事件补偿”，避免再建一张事件队列表。
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS friend_requests (
+    id              BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT       COMMENT '申请ID',
+    requester_id    BIGINT UNSIGNED  NOT NULL                     COMMENT '申请人 userId',
+    target_id       BIGINT UNSIGNED  NOT NULL                     COMMENT '被申请人 userId',
+    message         VARCHAR(255)     NOT NULL DEFAULT ''          COMMENT '申请附言',
+    status          TINYINT UNSIGNED NOT NULL DEFAULT 0           COMMENT '0=待处理，1=已通过，2=已拒绝，3=已取消',
+    result_notified TINYINT UNSIGNED NOT NULL DEFAULT 0           COMMENT '结果是否已推送给申请人：0=否，1=是',
+    created_at      DATETIME(3)      NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '申请时间（毫秒精度）',
+    updated_at      DATETIME(3)      NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+                                    ON UPDATE CURRENT_TIMESTAMP(3)          COMMENT '状态最后变更时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_friend_requests_pair (requester_id, target_id),
+    KEY idx_friend_requests_target (target_id, status),
+    KEY idx_friend_requests_requester (requester_id, status, result_notified),
+    CONSTRAINT fk_friend_requests_requester FOREIGN KEY (requester_id)
+        REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_friend_requests_target FOREIGN KEY (target_id)
+        REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  COMMENT='好友申请（单向，带状态机）';
 
 
 -- ============================================================================
