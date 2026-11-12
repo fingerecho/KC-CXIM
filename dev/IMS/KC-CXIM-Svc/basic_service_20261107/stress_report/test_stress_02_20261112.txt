@@ -1,0 +1,34 @@
+./build/bin/Debug/test_stress_02 --host 110.40.206.253 --threads 50 --duration 60 --warmup 5
+[stress] host=110.40.206.253 http=8080 tcp=8888 threads=50 duration=60s warmup=5s hb=5s
+[stress] preparing 50 workers...
+[stress] preparation done
+
+===== Stress Report =====
+elapsed        : 63.83 s
+workers        : 50
+iterations ok  : 1454
+iterations fail: 0
+iter throughput: 22.78 iter/s
+tcp requests   : 2908
+  tcp   p50/p95/p99/avg/max : 75.89 / 1001.01 / 1161.17 / 437.01 / 1311.00 ms
+http requests  : 1454
+  http  p50/p95/p99/avg/max : 890.73 / 2013.48 / 7078.32 / 1219.90 / 15834.00 ms
+=========================
+
+./build/bin/Debug/test_stress_02 --host 110.40.206.253 --threads 100 --duration 60 --warmup 5
+[stress] host=110.40.206.253 http=8080 tcp=8888 threads=100 duration=60s warmup=5s hb=5s
+[stress] preparing 100 workers...
+[stress] preparation done
+[stress] sample error: connect: �������ӷ���һ��ʱ���û����ȷ�𸴻����ӵ�����û�з�Ӧ�����ӳ���ʧ�ܡ� [system:10060 at D:\FKC\KC-CXIM\sdk\boost_1_92_0-bin-msvc-all-32-64\boost_1_92_0\boost/asio/detail/win_iocp_socket_service.hpp:630:5 in function 'class boost::system::error_code __cdecl boost::asio::detail::win_iocp_socket_service<class boost::asio::ip::tcp>::connect(struct boost::asio::detail::win_iocp_socket_service<class boost::asio::ip::tcp>::implementation_type &,const class boost::asio::ip::basic_endpoint<class boost::asio::ip::tcp> &,class boost::system::error_code &)']
+
+===== Stress Report =====
+elapsed        : 72.87 s
+workers        : 100
+iterations ok  : 1481
+iterations fail: 1
+iter throughput: 20.34 iter/s
+tcp requests   : 2964
+  tcp   p50/p95/p99/avg/max : 77.68 / 2164.22 / 2317.52 / 951.65 / 2686.00 ms
+http requests  : 1481
+  http  p50/p95/p99/avg/max : 1975.51 / 3141.61 / 5225.72 / 2259.46 / 15099.00 ms
+=========================

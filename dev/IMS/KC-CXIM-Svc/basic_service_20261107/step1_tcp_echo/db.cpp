@@ -5,9 +5,12 @@
 #include <bcrypt/BCrypt.hpp>            // bcrypt：生成/校验密码哈希（重 CPU，必须在 worker 线程执行）
 
 #include <algorithm>
+#include <chrono>
+#include <cstdlib>
 #include <deque>
 #include <iostream>
 #include <stdexcept>
+#include <thread>
 
 namespace kc {
 
@@ -55,6 +58,47 @@ StoredMessage readStored(sql::ResultSet& rs) {
 struct BizError : std::runtime_error {
     explicit BizError(const std::string& msg) : std::runtime_error(msg) {}
 };
+
+/*************避免数据库死锁的解决方案********************/
+// P0-2：事务级死锁重试。
+// MySQL/MariaDB 的死锁(1213)与锁等待超时(1205)是瞬时可恢复错误，
+// 标准做法是回滚整个事务后重试；这里只重试这两类错误：
+//   * BizError 是业务规则拒绝，不重试；
+//   * 其他异常/错误直接上抛。
+// 注意：必须整个事务重来，不能只重试失败的那条 SQL。
+inline bool isRetryableDbError(sql::SQLException& e) {
+    const int code = e.getErrorCode();
+    return code == 1213 || code == 1205;   // 1213=deadlock, 1205=lock wait timeout
+}
+
+template <typename Fn>
+void runTransactionWithRetry(sql::Connection* conn, Fn&& body) {
+    constexpr int kMaxAttempts = 3;        // 1 次正常 + 2 次重试
+    for (int attempt = 1; attempt <= kMaxAttempts; ++attempt) {
+        try {
+            conn->setAutoCommit(false);
+            body();
+            conn->commit();
+            return;
+        } catch (const BizError&) {
+            try { conn->rollback(); } catch (...) {}
+            throw;                          // 业务错误不重试
+        } catch (sql::SQLException& e) {
+            try { conn->rollback(); } catch (...) {}
+            if (isRetryableDbError(e) && attempt < kMaxAttempts) {
+                // 少量随机退避，降低再次撞锁的概率。
+                std::this_thread::sleep_for(
+                    std::chrono::milliseconds(5 * attempt + (std::rand() % 20)));
+                continue;
+            }
+            throw;
+        } catch (...) {
+            try { conn->rollback(); } catch (...) {}
+            throw;
+        }
+    }
+}
+/*************避免数据库死锁的解决方案********************/
 
 // SQL 必须 SELECT：id, username, nickname, avatar_url
 UserInfo readUserInfo(sql::ResultSet& rs) {
@@ -444,9 +488,16 @@ void Db::sendMessage(std::uint64_t sender, std::uint64_t to, int type,
             if (!pc) throw std::runtime_error("db pool unavailable");
 
             sql::Connection* conn = pc.get();
-            conn->setAutoCommit(false);
+            std::uint64_t msgId = 0;
 
-            try {
+            /*************避免数据库死锁的解决方案********************/
+            // P0-2：整个事务重试，遇到死锁(1213)/锁等待超时(1205)自动回滚重来。
+            // 发送链路会同时更新 conversations / messages / offline_messages /
+            // conversation_members，并发下确实可能出现瞬时死锁，需要兜底重试。
+            runTransactionWithRetry(conn, [&]() {
+                ok = false;
+                msgId = 0;
+
                 // 接收者必须存在（同时覆盖"非法用户"的错误处理）
                 {
                     std::unique_ptr<sql::PreparedStatement> st(
@@ -493,10 +544,8 @@ void Db::sendMessage(std::uint64_t sender, std::uint64_t to, int type,
                         out = readStored(*rs);
                         out.to = to;
                         out.duplicate = true;
-                        conn->commit();
-                        ok = true;
-                        postToIo([cb, ok, err, out]() { cb(ok, err, out); });
-                        return;   // 已投递结果，直接结束本次任务
+                        ok = true;      // 已拿到结果，helper 负责提交事务
+                        return;         // 结束本次事务体，不再插入新消息
                     }
                 }
 
@@ -523,7 +572,7 @@ void Db::sendMessage(std::uint64_t sender, std::uint64_t to, int type,
                     else                  st->setNull(6, sql::SQLNULL);
                     st->executeUpdate();
                 }
-                const std::uint64_t msgId = lastInsertId(conn);
+                msgId = lastInsertId(conn);
 
                 // 6) 离线队列：先无条件写入，在线投递后由客户端 ACK 删除。
                 //    这样即使接收者在发送瞬间掉线，消息也不会丢。
@@ -551,28 +600,24 @@ void Db::sendMessage(std::uint64_t sender, std::uint64_t to, int type,
                     st->setUInt64(4, sender);
                     st->executeUpdate();
                 }
+            });
+            /*************避免数据库死锁的解决方案********************/
 
-                conn->commit();
-
-                // 8) 读回服务端生成的 msg_id / ts
-                {
-                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
-                        "SELECT id,conversation_id,seq,sender_id,type,content,"
-                        "CAST(UNIX_TIMESTAMP(created_at)*1000 AS UNSIGNED) "
-                        "FROM messages WHERE id=?"));
-                    st->setUInt64(1, msgId);
-                    std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
-                    if (rs->next()) {
-                        out = readStored(*rs);
-                        out.to = to;
-                        ok = true;
-                    } else {
-                        err = "message inserted but not found";
-                    }
+            // 8) 读回服务端生成的 msg_id / ts（去重命中时上面的 ok 已为 true，跳过）
+            if (!ok) {
+                std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                    "SELECT id,conversation_id,seq,sender_id,type,content,"
+                    "CAST(UNIX_TIMESTAMP(created_at)*1000 AS UNSIGNED) "
+                    "FROM messages WHERE id=?"));
+                st->setUInt64(1, msgId);
+                std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
+                if (rs->next()) {
+                    out = readStored(*rs);
+                    out.to = to;
+                    ok = true;
+                } else {
+                    err = "message inserted but not found";
                 }
-            } catch (const std::exception& e) {
-                try { conn->rollback(); } catch (...) {}
-                err = std::string("db error: ") + e.what();
             }
         } catch (const std::exception& e) {
             err = std::string("db error: ") + e.what();
@@ -684,9 +729,10 @@ void Db::updateReceipt(std::uint64_t userId, std::uint64_t conversationId,
             if (!pc) throw std::runtime_error("db pool unavailable");
 
             sql::Connection* conn = pc.get();
-            conn->setAutoCommit(false);
 
-            try {
+            /*************避免数据库死锁的解决方案********************/
+            // P0-2：整个事务重试，遇到死锁(1213)/锁等待超时(1205)自动回滚重来。
+            runTransactionWithRetry(conn, [&]() {
                 {
                     std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
                         "UPDATE conversation_members "
@@ -708,12 +754,9 @@ void Db::updateReceipt(std::uint64_t userId, std::uint64_t conversationId,
                     st->setUInt64(3, deliveredSeq);
                     st->executeUpdate();
                 }
-                conn->commit();
-                ok = true;
-            } catch (const std::exception& e) {
-                try { conn->rollback(); } catch (...) {}
-                err = std::string("db error: ") + e.what();
-            }
+            });
+            /*************避免数据库死锁的解决方案********************/
+            ok = true;
         } catch (const std::exception& e) {
             err = std::string("db error: ") + e.what();
         }
@@ -797,11 +840,18 @@ void Db::createFriendRequest(std::uint64_t requesterId, std::uint64_t targetId,
             if (!pc) throw std::runtime_error("db pool unavailable");
 
             sql::Connection* conn = pc.get();
-            conn->setAutoCommit(false);
-
             std::uint64_t reqId = 0;
 
-            try {
+            /*************避免数据库死锁的解决方案********************/
+            // P0-1：不再对“可能不存在的唯一键”执行 SELECT ... FOR UPDATE。
+            // REPEATABLE READ 下该锁定读会加 gap lock，与并发 INSERT 需要的
+            // 插入意向锁互相等待，最终触发 1213 死锁。
+            // 这里改为：普通 SELECT 做业务校验 + 直接 INSERT，由唯一键
+            // uk_friend_requests_pair 兜底并发；冲突(1062)时再读状态决定处理方式。
+            // P0-2：整个事务交给 runTransactionWithRetry，遇到 1213/1205 自动重试。
+            runTransactionWithRetry(conn, [&]() {
+                reqId = 0;
+
                 if (requesterId == targetId) throw BizError("cannot add yourself");
 
                 // 目标用户必须存在且未被禁用。
@@ -845,35 +895,8 @@ void Db::createFriendRequest(std::uint64_t requesterId, std::uint64_t targetId,
                         throw BizError("target already sent you a pending request");
                 }
 
-                // 同一方向的已有申请。
-                int oldStatus = -1;
-                {
-                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
-                        "SELECT id, status FROM friend_requests "
-                        "WHERE requester_id=? AND target_id=? FOR UPDATE"));
-                    st->setUInt64(1, requesterId);
-                    st->setUInt64(2, targetId);
-                    std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
-                    if (rs->next()) {
-                        reqId     = rs->getUInt64(1);
-                        oldStatus = rs->getInt(2);
-                    }
-                }
-
-                if (reqId != 0) {
-                    if (oldStatus == 0) throw BizError("request already pending");
-                    if (oldStatus == 1) throw BizError("already friends");
-
-                    // 被拒绝/取消后允许重新申请：复用同一行，重置状态与时间。
-                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
-                        "UPDATE friend_requests "
-                        "SET message=?, status=0, result_notified=0, "
-                        "    created_at=CURRENT_TIMESTAMP(3) "
-                        "WHERE id=?"));
-                    st->setString(1, message);
-                    st->setUInt64(2, reqId);
-                    st->executeUpdate();
-                } else {
+                // 同一方向的申请：直接 INSERT，靠唯一键处理并发。
+                try {
                     std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
                         "INSERT INTO friend_requests"
                         "(requester_id,target_id,message,status,result_notified) "
@@ -883,13 +906,38 @@ void Db::createFriendRequest(std::uint64_t requesterId, std::uint64_t targetId,
                     st->setString(3, message);
                     st->executeUpdate();
                     reqId = lastInsertId(conn);
-                }
+                } catch (sql::SQLException& e) {
+                    if (e.getErrorCode() != 1062) throw;   // 非唯一键冲突交给重试/外层
 
-                conn->commit();
-            } catch (...) {
-                try { conn->rollback(); } catch (...) {}
-                throw;                                // 交给外层区分 BizError / DB 异常
-            }
+                    // 已存在同一方向的申请：普通读状态，决定重复申请 / 已是好友 / 重置。
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "SELECT id, status FROM friend_requests "
+                        "WHERE requester_id=? AND target_id=?"));
+                    st->setUInt64(1, requesterId);
+                    st->setUInt64(2, targetId);
+                    std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
+                    if (!rs->next()) throw;                // 极少数竞态，交给重试
+
+                    reqId = rs->getUInt64(1);
+                    const int oldStatus = rs->getInt(2);
+
+                    if (oldStatus == 0) throw BizError("request already pending");
+                    if (oldStatus == 1) throw BizError("already friends");
+
+                    // 被拒绝/取消后允许重新申请：复用同一行，重置状态与时间。
+                    // 带 status IN (2,3) 条件，避免并发下覆盖别人的处理结果。
+                    std::unique_ptr<sql::PreparedStatement> up(conn->prepareStatement(
+                        "UPDATE friend_requests "
+                        "SET message=?, status=0, result_notified=0, "
+                        "    created_at=CURRENT_TIMESTAMP(3) "
+                        "WHERE id=? AND status IN (2,3)"));
+                    up->setString(1, message);
+                    up->setUInt64(2, reqId);
+                    if (up->executeUpdate() == 0)
+                        throw BizError("request already pending");
+                }
+            });
+            /*************避免数据库死锁的解决方案********************/
 
             // 事务提交后读回完整信息（含双方用户名/昵称），供 HTTP 响应和 TCP 事件使用。
             {
@@ -932,9 +980,12 @@ void Db::handleFriendRequest(std::uint64_t userId, std::uint64_t requestId,
             if (!pc) throw std::runtime_error("db pool unavailable");
 
             sql::Connection* conn = pc.get();
-            conn->setAutoCommit(false);
 
-            try {
+            /*************避免数据库死锁的解决方案********************/
+            // P0-2：整个事务重试，遇到死锁(1213)/锁等待超时(1205)自动重来。
+            // 这里的 SELECT ... FOR UPDATE 命中已存在的主键行，只加行锁不加 gap lock；
+            // 真正需要兜底的是通过申请时 friends 双向写入可能产生的瞬时死锁。
+            runTransactionWithRetry(conn, [&]() {
                 std::uint64_t requesterId = 0;
                 int status = -1;
 
@@ -973,13 +1024,8 @@ void Db::handleFriendRequest(std::uint64_t userId, std::uint64_t requestId,
                     st->setUInt64(2, requestId);
                     st->executeUpdate();
                 }
-
-                conn->commit();
-            } catch (...) {
-                try { conn->rollback(); } catch (...) {}
-                throw;
-            }
-
+            });
+            /*************避免数据库死锁的解决方案********************/
             {
                 std::string sql = std::string(kRequestSelect) + "WHERE fr.id=?";
                 std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(sql));
@@ -1102,8 +1148,10 @@ void Db::updateFriendRemark(std::uint64_t userId, std::uint64_t friendId,
             if (!pc) throw std::runtime_error("db pool unavailable");
 
             sql::Connection* conn = pc.get();
-            conn->setAutoCommit(false);
-            try {
+
+            /*************避免数据库死锁的解决方案********************/
+            // P0-2：整个事务重试，遇到死锁(1213)/锁等待超时(1205)自动回滚重来。
+            runTransactionWithRetry(conn, [&]() {
                 {
                     std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
                         "SELECT 1 FROM friends WHERE user_id=? AND friend_id=? AND status=1"));
@@ -1120,12 +1168,9 @@ void Db::updateFriendRemark(std::uint64_t userId, std::uint64_t friendId,
                     st->setUInt64(3, friendId);
                     st->executeUpdate();
                 }
-                conn->commit();
-                ok = true;
-            } catch (...) {
-                try { conn->rollback(); } catch (...) {}
-                throw;
-            }
+            });
+            /*************避免数据库死锁的解决方案********************/
+            ok = true;
         } catch (const BizError& e) {
             err = e.what();
         } catch (const std::exception& e) {
@@ -1152,8 +1197,10 @@ void Db::deleteFriend(std::uint64_t userId, std::uint64_t friendId, StatusCb cb)
             if (!pc) throw std::runtime_error("db pool unavailable");
 
             sql::Connection* conn = pc.get();
-            conn->setAutoCommit(false);
-            try {
+
+            /*************避免数据库死锁的解决方案********************/
+            // P0-2：整个事务重试，遇到死锁(1213)/锁等待超时(1205)自动回滚重来。
+            runTransactionWithRetry(conn, [&]() {
                 {
                     std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
                         "DELETE FROM friends "
@@ -1175,12 +1222,9 @@ void Db::deleteFriend(std::uint64_t userId, std::uint64_t friendId, StatusCb cb)
                     st->setUInt64(4, userId);
                     st->executeUpdate();
                 }
-                conn->commit();
-                ok = true;
-            } catch (...) {
-                try { conn->rollback(); } catch (...) {}
-                throw;
-            }
+            });
+            /*************避免数据库死锁的解决方案********************/
+            ok = true;
         } catch (const std::exception& e) {
             err = std::string("db error: ") + e.what();
         }
@@ -1210,8 +1254,10 @@ void Db::setFriendBlocked(std::uint64_t userId, std::uint64_t friendId,
             if (!pc) throw std::runtime_error("db pool unavailable");
 
             sql::Connection* conn = pc.get();
-            conn->setAutoCommit(false);
-            try {
+
+            /*************避免数据库死锁的解决方案********************/
+            // P0-2：整个事务重试，遇到死锁(1213)/锁等待超时(1205)自动回滚重来。
+            runTransactionWithRetry(conn, [&]() {
                 if (blocked) {
                     if (userId == friendId) throw BizError("cannot block yourself");
 
@@ -1258,12 +1304,9 @@ void Db::setFriendBlocked(std::uint64_t userId, std::uint64_t friendId,
                     st->setUInt64(2, friendId);
                     st->executeUpdate();
                 }
-                conn->commit();
-                ok = true;
-            } catch (...) {
-                try { conn->rollback(); } catch (...) {}
-                throw;
-            }
+            });
+            /*************避免数据库死锁的解决方案********************/
+            ok = true;
         } catch (const BizError& e) {
             err = e.what();
         } catch (const std::exception& e) {

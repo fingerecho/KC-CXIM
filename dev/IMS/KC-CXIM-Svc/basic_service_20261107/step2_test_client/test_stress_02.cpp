@@ -23,6 +23,7 @@
 #include <thread>
 #include <vector>
 #include <algorithm>
+#include <cmath>
 
 #ifndef _WIN32
 #include <sys/time.h>

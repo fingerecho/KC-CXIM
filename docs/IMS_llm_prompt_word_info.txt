@@ -183,3 +183,11 @@ github:更新：根据TODO-LIST中的3.6.5好友关系模块使用HTTP实现相�
 请在build.sh中补充脚本内容实现功能：当系统为Linux时，将build/bin目录下的内容打包成.deb的格式，要能实现解压.deb之后build/bin下的内容拷贝到/opt/CXIM/bin/目录下；同时生成一个system 的 CXIM.service文件在当前目录，执行build.sh时拷贝到deb包内的CXIM/目录下，CXIM.service使用bin/目录下的tcp_echo_server作为执行目标；在.deb的postinst脚本中将/opt/CXIM/CXIM.service拷贝到~/.config/systemd/user/，然后在postinst脚本中执行systemctl daemon-reload；请完成整个部署的闭环。
 
 请模仿test_friend_client.cpp，造一个可配置并发数的压测程序test_stress_01.cpp ——每个线程跑一遍完整的好友流程（注册→TCP登录→发申请→对方通过→发消息→查列表→删好友），循环执行，最后统计总成功次数和耗时。
+
+请阅读和分析项目代码，找出fixme.md的1~10行的Bug原因，目前来看是数据库死锁，阅读并分析fixme.md的11~78行文档内容，分析其可行性并告诉我结果，将改善或者解决压测死锁的方案以及11~78行文档可行性结果追加到fixme.md文档的末尾。
+
+请按照您给出的fixme.md 中 P0-1 + P0-2的解决方案修改相应的C++文件，注意每块修正的代码加上"/*************避免数据库死锁的解决方案********************/",改完之后在本地测试是否编译通过即可。压测由我自己来操作。
+
+请仿照stress_report/show_svc_status.sh脚本增加show_svc_monitor.sh，实现我这个IM服务的状态监控器，采用bash局部刷新界面内容的方式而不是每次重新clear清屏重绘。界面尽量做得美观一点。
+
+如何补索引，如何用 EXPLAIN 查好友列表 SQL，补索引，请告诉我具体怎么改C++代码和sql代码？
