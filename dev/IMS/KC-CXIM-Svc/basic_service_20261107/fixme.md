@@ -314,3 +314,207 @@ std::uint64_t hi = std::max(userId, requesterId);
 ### 最终结论
 
 **第 11~78 行文档可行，但需修正成因判断与实施顺序：** 本次死锁的直接原因是 `SELECT ... FOR UPDATE` 在唯一键不存在时加 gap lock，与并发 INSERT 的插入意向锁互相等待，并非“双向写 / 加锁顺序相反”。推荐按 **P0-1 去掉间隙锁 → P0-2 事务重试兜底 → P1 修 friends 写入顺序和错误码 → P2 调优并复压** 的顺序实施；只加重试会掩盖问题，只有两者结合才能既让压测跑通，又拿到真实可信的性能数据。
+
+---
+
+# 好友列表查询补索引记录（EXPLAIN + MariaDB 实测）
+
+## 一、为什么补索引
+
+“我的好友列表”查询在 `step1_tcp_echo/db.cpp:1105` 的 `Db::listFriends`：
+
+```sql
+SELECT u.id, u.username, u.nickname, u.avatar_url, f.remark, f.status
+FROM friends f JOIN users u ON u.id=f.friend_id
+WHERE f.user_id=? AND f.status=1
+ORDER BY u.id ASC
+```
+
+`friends` 原有索引（`db/schema.sql`）：
+
+```sql
+PRIMARY KEY (user_id, friend_id)
+KEY idx_friends_friend (friend_id)
+```
+
+存在三个问题：
+
+1. **主键能按 `user_id` 过滤，但不包含 `status`**  
+   `status=1` 只能在回表后过滤；如果某个用户存在大量拉黑行（status=2），会多扫描无用的行。
+2. **`ORDER BY u.id` 是按 join 后的 users 列排序**  
+   优化器不一定能识别它与 `f.friend_id` 等价，容易额外产生 filesort。
+3. **friends 侧的 `remark` 需要回表读取**  
+   查询只需要 friends 的 `friend_id/status/remark` 和 users 的公开资料；如果索引把 `remark` 也带上，friends 侧可完全由索引覆盖。
+
+因此补一个**覆盖型复合索引**：
+
+```sql
+(user_id, status, friend_id, remark)
+```
+
+- `user_id=?` 等值 → `status=1` 等值 → `friend_id` 天然有序；
+- 同时满足 `WHERE` 和 `ORDER BY f.friend_id`，避免 filesort；
+- `status` 和 `remark` 都在索引里，friends 侧无需回表（`Using index`）。
+
+---
+
+## 二、用 EXPLAIN 查好友列表 SQL（已实测）
+
+实测环境：MariaDB 11.8.6，`friends` 初始 892 行。
+
+### 2.1 查前先看索引和真实 userId
+
+```sql
+SHOW INDEX FROM friends;
+
+SELECT user_id, COUNT(*) AS c
+FROM friends WHERE status=1
+GROUP BY user_id ORDER BY c DESC LIMIT 3;
+-- 本次取到 user_id=1388
+```
+
+### 2.2 EXPLAIN 原 SQL
+
+```sql
+EXPLAIN
+SELECT u.id, u.username, u.nickname, u.avatar_url, f.remark, f.status
+FROM friends f JOIN users u ON u.id=f.friend_id
+WHERE f.user_id=1388 AND f.status=1
+ORDER BY u.id ASC;
+```
+
+补索引前、初始小数据（每个用户只有 1 个好友）时结果：
+
+```text
+table  type    possible_keys                          key      rows  Extra
+f      ref     PRIMARY,idx_friends_friend             PRIMARY  1     Using where
+u      eq_ref  PRIMARY                                PRIMARY  1
+```
+
+因为数据太少，优化器直接走 PRIMARY，暂时看不到 filesort。
+
+### 2.3 用测试数据放大后对比
+
+为了验证索引效果，临时给 user_id=1388 造了 651 行测试数据（21 条 `status=1`，630 条 `status=2`），`ANALYZE TABLE friends` 后对比：
+
+**只建 3 列索引 `(user_id,status,friend_id)` 时：**
+
+```text
+table  type    possible_keys                                                key      rows  Extra
+f      ref     PRIMARY,idx_friends_friend,idx_friends_user_status           PRIMARY  651   Using where
+u      eq_ref  PRIMARY                                                      PRIMARY  1
+```
+
+优化器仍然选择 PRIMARY：3 列索引不覆盖 `remark`，需要回表，而 PRIMARY 是聚簇索引、顺序读更便宜。
+
+**升级为覆盖索引 `idx_friends_user_status(user_id,status,friend_id,remark)` 后：**
+
+```text
+table  type    possible_keys                                                          key                      key_len  ref          rows  Extra
+f      ref     PRIMARY,idx_friends_friend,idx_friends_user_status                     idx_friends_user_status  9        const,const  21    Using where; Using index
+u      eq_ref  PRIMARY                                                                PRIMARY                  8        CXIMDB.f...  1
+```
+
+结果：
+
+- `key = idx_friends_user_status`；
+- `rows` 从 651 降到 21；
+- `Extra = Using where; Using index`，friends 侧无回表；
+- 没有 `Using filesort`。
+
+测试数据随后已清理，`friends` 恢复为 892 行，索引保留。
+
+### 2.4 最终实测（清理测试数据后，真实查询）
+
+清理测试数据、保留最终覆盖索引后，对真实用户 1388 再次 EXPLAIN：
+
+```text
+table  type    possible_keys                                                       key                      key_len  ref          rows  Extra
+f      ref     PRIMARY,idx_friends_friend,idx_friends_user_status                  idx_friends_user_status  9        const,const  1     Using where; Using index
+u      eq_ref  PRIMARY                                                             PRIMARY                  8        CXIMDB.f...  1
+```
+
+即使当前每个用户只有 1 个好友，优化器也选择了覆盖索引，并出现 `Using index`；说明索引与改写后的 `ORDER BY f.friend_id` 完全匹配，且 friends 侧无需回表。
+
+---
+
+## 三、补索引的具体解决方案
+
+### 3.1 新库：修改 `db/schema.sql`
+
+在 `friends` 建表语句的索引区域加入（已修改）：
+
+```sql
+    PRIMARY KEY (user_id, friend_id),
+    KEY idx_friends_friend (friend_id),
+    -- /*************补索引增强MariaDB查询性能********************/
+    -- 覆盖「我的好友列表」查询：WHERE user_id=? AND status=1 ORDER BY friend_id。
+    -- remark 也放进索引，避免回表取备注，EXPLAIN 可出现 Using index。
+    KEY idx_friends_user_status (user_id, status, friend_id, remark),
+    -- /*************补索引增强MariaDB查询性能********************/
+```
+
+### 3.2 已有库：执行迁移 SQL
+
+已新增 `db/migrate_add_friends_index.sql`，核心语句：
+
+```sql
+-- /*************补索引增强MariaDB查询性能********************/
+ALTER TABLE friends
+  ADD INDEX idx_friends_user_status (user_id, status, friend_id, remark);
+-- /*************补索引增强MariaDB查询性能********************/
+
+ANALYZE TABLE friends;
+```
+
+本次已在目标库实际执行成功，`SHOW INDEX FROM friends` 确认存在：
+
+```text
+idx_friends_user_status  (user_id, status, friend_id, remark)
+```
+
+> 若索引已存在，重复执行会报 1061 Duplicate key name，可忽略。
+
+### 3.3 C++：调整 `Db::listFriends` 的排序
+
+`step1_tcp_echo/db.cpp` 中把 `ORDER BY u.id ASC` 改为 `ORDER BY f.friend_id ASC`（已修改）：
+
+```cpp
+std::unique_ptr<sql::PreparedStatement> st(pc->prepareStatement(
+    /*************补索引增强MariaDB查询性能********************/
+    // ORDER BY 改为 friends.friend_id：与索引
+    // idx_friends_user_status(user_id,status,friend_id,remark) 的列顺序对齐，
+    // 且 u.id == f.friend_id，返回顺序不变；避免额外 filesort。
+    "SELECT u.id, u.username, u.nickname, u.avatar_url, f.remark, f.status "
+    "FROM friends f JOIN users u ON u.id=f.friend_id "
+    "WHERE f.user_id=? AND f.status=1 "
+    "ORDER BY f.friend_id ASC"
+    /*************补索引增强MariaDB查询性能********************/
+    ));
+```
+
+`u.id = f.friend_id`，所以返回顺序完全等价；但这样排序条件能直接落在 friends 的索引列上。
+
+### 3.4 验证
+
+```sql
+SHOW INDEX FROM friends;
+ANALYZE TABLE friends;
+
+EXPLAIN
+SELECT u.id, u.username, u.nickname, u.avatar_url, f.remark, f.status
+FROM friends f JOIN users u ON u.id=f.friend_id
+WHERE f.user_id=1388 AND f.status=1
+ORDER BY f.friend_id ASC;
+```
+
+验收标准：
+
+- `friends` 侧 `type=ref`、`key=idx_friends_user_status`；
+- `users` 侧 `type=eq_ref`、`key=PRIMARY`；
+- `Extra` 不出现 `Using filesort`；
+- 数据量大且 `status=2` 较多时，`rows` 明显小于主键扫描行数，并出现 `Using index`。
+
+## 四、结论
+
+好友列表的瓶颈不在 `users` 表（主键 eq_ref 已经很好），而在 `friends` 的“按 user_id + status 过滤并按 friend_id 排序”。补 `(user_id, status, friend_id, remark)` 覆盖索引，并把 C++ 的 `ORDER BY u.id` 改为 `ORDER BY f.friend_id` 后，实测 EXPLAIN 可使用该索引、扫描行数从 651 降到 21，并出现 `Using index`、无 filesort。索引已在目标库生效，新库会由 `db/schema.sql` 自动创建。

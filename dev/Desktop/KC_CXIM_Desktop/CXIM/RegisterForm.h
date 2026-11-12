@@ -35,6 +35,11 @@ public:
                                  ui::Window* parent = nullptr);
 
 private:
+    /** 显示父窗口（登录窗口）并将其提升到最前面
+     */
+    void ActivateParentWindow();
+
+private:
     std::shared_ptr<bool> m_alive;
     DString m_themeDirectory;
     DString m_layoutXml;

@@ -68,7 +68,9 @@ struct BizError : std::runtime_error {
 // 注意：必须整个事务重来，不能只重试失败的那条 SQL。
 inline bool isRetryableDbError(sql::SQLException& e) {
     const int code = e.getErrorCode();
-    return code == 1213 || code == 1205;   // 1213=deadlock, 1205=lock wait timeout
+    // 1213=deadlock, 1205=lock wait timeout,
+    // 1020=Record has changed since last read（并发读写同一行时的瞬态错误）
+    return code == 1213 || code == 1205 || code == 1020;
 }
 
 template <typename Fn>
@@ -158,32 +160,77 @@ const char* kRequestSelect =
 // ============================================================================
 class ConnectionPool {
 public:
-    ConnectionPool(const DbConfig& cfg, std::size_t size) : cfg_(cfg) {
-        for (std::size_t i = 0; i < size; ++i) {
-            free_.push_back(makeConn());
-        }
+    ConnectionPool(const DbConfig& cfg, std::size_t size)
+        : cfg_(cfg), max_size_(std::max<std::size_t>(1, size)) {
+        /*************并发登录/注册优化：连接池懒创建***************/
+        // 启动时只建 1 条连接做连通性校验；其余连接在 acquire() 时按需创建。
+        // 这样不会在启动瞬间占满 MariaDB 的 max_connections（避免
+        // "Too many connections"），同时仍能按并发逐步扩到 max_size_。
+        free_.push_back(makeConn());
+        created_ = 1;
+        /*************并发登录/注册优化：连接池懒创建***************/
     }
 
     // 借一条连接；池被停止时返回 nullptr。借出的连接会做健康检查，
-    // 坏连接会被自动重建。
+    // 坏连接会被丢弃，后续 acquire() 再按需重建。
     std::unique_ptr<sql::Connection> acquire() {
         std::unique_ptr<sql::Connection> conn;
         {
             std::unique_lock<std::mutex> lk(mutex_);
-            cv_.wait(lk, [this] { return stopping_ || !free_.empty(); });
-            if (free_.empty()) return nullptr;
-            conn = std::move(free_.front());
-            free_.pop_front();
+            for (;;) {
+                if (stopping_) return nullptr;
+
+                if (!free_.empty()) {
+                    conn = std::move(free_.front());
+                    free_.pop_front();
+                    break;
+                }
+
+                /*************并发登录/注册优化：按需扩容***************/
+                // 没有空闲连接且还没到上限：先占一个名额，再到锁外建连接，
+                // 避免持有锁执行阻塞的网络连接。
+                if (created_ < max_size_) {
+                    ++created_;
+                    lk.unlock();
+                    try {
+                        return makeConn();
+                    } catch (const std::exception& e) {
+                        std::cerr << "[db] create connection failed: "
+                                  << e.what() << std::endl;
+                        lk.lock();
+                        --created_;
+                        cv_.notify_one();
+                        return nullptr;
+                    }
+                }
+                /*************并发登录/注册优化：按需扩容***************/
+
+                // 已到上限：等待其他线程归还连接。
+                cv_.wait(lk, [this] { return stopping_ || !free_.empty(); });
+            }
         }
 
         try {
             if (conn && !conn->isClosed() && conn->isValid()) return conn;
         } catch (...) {
-            // 落到下面重建
+            // 落到下面丢弃坏连接
         }
 
-        try { return makeConn(); }
-        catch (const std::exception& e) {
+        // 坏连接原地替换，created_ 名额先保持不变；只有替换失败才归还名额。
+        {
+            std::lock_guard<std::mutex> lk(mutex_);
+            if (stopping_) {
+                --created_;
+                cv_.notify_one();
+                return nullptr;
+            }
+        }
+        try {
+            return makeConn();
+        } catch (const std::exception& e) {
+            std::lock_guard<std::mutex> lk(mutex_);
+            --created_;
+            cv_.notify_one();
             std::cerr << "[db] reconnect failed: " << e.what() << std::endl;
             return nullptr;
         }
@@ -196,7 +243,7 @@ public:
         cv_.notify_all();
     }
 
-    // 归还连接。如果连接已经坏了，尝试重建一条再放回池里。
+    // 归还连接。健康连接放回池；坏连接直接丢弃，由后续 acquire() 按需重建。
     void release(std::unique_ptr<sql::Connection> conn) {
         bool healthy = false;
         if (conn) {
@@ -214,15 +261,17 @@ public:
         if (stopping_) return;
 
         if (!healthy) {
-            try { conn = makeConn(); }
-            catch (const std::exception& e) {
-                std::cerr << "[db] rebuild connection failed: " << e.what() << std::endl;
-                return;
-            }
+            /*************并发登录/注册优化：坏连接回收名额***************/
+            --created_;
+            cv_.notify_one();
+            /*************并发登录/注册优化：坏连接回收名额***************/
+            return;
         }
         free_.push_back(std::move(conn));
         cv_.notify_one();
     }
+
+    std::size_t max_size() const { return max_size_; }
 
 private:
     std::unique_ptr<sql::Connection> makeConn() {
@@ -246,6 +295,8 @@ private:
     }
 
     DbConfig cfg_;
+    std::size_t max_size_ = 1;   // 连接池上限（按需扩容，不会启动时全部创建）
+    std::size_t created_  = 0;   // 当前已创建（含借出）的连接数
     std::mutex mutex_;
     std::condition_variable cv_;
     std::deque<std::unique_ptr<sql::Connection>> free_;
@@ -280,6 +331,9 @@ Db::Db(boost::asio::io_context& io, const DbConfig& cfg,
        std::size_t pool_size, std::size_t worker_count)
     : io_(io),
       pool_(std::make_unique<ConnectionPool>(cfg, pool_size)) {
+    std::cout << "[db] pool max=" << pool_->max_size()
+              << ", workers=" << worker_count
+              << " (connections are created lazily)" << std::endl;
     for (std::size_t i = 0; i < worker_count; ++i) {
         workers_.emplace_back([this] { workerLoop(); });
     }
@@ -1113,10 +1167,16 @@ void Db::listFriends(std::uint64_t userId, FriendListCb cb) {
             if (!pc) throw std::runtime_error("db pool unavailable");
 
             std::unique_ptr<sql::PreparedStatement> st(pc->prepareStatement(
+                /*************补索引增强MariaDB查询性能********************/
+                // ORDER BY 改为 friends.friend_id：与索引
+                // idx_friends_user_status(user_id,status,friend_id,remark) 的列顺序对齐，
+                // 且 u.id == f.friend_id，返回顺序不变；避免额外 filesort。
                 "SELECT u.id, u.username, u.nickname, u.avatar_url, f.remark, f.status "
                 "FROM friends f JOIN users u ON u.id=f.friend_id "
                 "WHERE f.user_id=? AND f.status=1 "
-                "ORDER BY u.id ASC"));
+                "ORDER BY f.friend_id ASC"
+                /*************补索引增强MariaDB查询性能********************/
+                ));
             st->setUInt64(1, userId);
 
             std::unique_ptr<sql::ResultSet> rs(st->executeQuery());

@@ -87,6 +87,11 @@ CREATE TABLE IF NOT EXISTS friends (
                                 ON UPDATE CURRENT_TIMESTAMP(3),
     PRIMARY KEY (user_id, friend_id),
     KEY idx_friends_friend (friend_id),
+    -- /*************补索引增强MariaDB查询性能********************/
+    -- 覆盖「我的好友列表」查询：WHERE user_id=? AND status=1 ORDER BY friend_id。
+    -- remark 也放进索引，避免回表取备注，EXPLAIN 可出现 Using index。
+    KEY idx_friends_user_status (user_id, status, friend_id, remark),
+    -- /*************补索引增强MariaDB查询性能********************/
     CONSTRAINT fk_friends_user   FOREIGN KEY (user_id)   REFERENCES users(id) ON DELETE CASCADE,
     CONSTRAINT fk_friends_friend FOREIGN KEY (friend_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci

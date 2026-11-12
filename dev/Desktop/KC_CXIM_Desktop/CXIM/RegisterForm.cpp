@@ -207,6 +207,10 @@ void RegisterForm::OnInitWindow()
                 if (logger) {
                     logger->info("注册成功，账号: {}", username);
                 }
+                // 在注册窗口仍处于前台时激活登录窗口：
+                // 若等到窗口关闭后再激活，系统可能因前台激活限制而拒绝，
+                // 导致登录窗口只显示在 z 序最底层。
+                ActivateParentWindow();
                 CloseWnd();
             }
             else {
@@ -238,10 +242,28 @@ void RegisterForm::OnCloseWindow()
             ui::WindowBase::PostQuitMsg(0);
         }
     }
-    else if (parent != nullptr) {
-        parent->ShowWindow(ui::kSW_SHOW_NORMAL);
+    else {
+        // 兜底处理：确保登录窗口显示并被提到最前面，避免被其他窗口遮挡
+        ActivateParentWindow();
     }
     ui::WindowImplBase::OnCloseWindow();
+}
+
+void RegisterForm::ActivateParentWindow()
+{
+    ui::Window* parent = m_parentWindow;
+    if (parent == nullptr) {
+        return;
+    }
+
+    parent->ShowWindow(ui::kSW_SHOW_NORMAL);
+    // 仅调用 SetWindowForeground 时，系统可能因前台激活限制而拒绝，导致窗口仍沉在 z 序底部；
+    // 这里先用 SetWindowPos(HWND_TOP) 强制提升 z 序，再尝试激活窗口获得焦点。
+    parent->SetWindowPos(ui::InsertAfterWnd(ui::InsertAfterFlag::kHWND_TOP),
+                         0, 0, 0, 0,
+                         ui::kSWP_NOMOVE | ui::kSWP_NOSIZE | ui::kSWP_NOACTIVATE);
+    parent->SetWindowForeground();
+    parent->SetWindowFocus();
 }
 
 void RegisterForm::ShowCustomWindow(const DString& class_name, const DString& theme_directory,

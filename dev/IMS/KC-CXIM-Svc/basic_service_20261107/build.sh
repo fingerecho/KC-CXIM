@@ -6,12 +6,14 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 DEB_PACKAGE_NAME="cxim"
 DEB_PACKAGE_VERSION="1.0.0"
 DEB_PACKAGE_ARCH=""
+DB_POOL_SIZE=50
+DB_WORKER_COUNT=8
 
 # 生成 systemd 用户级服务文件到项目当前目录。
 # 安装后 CXIM.service 位于 /opt/CXIM/CXIM.service，由 postinst 拷贝到
 # 目标用户的 ~/.config/systemd/user/ 下。
 generate_service_file() {
-    cat > "${SCRIPT_DIR}/CXIM.service" <<'EOF'
+    cat > "${SCRIPT_DIR}/CXIM.service" <<EOF
 [Unit]
 Description=CXIM IMS Server
 After=network-online.target
@@ -23,6 +25,8 @@ WorkingDirectory=/opt/CXIM
 ExecStart=/opt/CXIM/bin/tcp_echo_server
 Environment=DB_CONFIG=/opt/CXIM/DBConfig.ini
 Environment=JWT_CONFIG=/opt/CXIM/JWTConfig.json
+Environment=DB_POOL_SIZE=${DB_POOL_SIZE}
+Environment=DB_WORKER_COUNT=${DB_WORKER_COUNT}
 Restart=on-failure
 RestartSec=3
 StandardOutput=journal

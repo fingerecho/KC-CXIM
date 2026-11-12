@@ -21,10 +21,11 @@
 //   6) 连接断开时从 SessionManager 注销。
 //
 // 线程模型（数据库接入后）：
-//   - io_context 线程：读包/解包/写 socket/维护 session 状态；
+//   - io_context 可能由多个线程同时 run()；
+//   - 每条连接用独立的 strand_ 串行化自己的读/写/DB 回调，避免多线程数据竞争；
 //   - DB worker 线程：执行阻塞 SQL；
-//   - DB 完成后通过 boost::asio::post 回到 io_context，再操作 socket。
-//   因此本类所有成员函数都只在 io_context 线程里执行（deliver 也是）。
+//   - DB 完成后通过 boost::asio::post 回到 io_context，再切回本连接的 strand。
+//   - deliver() 会把消息 post 到目标连接的 strand 上。
 // ============================================================================
 
 namespace kc {
@@ -65,8 +66,17 @@ private:
     void do_write();
     void reset_idle_timer();
 
+    // 真正的关闭逻辑；close() 负责把它切回本连接的 strand 再执行。
+    void do_close();
+
     boost::asio::ip::tcp::socket socket_;
     boost::asio::steady_timer     idle_timer_;
+
+    /*************并发登录/注册优化：每条连接一个 strand***************/
+    // 多线程 run() 同一个 io_context 时，本连接的读/写/DB 回调可能落到不同线程；
+    // strand 保证这些回调串行执行，session 内部状态无需额外加锁。
+    boost::asio::strand<boost::asio::any_io_executor> strand_;
+    /*************并发登录/注册优化：每条连接一个 strand***************/
 
     SessionManager&               manager_;
     Db&                           db_;

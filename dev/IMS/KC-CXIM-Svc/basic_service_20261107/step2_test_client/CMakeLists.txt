@@ -27,6 +27,14 @@ target_include_directories(test_stress_01 PRIVATE ${CMAKE_SOURCE_DIR}/step1_tcp_
 add_executable(test_stress_02 test_stress_02.cpp)
 target_include_directories(test_stress_02 PRIVATE ${CMAKE_SOURCE_DIR}/step1_tcp_echo)
 
+# ----------------------------------------------------------------------------
+# 好友全生命周期分阶段压测：
+#   注册 -> TCP 登录 -> 对 N 个好友发申请 -> N 个好友通过
+#   -> 互相发消息 -> 互相查列表 -> 互相删好友。
+# ----------------------------------------------------------------------------
+add_executable(test_stress_03 test_stress_03.cpp)
+target_include_directories(test_stress_03 PRIVATE ${CMAKE_SOURCE_DIR}/step1_tcp_echo)
+
 # 用到 std::thread / sleep_for，需要线程库。
 target_link_libraries(test_client PRIVATE Threads::Threads)
 
@@ -34,6 +42,7 @@ target_link_libraries(test_client_another PRIVATE Threads::Threads)
 target_link_libraries(test_friend_client PRIVATE Threads::Threads)
 target_link_libraries(test_stress_01 PRIVATE Threads::Threads)
 target_link_libraries(test_stress_02 PRIVATE Threads::Threads)
+target_link_libraries(test_stress_03 PRIVATE Threads::Threads)
 
 # ----------------------------------------------------------------------------
 # 交互式聊天客户端 A / B：

@@ -18,13 +18,20 @@ session::session(boost::asio::ip::tcp::socket socket, SessionManager& manager,
                  Db& db, TokenService& tokens)
     : socket_(std::move(socket)),
       idle_timer_(socket_.get_executor()),
+      strand_(boost::asio::make_strand(socket_.get_executor())),
       manager_(manager),
       db_(db),
       tokens_(tokens) {}
 
 void session::start() {
-    do_read_header();
-    reset_idle_timer();
+    /*************并发登录/注册优化：start 也 post 到 strand***************/
+    auto self = shared_from_this();
+    boost::asio::post(strand_, [self] {
+        if (self->closed_) return;
+        self->do_read_header();
+        self->reset_idle_timer();
+    });
+    /*************并发登录/注册优化：start 也 post 到 strand***************/
 }
 
 // ---------------------------------------------------------------------------
@@ -34,6 +41,7 @@ void session::do_read_header() {
     auto self = shared_from_this();
 
     boost::asio::async_read(socket_, boost::asio::buffer(header_, frame::HEADER_LEN),
+        boost::asio::bind_executor(strand_,
         [this, self](boost::system::error_code ec, std::size_t /*bytes_read*/) {
             if (ec) { close(); return; }
 
@@ -42,7 +50,7 @@ void session::do_read_header() {
 
             body_.resize(len);
             do_read_body(len);
-        });
+        }));
 }
 
 // ---------------------------------------------------------------------------
@@ -51,6 +59,7 @@ void session::do_read_header() {
 void session::do_read_body(std::uint32_t body_len) {
     auto self = shared_from_this();
     boost::asio::async_read(socket_, boost::asio::buffer(body_.data(), body_len),
+        boost::asio::bind_executor(strand_,
         [this, self](boost::system::error_code ec, std::size_t /*bytes_read*/) {
             if (ec) { close(); return; }
 
@@ -67,7 +76,7 @@ void session::do_read_body(std::uint32_t body_len) {
 
             // 读写解耦：处理完立刻继续读下一条。
             do_read_header();
-        });
+        }));
 }
 
 // ---------------------------------------------------------------------------
@@ -79,13 +88,14 @@ void session::reset_idle_timer() {
     idle_timer_.expires_after(IDLE_TIMEOUT);
 
     auto self = shared_from_this();
-    idle_timer_.async_wait([this, self](boost::system::error_code ec) {
-        if (ec) return;
+    idle_timer_.async_wait(boost::asio::bind_executor(strand_,
+        [this, self](boost::system::error_code ec) {
+            if (ec) return;
 
-        std::cout << "[timeout] user " << user_id_ << " idle > "
-                  << IDLE_TIMEOUT.count() << "s, kick" << std::endl;
-        close();
-    });
+            std::cout << "[timeout] user " << user_id_ << " idle > "
+                      << IDLE_TIMEOUT.count() << "s, kick" << std::endl;
+            close();
+        }));
 }
 
 // ---------------------------------------------------------------------------
@@ -197,6 +207,9 @@ void session::do_send(const Message& msg) {
     db_.sendMessage(sender, to, type, content, clientMsgId,
         [this, self, sender, to, type, content]
         (bool ok, const std::string& err, const StoredMessage& sm) {
+            /*************并发登录/注册优化：DB 回调切回本连接 strand***************/
+            boost::asio::post(strand_,
+                [this, self, sender, to, type, content, ok, err, sm]() {
             if (closed_) return;
 
             if (!ok) {
@@ -234,6 +247,8 @@ void session::do_send(const Message& msg) {
                 std::cout << "[route] user " << to
                           << " offline, stored for push" << std::endl;
             }
+                });
+            /*************并发登录/注册优化：DB 回调切回本连接 strand***************/
         });
 }
 
@@ -264,6 +279,9 @@ void session::do_history(const Message& msg) {
     db_.fetchHistory(uid, peer, before, limit,
         [this, self, uid](bool ok, const std::string& err,
                           std::vector<StoredMessage> msgs) {
+            /*************并发登录/注册优化：DB 回调切回本连接 strand***************/
+            boost::asio::post(strand_,
+                [this, self, uid, ok, err, msgs = std::move(msgs)]() {
             if (closed_) return;
             if (!ok) {
                 send_error(err.empty() ? "history failed" : err, uid);
@@ -276,6 +294,8 @@ void session::do_history(const Message& msg) {
             resp.to      = uid;
             resp.content = serialize_history(msgs);
             send_message(resp);
+                });
+            /*************并发登录/注册优化：DB 回调切回本连接 strand***************/
         });
 }
 
@@ -309,6 +329,9 @@ void session::push_offline() {
     db_.fetchOffline(uid, 200,
         [this, self, uid](bool ok, const std::string& err,
                           std::vector<StoredMessage> msgs) {
+            /*************并发登录/注册优化：DB 回调切回本连接 strand***************/
+            boost::asio::post(strand_,
+                [this, self, uid, ok, err, msgs = std::move(msgs)]() {
             if (closed_) return;
             if (!ok) {
                 std::cerr << "[offline] " << err << std::endl;
@@ -332,6 +355,8 @@ void session::push_offline() {
                 std::cout << "[offline] pushed " << msgs.size()
                           << " message(s) to user " << uid << std::endl;
             }
+                });
+            /*************并发登录/注册优化：DB 回调切回本连接 strand***************/
         });
 }
 
@@ -345,8 +370,8 @@ void session::push_offline() {
 //
 // 为什么用两级回调而不是一次性 join？
 //   两类数据来自同一张表的两种查询条件，分开查语义更清晰，也方便分别限流。
-//   回调都在 io_context 线程执行，send_message() 内部只操作本连接的写队列，
-//   不存在跨线程竞争。
+//   DB 回调可能在任意 io 线程执行，因此每个回调都 post 回本连接的 strand，
+//   再调用 send_message()，保证写队列只被一个线程访问。
 // ---------------------------------------------------------------------------
 void session::push_friend_events() {
     const std::uint64_t uid = user_id_;
@@ -355,6 +380,9 @@ void session::push_friend_events() {
     db_.fetchPendingIncoming(uid, 100,
         [this, self, uid](bool ok, const std::string& err,
                           std::vector<FriendRequestInfo> reqs) {
+            /*************并发登录/注册优化：DB 回调切回本连接 strand***************/
+            boost::asio::post(strand_,
+                [this, self, uid, ok, err, reqs = std::move(reqs)]() {
             if (closed_) return;
             if (!ok) {
                 std::cerr << "[friend] fetch pending failed: " << err << std::endl;
@@ -379,6 +407,8 @@ void session::push_friend_events() {
             db_.fetchUnnotifiedResults(uid, 100,
                 [this, self, uid](bool ok2, const std::string& err2,
                                   std::vector<FriendRequestInfo> results) {
+                    boost::asio::post(strand_,
+                        [this, self, uid, ok2, err2, results = std::move(results)]() {
                     if (closed_) return;
                     if (!ok2) {
                         std::cerr << "[friend] fetch results failed: " << err2 << std::endl;
@@ -409,14 +439,26 @@ void session::push_friend_events() {
                                 }
                             });
                     }
+                        });
+                    /*************并发登录/注册优化：DB 回调切回本连接 strand***************/
                 });
+                });
+            /*************并发登录/注册优化：DB 回调切回本连接 strand***************/
         });
 }
 
 // ---------------------------------------------------------------------------
 // 投递入口
 // ---------------------------------------------------------------------------
-void session::deliver(const Message& msg) { send_message(msg); }
+void session::deliver(const Message& msg) {
+    /*************并发登录/注册优化：投递切回目标连接的 strand***************/
+    auto self = shared_from_this();
+    boost::asio::post(strand_, [self, msg] {
+        if (self->closed_) return;
+        self->send_message(msg);
+    });
+    /*************并发登录/注册优化：投递切回目标连接的 strand***************/
+}
 
 // ---------------------------------------------------------------------------
 // 错误通知
@@ -451,18 +493,29 @@ void session::do_write() {
     auto self = shared_from_this();
 
     boost::asio::async_write(socket_, boost::asio::buffer(write_queue_.front()),
+        boost::asio::bind_executor(strand_,
         [this, self](boost::system::error_code ec, std::size_t /*bytes_written*/) {
             if (ec) { close(); return; }
 
             write_queue_.pop_front();
             if (!write_queue_.empty()) do_write();
-        });
+        }));
 }
 
 // ---------------------------------------------------------------------------
-// 关闭
+// 关闭：可能从本连接的回调、也可能从“踢旧连接”的另一个 session 线程调用。
+// 统一切回本连接的 strand 再执行真正的关闭，保证 closed_/socket_ 不被并发访问。
 // ---------------------------------------------------------------------------
 void session::close() {
+    if (strand_.running_in_this_thread()) {
+        do_close();
+        return;
+    }
+    auto self = shared_from_this();
+    boost::asio::post(strand_, [self] { self->do_close(); });
+}
+
+void session::do_close() {
     if (closed_) return;
     closed_ = true;
 

@@ -1,7 +1,10 @@
 #include <iostream>                        // std::cout / std::cerr：启动与错误日志
 #include <cstdlib>                         // std::getenv / std::stoi：读取环境变量与端口参数
 #include <string>                          // std::string：配置路径
-#include <boost/asio/io_context.hpp>       // io_context：整个服务唯一的事件循环
+#include <algorithm>                       // std::max
+#include <thread>                          // std::thread：多线程运行 io_context
+#include <vector>                          // std::vector：io 线程集合
+#include <boost/asio/io_context.hpp>       // io_context：整个服务共享的事件循环
 
 #include "server.h"                        // TCP 长连接服务器
 #include "http_server.h"                   // 注册/登录 HTTP 短连接服务器（Boost.Beast）
@@ -14,10 +17,10 @@
 // 程序入口
 // ----------------------------------------------------------------------------
 // 启动顺序：
-//   1) 读 DBConfig.ini，初始化连接池（4 条）+ DB 工作线程池（2 个）；
+//   1) 读 DBConfig.ini，初始化连接池（100 条）+ DB 工作线程池（16 个）；
 //   2) 读 JWTConfig.json，构造全局共享的 TokenService；
 //   3) 在同一 io_context 里创建 TCP server 与 HTTP server（两个 acceptor）；
-//   4) io.run() 进入网络事件循环，且只跑一个线程。
+//   4) 用多个线程同时 run() 这个 io_context，充分利用多核处理高并发连接。
 //
 // 用法：
 //   tcp_echo_server [tcp_port] [DBConfig.ini] [http_port]
@@ -51,13 +54,31 @@ int main(int argc, char* argv[]) {
     }
 
     try {
-        boost::asio::io_context io;                              // 单线程事件循环：TCP 与 HTTP 共用
+        boost::asio::io_context io;                              // 多线程共享的事件循环：TCP 与 HTTP 共用
 
         // 读取数据库配置并初始化 DB 层。
         kc::DbConfig cfg = kc::DbConfig::load(cfgPath);          // 解析 INI
         std::cout << "[db] connecting to " << cfg.host << ":" << cfg.port
                   << "/" << cfg.dbname << " as " << cfg.user << std::endl;
-        kc::Db db(io, cfg, /*pool_size=*/4, /*worker_count=*/2); // 4 条连接 + 2 个 worker
+        /*************并发登录/注册优化：连接池与 DB worker 扩容***************/
+        // 100 个好友并发注册/登录时，原 4 条连接 + 2 个 worker 会成为瓶颈。
+        // 连接池改为“按需创建”：启动时只建 1 条，运行中最多扩到 poolSize。
+        // 这样不会在启动瞬间触发 MariaDB "Too many connections"。
+        // 可通过环境变量按部署环境调整：
+        //   DB_POOL_SIZE   连接池上限（默认 100）
+        //   DB_WORKER_COUNT  DB 工作线程数（默认 16）
+        unsigned int poolSize = 100;
+        unsigned int workerCount = 16;
+        if (const char* env = std::getenv("DB_POOL_SIZE")) {
+            try { int v = std::stoi(env); if (v > 0) poolSize = static_cast<unsigned int>(v); } catch (...) {}
+        }
+        if (const char* env = std::getenv("DB_WORKER_COUNT")) {
+            try { int v = std::stoi(env); if (v > 0) workerCount = static_cast<unsigned int>(v); } catch (...) {}
+        }
+        // 注意：实际并发连接数不会超过 workerCount；poolSize 只是上限。
+        // 若 MariaDB max_connections 较小，请同时调小 DB_WORKER_COUNT/DB_POOL_SIZE。
+        kc::Db db(io, cfg, poolSize, workerCount);
+        /*************并发登录/注册优化：连接池与 DB worker 扩容***************/
 
         // 加载 JWT 配置并构造 token 服务：HTTP 登录签发、TCP 登录验签共用同一实例。
         kc::JwtConfig jwtCfg = kc::JwtConfig::load(jwtPath);     // 读取 jwt_secret / jwt_issuer
@@ -70,7 +91,32 @@ int main(int argc, char* argv[]) {
         kc::http_server http(io, httpPort, db, tokens, srv.sessions());
         srv.run();                                               // 打印 TCP 端口
         http.run();                                              // 打印 HTTP 端口
-        io.run();                                                // 单线程运行，不引入 io.run() 多线程
+
+        /*************并发登录/注册优化：多线程运行 io_context***************/
+        // 原来只在 main 线程里调用一次 io.run()，高并发时 accept/读写回调全部挤在
+        // 单线程上。Boost.Asio 的 io_context 支持多线程同时 run()，这里按 CPU
+        // 核数启动多个 io 线程（至少 4 个，最多 16 个）。
+        unsigned int hw = std::thread::hardware_concurrency();
+        unsigned int ioThreadCount = std::max(4u, hw);
+        if (ioThreadCount > 16u) ioThreadCount = 16u;
+        std::cout << "[server] io threads=" << ioThreadCount << std::endl;
+
+        std::vector<std::thread> ioThreads;
+        ioThreads.reserve(ioThreadCount);
+        for (unsigned int i = 0; i < ioThreadCount; ++i) {
+            ioThreads.emplace_back([&io, i] {
+                try {
+                    io.run();
+                } catch (const std::exception& e) {
+                    std::cerr << "[io] thread " << i << " exception: "
+                              << e.what() << std::endl;
+                }
+            });
+        }
+        for (auto& t : ioThreads) {
+            if (t.joinable()) t.join();
+        }
+        /*************并发登录/注册优化：多线程运行 io_context***************/
     } catch (const std::exception& e) {
         std::cerr << "[server] fatal: " << e.what() << std::endl; // 配置/启动失败
         return 1;                                                 // 非 0 退出码
