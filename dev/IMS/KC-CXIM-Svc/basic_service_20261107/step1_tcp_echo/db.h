@@ -64,6 +64,9 @@ public:
                                              const FriendRequestInfo& req)>;
     using RequestListCb = std::function<void(bool ok, const std::string& err,
                                              std::vector<FriendRequestInfo> reqs)>;
+    // BE-SEND-01：发送前的关系校验回调，带回“是否好友”和“是否存在拉黑”。
+    using RelationCb = std::function<void(bool ok, const std::string& err,
+                                          bool areFriends, bool blocked)>;
 
     // pool_size：连接池大小（建议 4~8）；worker_count：DB 工作线程数（建议 2~4）。
     Db(boost::asio::io_context& io, const DbConfig& cfg,
@@ -154,6 +157,12 @@ public:
     // 取消拉黑只删除这条状态为 2 的行。
     void setFriendBlocked(std::uint64_t userId, std::uint64_t friendId,
                           bool blocked, StatusCb cb);
+
+    // BE-SEND-01：发消息前校验 sender 与 to 的关系（双向好友 / 拉黑）。
+    // areFriends 仅在双向都存在 status=1 行时为 true；
+    // 任一方向 status=2 则 blocked=true（用于区分错误文案）。
+    // 陌生人与被对方拉黑都会得到 areFriends=false，从而在落库前被拒绝。
+    void areFriends(std::uint64_t sender, std::uint64_t to, RelationCb cb);
 
     // BE-FRIEND-06：登录时补推“待处理申请”（离线补偿）。
     void fetchPendingIncoming(std::uint64_t userId, int limit, RequestListCb cb);

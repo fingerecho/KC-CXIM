@@ -5,6 +5,9 @@
 #include "TestTencentCloudSDKApp.h"
 #include "HttpClient.h"
 #include "Resource.h"
+#ifdef CXIM_IMS_CORE_SDK_VERSION
+#include "TcpClient.h"
+#endif
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/rotating_file_sink.h> 
 #include <Windows.h>
@@ -52,8 +55,13 @@ void LoadClientHttpConfig()
         return;
     }
 
+    // [server] 段：HTTP 服务；[tcp_server] 段：TCP 长连接服务
     std::string host = HttpClient::Instance().Host();
     uint16_t port = HttpClient::Instance().Port();
+    std::string tcpHost = host;
+    uint16_t tcpPort = 8888;
+
+    std::string section;
     std::string line;
     while (std::getline(file, line)) {
         line = TrimConfigValue(line);
@@ -61,6 +69,9 @@ void LoadClientHttpConfig()
             continue;
         }
         if ((line.front() == '[') && (line.back() == ']')) {
+            section = line.substr(1, line.size() - 2);
+            std::transform(section.begin(), section.end(), section.begin(),
+                [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
             continue;
         }
         const size_t equalPos = line.find('=');
@@ -69,27 +80,50 @@ void LoadClientHttpConfig()
         }
         const std::string key = TrimConfigValue(line.substr(0, equalPos));
         const std::string value = TrimConfigValue(line.substr(equalPos + 1));
-        if (key == "host") {
-            if (!value.empty()) {
-                host = value;
-            }
-        }
-        else if (key == "port") {
+        const bool isTcp = (section == "tcp_server");
+
+        uint16_t parsedPort = 0;
+        if (key == "port") {
             try {
                 const int valuePort = std::stoi(value);
                 if ((valuePort > 0) && (valuePort <= 65535)) {
-                    port = static_cast<uint16_t>(valuePort);
+                    parsedPort = static_cast<uint16_t>(valuePort);
                 }
             }
             catch (...) {
+            }
+            if (isTcp) {
+                if (parsedPort != 0) {
+                    tcpPort = parsedPort;
+                }
+            }
+            else if (parsedPort != 0) {
+                port = parsedPort;
+            }
+        }
+        else if (key == "host") {
+            if (!value.empty()) {
+                if (isTcp) {
+                    tcpHost = value;
+                }
+                else {
+                    host = value;
+                }
             }
         }
     }
 
     HttpClient::Instance().SetServer(host, port);
+#ifdef CXIM_IMS_CORE_SDK_VERSION
+    if (tcpHost.empty()) {
+        tcpHost = host;
+    }
+    TcpClient::Instance().SetServer(tcpHost, tcpPort);
+#endif
     auto logger = spdlog::get("im_file_logger");
     if (logger) {
-        logger->info("HTTP 服务配置加载完成，host: {}, port: {}", host, port);
+        logger->info("服务配置加载完成，HTTP host: {}, port: {}; TCP host: {}, port: {}",
+                     host, port, tcpHost, tcpPort);
     }
 }
 

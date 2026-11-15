@@ -4,6 +4,10 @@
 #include "RegisterForm.h"
 #include "TencentImService.h"
 
+#ifdef CXIM_IMS_CORE_SDK_VERSION
+#include "ImsSession.h"
+#endif
+
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
@@ -161,6 +165,9 @@ void LoginForm::OnInitWindow()
             if (logger) {
                 logger->info("登录成功，账号: {}, userId: {}", username, loginResult.userId);
             }
+
+            // 写入全局会话上下文，供后续 HTTP 鉴权与 TCP 登录使用
+            ImsSession::Instance().SetLoginResult(loginResult.userId, loginResult.username, loginResult.token);
 
             ChatForm* chatForm = new ChatForm(_T("basic_layout"), _T(""), _T("wechat.xml"));
             if (chatForm->CreateWnd(nullptr, ui::WindowCreateParam(_T("克铖多媒体"), true))) {

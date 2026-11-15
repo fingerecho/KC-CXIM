@@ -244,12 +244,18 @@ xcopy /Y /D "$(ProjectDir)CXIM_Desktop_config.ini" "$(TargetDir)"</Command>
     <ClInclude Include="CXIMAppConfig.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="HttpClient.h" />
+    <ClInclude Include="ImsJson.h" />
+    <ClInclude Include="ImsSession.h" />
+    <ClInclude Include="ImsTypes.h" />
     <ClInclude Include="LoginForm.h" />
     <ClInclude Include="MainThread.h" />
     <ClInclude Include="RegisterForm.h" />
     <ClInclude Include="Resource.h" />
+    <ClInclude Include="TcpClient.h" />
+    <ClInclude Include="TencentImService.h" />
     <ClInclude Include="targetver.h" />
     <ClInclude Include="TestApplication.h" />
+    <ClInclude Include="TestTencentCloudSDKApp.h" />
   </ItemGroup>
   <ItemGroup>
     <Image Include="CXIM.ico" />
@@ -257,11 +263,17 @@ xcopy /Y /D "$(ProjectDir)CXIM_Desktop_config.ini" "$(TargetDir)"</Command>
   <ItemGroup>
     <ClCompile Include="ChatForm.cpp" />
     <ClCompile Include="HttpClient.cpp" />
+    <ClCompile Include="ImsJson.cpp" />
+    <ClCompile Include="ImsSession.cpp" />
+    <ClCompile Include="ImsTypes.cpp" />
     <ClCompile Include="LoginForm.cpp" />
     <ClCompile Include="MainThread.cpp" />
     <ClCompile Include="RegisterForm.cpp" />
+    <ClCompile Include="TcpClient.cpp" />
+    <ClCompile Include="TencentImService.cpp" />
     <ClCompile Include="main_windows.cpp" />
     <ClCompile Include="TestApplication.cpp" />
+    <ClCompile Include="TestTencentCloudSDKApp.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -204,52 +204,79 @@ void session::do_send(const Message& msg) {
     const std::uint64_t clientMsgId = msg.msg_id;   // 客户端临时消息号，用于去重
 
     auto self = shared_from_this();
-    db_.sendMessage(sender, to, type, content, clientMsgId,
-        [this, self, sender, to, type, content]
-        (bool ok, const std::string& err, const StoredMessage& sm) {
-            /*************并发登录/注册优化：DB 回调切回本连接 strand***************/
+
+    /****************发送前先校验好友/拉黑关系：陌生人或被对方拉黑一律拒绝，不落库、不进离线队列****************/
+    db_.areFriends(sender, to,
+        [this, self, sender, to, type, content, clientMsgId]
+        (bool ok, const std::string& err, bool areFriends, bool blocked) {
+            /*************并发登录/注册优化：关系校验回调切回本连接 strand***************/
             boost::asio::post(strand_,
-                [this, self, sender, to, type, content, ok, err, sm]() {
+                [this, self, sender, to, type, content, clientMsgId,
+                 ok, err, areFriends, blocked]() {
             if (closed_) return;
 
             if (!ok) {
-                send_error(err.empty() ? "send failed" : err, sender);
+                send_error(err.empty() ? "relation check failed" : err, sender);
+                return;
+            }
+            if (!areFriends) {
+                /****************文案区分：被对方拉黑 vs 非好友（陌生人）****************/
+                send_error(blocked ? "blocked by recipient" : "not friends", sender);
                 return;
             }
 
-            // 告诉发送方服务端分配的 msg_id / seq / ts
-            Message ack;
-            ack.type            = MsgType::SendAck;
-            ack.to              = sender;
-            ack.msg_id          = sm.msg_id;
-            ack.conversation_id = sm.conversation_id;
-            ack.seq             = sm.seq;
-            ack.ts              = sm.ts;
-            ack.content         = sm.duplicate ? "duplicate" : "sent";
-            send_message(ack);
+            // 关系校验通过，执行原有“落库 + 在线投递”。
+            // 内层回调参数改名 sok/serr，避免与外层 areFriends 的 ok/err 混淆。
+            db_.sendMessage(sender, to, type, content, clientMsgId,
+                [this, self, sender, to, type, content]
+                (bool sok, const std::string& serr, const StoredMessage& sm) {
+                    /*************并发登录/注册优化：DB 回调切回本连接 strand***************/
+                    boost::asio::post(strand_,
+                        [this, self, sender, to, type, content, sok, serr, sm]() {
+                    if (closed_) return;
 
-            // 接收者在线则直接投递；离线消息已经由 DB 层写入 offline_messages。
-            if (auto peer = manager_.find(to)) {
-                Message out;
-                out.type            = static_cast<MsgType>(type);
-                out.from            = sender;
-                out.to              = to;
-                out.msg_id          = sm.msg_id;
-                out.conversation_id = sm.conversation_id;
-                out.seq             = sm.seq;
-                out.ts              = sm.ts;
-                out.content         = content;
-                peer->deliver(out);
+                    if (!sok) {
+                        send_error(serr.empty() ? "send failed" : serr, sender);
+                        return;
+                    }
 
-                std::cout << "[route] " << sender << " -> " << to
-                          << " : " << content << std::endl;
-            } else {
-                std::cout << "[route] user " << to
-                          << " offline, stored for push" << std::endl;
-            }
+                    // 告诉发送方服务端分配的 msg_id / seq / ts
+                    Message ack;
+                    ack.type            = MsgType::SendAck;
+                    ack.to              = sender;
+                    ack.msg_id          = sm.msg_id;
+                    ack.conversation_id = sm.conversation_id;
+                    ack.seq             = sm.seq;
+                    ack.ts              = sm.ts;
+                    ack.content         = sm.duplicate ? "duplicate" : "sent";
+                    send_message(ack);
+
+                    // 接收者在线则直接投递；离线消息已经由 DB 层写入 offline_messages。
+                    if (auto peer = manager_.find(to)) {
+                        Message out;
+                        out.type            = static_cast<MsgType>(type);
+                        out.from            = sender;
+                        out.to              = to;
+                        out.msg_id          = sm.msg_id;
+                        out.conversation_id = sm.conversation_id;
+                        out.seq             = sm.seq;
+                        out.ts              = sm.ts;
+                        out.content         = content;
+                        peer->deliver(out);
+
+                        std::cout << "[route] " << sender << " -> " << to
+                                  << " : " << content << std::endl;
+                    } else {
+                        std::cout << "[route] user " << to
+                                  << " offline, stored for push" << std::endl;
+                    }
+                        });
+                    /*************并发登录/注册优化：DB 回调切回本连接 strand***************/
                 });
-            /*************并发登录/注册优化：DB 回调切回本连接 strand***************/
+                });
+            /*************并发登录/注册优化：关系校验回调切回本连接 strand***************/
         });
+    /****************发送前先校验好友/拉黑关系：陌生人或被对方拉黑一律拒绝****************/
 }
 
 // ---------------------------------------------------------------------------

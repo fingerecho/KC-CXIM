@@ -121,6 +121,9 @@
                                     normal_text_color="#FF7A8494" selected_normal_text_color="#FF2C9BD6"
                                     font="system_regular_12" text="群聊" cursor_type="hand"/>
                         </HBox>
+                        <Button name="btn_new_friends" width="stretch" height="30" margin="12,0,12,4" visible="false" border_round="6,6"
+                                normal_color="#FFFDF1F1" hovered_color="#FFF9E0E0" pressed_color="#FFF4CFCF"
+                                normal_text_color="#FFE0483D" font="system_regular_12" text="新朋友" cursor_type="hand"/>
                         <TabBox name="contacts_list_pages" width="stretch" height="stretch" fade_switch="false">
                             <VListBox name="friend_list" width="stretch" height="stretch" bkcolor="#FFFFFFFF" vscrollbar="true" padding="0,4,0,4"/>
                             <VBox name="group_list" width="stretch" height="stretch" bkcolor="#FFFFFFFF"/>
@@ -157,6 +160,42 @@
                                 </HBox>
                             </VBox>
                         </Box>
+                        <VBox name="request_panel" width="340" height="420" halign="center" valign="center" visible="false"
+                              border_size="1" border_color="#FFDCE3EC" border_round="8,8" bkcolor="#FFFFFFFF">
+                            <HBox height="34" padding="14,10,14,4">
+                                <Label text="新朋友" width="stretch" valign="center" font="system_bold_14" normal_text_color="#FF1F2329"/>
+                                <Button name="btn_close_requests" width="22" height="22" border_round="4,4"
+                                        normal_color="#00FFFFFF" hovered_color="#FFF2F4F7" pressed_color="#FFE7EBF0"
+                                        normal_text_color="#FF8A93A2" font="system_regular_12" text="✕" cursor_type="hand"/>
+                            </HBox>
+                            <VListBox name="request_list" width="stretch" height="stretch" vscrollbar="true" padding="6,2,6,6"/>
+                        </VBox>
+                        <VBox name="friend_op_panel" width="320" height="220" halign="center" valign="center" visible="false"
+                              border_size="1" border_color="#FFDCE3EC" border_round="8,8" bkcolor="#FFFFFFFF">
+                            <HBox height="32" padding="14,8,14,2">
+                                <Label name="friend_op_title" text="好友操作" width="stretch" valign="center" font="system_bold_13" normal_text_color="#FF1F2329"/>
+                                <Button name="btn_close_friend_op" width="22" height="22" border_round="4,4"
+                                        normal_color="#00FFFFFF" hovered_color="#FFF2F4F7" pressed_color="#FFE7EBF0"
+                                        normal_text_color="#FF8A93A2" font="system_regular_12" text="✕" cursor_type="hand"/>
+                            </HBox>
+                            <HBox height="30" margin="14,8,14,0">
+                                <RichEdit2 name="remark_edit" width="stretch" height="30" bkcolor="#FFF2F4F7" border_size="0,0,0,0" border_round="6,6"
+                                           prompt_mode="true" font="system_regular_12" text_align="left,vcenter" text_padding="8,0,8,0"
+                                           prompt_text="输入新备注(≤64字节)" prompt_color="#FF9AA1AC"/>
+                                <Button name="btn_save_remark" width="64" height="30" margin="8,0,0,0" border_round="6,6"
+                                        bkcolor="#FF5FB8F0" bkcolor2="#FF48A8E8" bkcolor2_direction="1" normal_text_color="#FFFFFFFF"
+                                        font="system_regular_11" text="存备注" cursor_type="hand"/>
+                            </HBox>
+                            <HBox height="30" margin="14,8,14,0">
+                                <Button name="btn_del_friend" width="stretch" height="30" border_round="6,6"
+                                        bkcolor="#FFF3E1E1" bkcolor2="#FFECCFCE" bkcolor2_direction="1" normal_text_color="#FFD2493D"
+                                        font="system_regular_12" text="删除好友" cursor_type="hand"/>
+                                <Button name="btn_block_friend" width="stretch" height="30" margin="8,0,0,0" border_round="6,6"
+                                        bkcolor="#FFEFEFF4" bkcolor2="#FFE4E4EC" bkcolor2_direction="1" normal_text_color="#FF5B5F6B"
+                                        font="system_regular_12" text="拉黑" cursor_type="hand"/>
+                            </HBox>
+                            <Label name="friend_op_hint" height="18" margin="14,4,14,0" font="system_regular_11" normal_text_color="#FF9AA1AC"/>
+                        </VBox>
                         <Control width="stretch" height="stretch"/>
                     </VBox>
                 </HBox>

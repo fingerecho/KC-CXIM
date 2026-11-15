@@ -3,6 +3,11 @@
 #include "LoginForm.h"
 #include "TencentImService.h"
 
+#ifdef CXIM_IMS_CORE_SDK_VERSION
+#include "ImsSession.h"
+#include "TcpClient.h"
+#endif
+
 MainThread::MainThread() :
     FrameworkThread(_T("MainThread"), ui::kThreadUI)
 {
@@ -52,6 +57,10 @@ void MainThread::OnCleanup()
 {
 #ifdef TENCENT_CLOUD_IM_SDK_VERSION
     TencentImService::Instance().Uninitialize();
+#endif
+#ifdef CXIM_IMS_CORE_SDK_VERSION
+    TcpClient::Instance().Stop();
+    ImsSession::Instance().Clear();
 #endif
     ui::GlobalManager::Instance().Shutdown();
 }

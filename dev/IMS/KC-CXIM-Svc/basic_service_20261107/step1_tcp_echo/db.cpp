@@ -1378,6 +1378,56 @@ void Db::setFriendBlocked(std::uint64_t userId, std::uint64_t friendId,
 }
 
 // ============================================================================
+// 好友 DAO：发消息关系校验（BE-SEND-01）
+// ----------------------------------------------------------------------------
+// 只读查询：一条成对 SELECT 取回双向两行，据此判断“是否好友 / 是否被拉黑”。
+// 命中主键 (user_id, friend_id)，无需事务。
+// ============================================================================
+void Db::areFriends(std::uint64_t sender, std::uint64_t to, RelationCb cb) {
+    submit([this, sender, to, cb]() {
+        bool ok = false;
+        std::string err;
+        bool friends = false;
+        bool blocked = false;
+
+        try {
+            PooledConn pc(*pool_);
+            if (!pc) throw std::runtime_error("db pool unavailable");
+
+            /****************关系校验：一次成对查询取回双向两行****************/
+            std::unique_ptr<sql::PreparedStatement> st(pc->prepareStatement(
+                "SELECT user_id, status FROM friends "
+                "WHERE (user_id=? AND friend_id=?) OR (user_id=? AND friend_id=?)"));
+            st->setUInt64(1, sender);
+            st->setUInt64(2, to);
+            st->setUInt64(3, to);
+            st->setUInt64(4, sender);
+
+            int forward = -1;   // sender -> to 这一行的 status
+            int reverse = -1;   // to -> sender 这一行的 status
+            std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
+            while (rs->next()) {
+                const std::uint64_t owner = rs->getUInt64(1);
+                const int status = rs->getInt(2);
+                if (owner == sender) forward = status; else reverse = status;
+            }
+            /****************关系校验：一次成对查询取回双向两行****************/
+
+            /****************双向status=1才是好友；任一status=2即被拉黑；无行即陌生人****************/
+            friends = (forward == 1 && reverse == 1);
+            blocked = (forward == 2 || reverse == 2);
+            /****************双向status=1才是好友；任一status=2即被拉黑****************/
+
+            ok = true;
+        } catch (const std::exception& e) {
+            err = std::string("db error: ") + e.what();
+        }
+
+        postToIo([cb, ok, err, friends, blocked]() { cb(ok, err, friends, blocked); });
+    });
+}
+
+// ============================================================================
 // 好友 DAO 9：登录补推——待处理申请（BE-FRIEND-06）
 // ----------------------------------------------------------------------------
 // 用户离线期间可能收到多条申请。申请本身已经持久化在 friend_requests，

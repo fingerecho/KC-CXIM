@@ -57,3 +57,13 @@ target_link_libraries(test_client_A PRIVATE Threads::Threads)
 add_executable(test_client_B test_client_B.cpp)
 target_include_directories(test_client_B PRIVATE ${CMAKE_SOURCE_DIR}/step1_tcp_echo)
 target_link_libraries(test_client_B PRIVATE Threads::Threads)
+
+# ----------------------------------------------------------------------------
+# 发消息关系校验（BE-SEND-01）验收客户端：
+#   陌生人 / 被对方拉黑 / 自己拉黑对方 三种场景下 TCP 发消息应被 Error 拒绝，
+#   好友场景则正常 SendAck + 实时投递。
+#   复用 step1_tcp_echo 的 message.h / message_codec.h，需要加入 include 路径。
+# ----------------------------------------------------------------------------
+add_executable(test_send_msg_to_blockFriendAndBlackFriend test_send_msg_to_blockFriendAndBlackFriend.cpp)
+target_include_directories(test_send_msg_to_blockFriendAndBlackFriend PRIVATE ${CMAKE_SOURCE_DIR}/step1_tcp_echo)
+target_link_libraries(test_send_msg_to_blockFriendAndBlackFriend PRIVATE Threads::Threads)
