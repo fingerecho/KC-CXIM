@@ -1,0 +1,29 @@
+{
+  "pages": [
+    "pages/login/login",
+    "pages/chat-list/chat-list",
+    "pages/chat/chat",
+    "pages/contacts/contacts",
+    "pages/me/me"
+  ],
+  "window": {
+    "navigationBarBackgroundColor": "#ffffff",
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "铖信",
+    "backgroundColor": "#f2f3f5"
+  },
+  "tabBar": {
+    "color": "#8a9099",
+    "selectedColor": "#3a7afe",
+    "backgroundColor": "#ffffff",
+    "borderStyle": "black",
+    "list": [
+      { "pagePath": "pages/chat-list/chat-list", "text": "消息" },
+      { "pagePath": "pages/contacts/contacts", "text": "联系人" },
+      { "pagePath": "pages/me/me", "text": "我的" }
+    ]
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json",
+  "lazyCodeLoading": "requiredComponents"
+}

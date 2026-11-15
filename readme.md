@@ -8,7 +8,7 @@
 
 ## 一句话定位
 
-KC-CXIM《铖信》是一个全栈即时通讯项目：自带 **C++17 自研 IM 服务端**（HTTP 鉴权 + TCP 长连接 + MariaDB）、**Windows 桌面客户端**与**Web管理后台**(Drogon 后端 + Vue3 前端)，同时保留腾讯云 IM SDK 的接入示例。
+KC-CXIM《铖信》是一个全栈即时通讯项目：自带 **C++17 自研 IM 服务端**（HTTP 鉴权 + TCP 长连接 + MariaDB）、**Windows 桌面客户端**、**微信小程序**(私有TCP版)与**Web管理后台**(Drogon 后端 + Vue3 前端)，同时保留腾讯云 IM SDK 的接入示例。
 
 ## 功能特性
 

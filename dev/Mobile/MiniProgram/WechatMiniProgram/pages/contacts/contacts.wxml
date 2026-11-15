@@ -1,0 +1,59 @@
+<view class="page">
+  <!-- 搜索添加好友 -->
+  <view class="search-bar">
+    <input
+      class="search-input"
+      placeholder="搜索用户名 / 昵称 / 用户 ID"
+      placeholder-class="ph"
+      value="{{keyword}}"
+      bindinput="onKeyword"
+      bindconfirm="onSearch"
+      confirm-type="search"
+    />
+    <view class="search-btn" bindtap="onSearch" hover-class="search-btn-hover">搜索</view>
+  </view>
+
+  <!-- 搜索结果 -->
+  <view wx:if="{{searchResults !== null}}">
+    <view class="section-title">搜索结果</view>
+    <view wx:if="{{searchResults.length === 0}}" class="empty-empty">未找到用户</view>
+    <view class="cell" wx:for="{{searchResults}}" wx:key="userId">
+      <view class="avatar avatar-sm {{item.avatarCls}}">{{item.name[0]}}</view>
+      <view class="contact-name">{{item.name}}</view>
+      <view class="add-btn" data-userid="{{item.userId}}" data-name="{{item.name}}" bindtap="onAddFriend" hover-class="add-btn-hover">加好友</view>
+    </view>
+    <view class="divider"></view>
+  </view>
+
+  <!-- 收到的好友申请 -->
+  <block wx:if="{{requests.length > 0}}">
+    <view class="section-title">好友申请</view>
+    <view class="cell" wx:for="{{requests}}" wx:key="requestId">
+      <view class="avatar avatar-sm {{item.avatarCls}}">{{item.name[0]}}</view>
+      <view class="contact-main">
+        <view class="contact-name">{{item.name}}</view>
+        <view class="contact-msg" wx:if="{{item.message}}">{{item.message}}</view>
+      </view>
+      <view class="req-btn req-accept" data-requestid="{{item.requestId}}" bindtap="onAccept" hover-class="add-btn-hover">同意</view>
+      <view class="req-btn req-reject" data-requestid="{{item.requestId}}" bindtap="onReject" hover-class="add-btn-hover">拒绝</view>
+    </view>
+    <view class="divider"></view>
+  </block>
+
+  <!-- 好友列表 -->
+  <view class="section-title">好友（{{friends.length}}）</view>
+  <view wx:if="{{friends.length === 0}}" class="empty-empty">暂无好友，搜索上方输入框添加好友</view>
+  <view
+    class="cell"
+    wx:for="{{friends}}"
+    wx:key="id"
+    data-id="{{item.id}}"
+    data-name="{{item.name}}"
+    bindtap="openChat"
+    bindlongpress="onLongPressFriend"
+  >
+    <view class="avatar avatar-sm {{item.avatarCls}}">{{item.avatarChar}}</view>
+    <view class="contact-name">{{item.name}}</view>
+    <text class="cell-arrow">›</text>
+  </view>
+</view>

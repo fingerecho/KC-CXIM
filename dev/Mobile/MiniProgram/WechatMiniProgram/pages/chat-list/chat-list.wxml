@@ -1,0 +1,32 @@
+<view class="page">
+  <!-- 连接状态条 -->
+  <view class="state-bar" wx:if="{{!connected}}">
+    连接已断开，正在自动重连...
+  </view>
+
+  <view wx:if="{{sessions.length === 0}}" class="empty">
+    暂无会话，快去联系人页面发起聊天吧
+  </view>
+
+  <view
+    class="session"
+    wx:for="{{sessions}}"
+    wx:key="id"
+    data-id="{{item.id}}"
+    data-name="{{item.name}}"
+    bindtap="openChat"
+    hover-class="session-hover"
+  >
+    <view class="avatar avatar-md {{item.avatarCls}}">{{item.avatarChar}}</view>
+    <view class="session-main">
+      <view class="session-top">
+        <text class="session-name">{{item.name}}</text>
+        <text class="session-time">{{item.time}}</text>
+      </view>
+      <view class="session-bottom">
+        <text class="session-preview">{{item.lastMsg.content}}</text>
+        <view class="badge" wx:if="{{item.unread > 0}}">{{item.unread > 99 ? '99+' : item.unread}}</view>
+      </view>
+    </view>
+  </view>
+</view>

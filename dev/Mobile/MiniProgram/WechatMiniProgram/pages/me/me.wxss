@@ -1,0 +1,43 @@
+.profile {
+  display: flex;
+  align-items: center;
+  background: #fff;
+  padding: 48rpx 32rpx;
+}
+.profile-info {
+  margin-left: 28rpx;
+}
+.profile-name {
+  font-size: 36rpx;
+  font-weight: 600;
+}
+.profile-uid {
+  margin-top: 8rpx;
+  color: var(--text-sub);
+  font-size: 26rpx;
+}
+
+.group {
+  margin-top: 24rpx;
+}
+
+.cell-hover {
+  background: #f7f8fa;
+}
+
+.dot {
+  width: 16rpx;
+  height: 16rpx;
+  border-radius: 50%;
+  margin-right: 12rpx;
+}
+.dot-on {
+  background: #22b573;
+}
+.dot-off {
+  background: #c4c9d0;
+}
+
+.logout-text {
+  color: var(--danger);
+}

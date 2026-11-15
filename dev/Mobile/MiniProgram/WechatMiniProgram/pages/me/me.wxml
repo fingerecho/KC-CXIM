@@ -1,0 +1,35 @@
+<view class="page">
+  <!-- 用户信息 -->
+  <view class="profile">
+    <view class="avatar avatar-md {{avatarCls}}">{{avatarChar}}</view>
+    <view class="profile-info">
+      <view class="profile-name">{{user.name || '未登录'}}</view>
+      <view class="profile-uid">UID: {{user.uid}}</view>
+    </view>
+  </view>
+
+  <view class="group">
+    <view class="cell">
+      <text class="cell-title">服务器</text>
+      <text class="cell-sub">{{server}}</text>
+    </view>
+    <view class="cell">
+      <text class="cell-title">连接状态</text>
+      <view class="dot {{connected ? 'dot-on' : 'dot-off'}}"></view>
+      <text class="cell-sub">{{stateText}}</text>
+    </view>
+  </view>
+
+  <view class="group">
+    <view class="cell" bindtap="clearMessages" hover-class="cell-hover">
+      <text class="cell-title">清空聊天记录</text>
+      <text class="cell-arrow">›</text>
+    </view>
+  </view>
+
+  <view class="group">
+    <view class="cell" bindtap="logout" hover-class="cell-hover">
+      <text class="cell-title logout-text">退出登录</text>
+    </view>
+  </view>
+</view>

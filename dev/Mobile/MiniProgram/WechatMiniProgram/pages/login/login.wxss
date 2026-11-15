@@ -1,0 +1,74 @@
+.login-page {
+  min-height: 100vh;
+  padding: 0 72rpx;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+
+.logo {
+  margin-top: 160rpx;
+  text-align: center;
+}
+.logo-icon {
+  width: 132rpx;
+  height: 132rpx;
+  margin: 0 auto;
+  border-radius: 32rpx;
+  background: var(--primary);
+  color: #fff;
+  font-size: 64rpx;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.logo-name {
+  margin-top: 28rpx;
+  font-size: 44rpx;
+  font-weight: 600;
+}
+.logo-sub {
+  margin-top: 10rpx;
+  color: var(--text-sub);
+  font-size: 26rpx;
+}
+
+.form {
+  margin-top: 100rpx;
+}
+.field {
+  background: #fff;
+  border-radius: 16rpx;
+  padding: 28rpx 32rpx;
+  margin-bottom: 28rpx;
+  display: flex;
+  align-items: center;
+}
+.field-label {
+  width: 140rpx;
+  color: var(--text-sub);
+}
+.field-input {
+  flex: 1;
+  font-size: 30rpx;
+}
+.ph {
+  color: #c0c5cc;
+}
+
+.login-btn {
+  margin-top: 40rpx;
+}
+.switch-mode {
+  margin-top: 28rpx;
+  text-align: center;
+  color: var(--primary);
+  font-size: 28rpx;
+}
+.state-text {
+  margin-top: 24rpx;
+  text-align: center;
+  color: var(--text-sub);
+  font-size: 26rpx;
+}

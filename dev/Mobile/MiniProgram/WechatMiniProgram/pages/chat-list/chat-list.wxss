@@ -1,0 +1,52 @@
+.state-bar {
+  background: #fff7e6;
+  color: #d48806;
+  font-size: 24rpx;
+  padding: 14rpx 32rpx;
+}
+
+.session {
+  display: flex;
+  align-items: center;
+  background: #fff;
+  padding: 24rpx 32rpx;
+  border-bottom: 1rpx solid var(--line);
+}
+.session-hover {
+  background: #f7f8fa;
+}
+.session-main {
+  flex: 1;
+  margin-left: 24rpx;
+  min-width: 0;
+}
+.session-top {
+  display: flex;
+  align-items: center;
+}
+.session-name {
+  flex: 1;
+  font-size: 32rpx;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.session-time {
+  color: var(--text-sub);
+  font-size: 24rpx;
+  margin-left: 16rpx;
+}
+.session-bottom {
+  margin-top: 10rpx;
+  display: flex;
+  align-items: center;
+}
+.session-preview {
+  flex: 1;
+  color: var(--text-sub);
+  font-size: 28rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

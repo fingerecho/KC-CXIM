@@ -1,0 +1,46 @@
+<view class="chat-page">
+  <!-- 断线提示条 -->
+  <view class="state-bar" wx:if="{{!connected}}">连接已断开，消息将在重连后送达...</view>
+
+  <scroll-view
+    class="msg-list"
+    scroll-y
+    scroll-into-view="{{scrollInto}}"
+    scroll-with-animation
+  >
+    <view wx:for="{{display}}" wx:key="{{index}}">
+      <!-- 时间分隔 -->
+      <view wx:if="{{item.isTime}}" class="time-divider">{{item.text}}</view>
+
+      <!-- 消息气泡 -->
+      <view wx:else class="msg-row {{item.direction === 'out' ? 'row-out' : 'row-in'}}" id="anchor-{{index}}">
+        <view class="avatar avatar-sm {{item.direction === 'out' ? 'avatar-blue' : 'avatar-green'}}">{{item.direction === 'out' ? item.avatarChar : ''}}{{item.direction === 'in' ? peerId[0] : ''}}</view>
+        <view class="bubble {{item.direction === 'out' ? 'bubble-out' : 'bubble-in'}}">{{item.content}}</view>
+        <view class="msg-status" wx:if="{{item.direction === 'out' && item.status === 'sending'}}">发送中</view>
+        <view
+          class="msg-status status-failed"
+          wx:if="{{item.direction === 'out' && item.status === 'failed'}}"
+          data-msgid="{{item.msgId}}"
+          bindtap="onRetry"
+        >失败，点击重发</view>
+      </view>
+    </view>
+    <view style="height: 20rpx;"></view>
+  </scroll-view>
+
+  <!-- 输入区 -->
+  <view class="input-bar">
+    <input
+      class="chat-input"
+      value="{{input}}"
+      placeholder="输入消息..."
+      placeholder-class="ph"
+      confirm-type="send"
+      bindinput="onInput"
+      bindconfirm="onSend"
+      confirm-hold
+      adjust-position="{{true}}"
+    />
+    <button class="send-btn" size="mini" bindtap="onSend" disabled="{{!input}}">发送</button>
+  </view>
+</view>

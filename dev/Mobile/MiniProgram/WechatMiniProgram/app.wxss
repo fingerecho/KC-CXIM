@@ -1,0 +1,103 @@
+/* 全局样式 */
+page {
+  --primary: #3a7afe;
+  --primary-dark: #2f66dd;
+  --danger: #f5523d;
+  --text-main: #1f2329;
+  --text-sub: #8a9099;
+  --bg: #f2f3f5;
+  --card-bg: #ffffff;
+  --line: #ebedf0;
+  background: var(--bg);
+  font-size: 28rpx;
+  color: var(--text-main);
+  font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+}
+
+/* 主按钮 */
+.btn-primary {
+  background: var(--primary);
+  color: #fff;
+  border-radius: 16rpx;
+  font-size: 32rpx;
+  font-weight: 500;
+  line-height: 92rpx;
+  height: 92rpx;
+}
+.btn-primary[disabled] {
+  background: #a8c3ff;
+  color: #fff;
+}
+
+/* 列表 cell */
+.cell {
+  display: flex;
+  align-items: center;
+  background: var(--card-bg);
+  padding: 24rpx 32rpx;
+  border-bottom: 1rpx solid var(--line);
+}
+.cell:active {
+  background: #f7f8fa;
+}
+.cell-title {
+  flex: 1;
+  font-size: 30rpx;
+}
+.cell-sub {
+  color: var(--text-sub);
+  font-size: 26rpx;
+}
+.cell-arrow {
+  color: #c4c9d0;
+  margin-left: 8rpx;
+}
+
+/* 头像（文字头像，无外部资源） */
+.avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14rpx;
+  color: #fff;
+  font-size: 32rpx;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+.avatar-md {
+  width: 88rpx;
+  height: 88rpx;
+}
+.avatar-sm {
+  width: 72rpx;
+  height: 72rpx;
+  font-size: 28rpx;
+}
+.avatar-blue { background: #3a7afe; }
+.avatar-green { background: #22b573; }
+.avatar-orange { background: #f5a623; }
+.avatar-purple { background: #8e6bf1; }
+.avatar-red { background: #f5523d; }
+
+/* 空状态 */
+.empty {
+  text-align: center;
+  color: var(--text-sub);
+  padding: 160rpx 0;
+  font-size: 28rpx;
+}
+
+/* 未读红点 */
+.badge {
+  min-width: 32rpx;
+  height: 32rpx;
+  padding: 0 8rpx;
+  border-radius: 16rpx;
+  background: var(--danger);
+  color: #fff;
+  font-size: 22rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
