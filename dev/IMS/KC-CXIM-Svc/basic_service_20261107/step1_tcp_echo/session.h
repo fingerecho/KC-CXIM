@@ -56,10 +56,17 @@ private:
 
     void do_login(const Message& msg);      // 登录：校验 JWT（不查库、不比对密码）
     void do_send(const Message& msg);       // 发消息：落库 + 在线投递
+    /*************群聊功能：TCP 群消息与群历史入口***************/
+    void do_send_group(const Message& msg); // 发群消息：写扩散落库 + 在线成员直推
+    void do_history_group(const Message& msg); // 群历史分页（校验群成员身份）
+    /*************群聊功能：TCP 群消息与群历史入口***************/
     void do_history(const Message& msg);    // 历史分页
     void do_ack(const Message& msg);        // 投递/已读回执
     void push_offline();                    // 登录成功后补推离线消息
     void push_friend_events();              // 登录成功后补推好友申请/处理结果
+    /*************群聊功能：登录补推入群申请/结果***************/
+    void push_group_events();               // 登录成功后补推入群事件（143/144）
+    /*************群聊功能：登录补推入群申请/结果***************/
 
     void send_message(const Message& msg);  // 组帧后入写队列
     void send_error(const std::string& text, std::uint64_t to);

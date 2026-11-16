@@ -67,3 +67,12 @@ target_link_libraries(test_client_B PRIVATE Threads::Threads)
 add_executable(test_send_msg_to_blockFriendAndBlackFriend test_send_msg_to_blockFriendAndBlackFriend.cpp)
 target_include_directories(test_send_msg_to_blockFriendAndBlackFriend PRIVATE ${CMAKE_SOURCE_DIR}/step1_tcp_echo)
 target_link_libraries(test_send_msg_to_blockFriendAndBlackFriend PRIVATE Threads::Threads)
+
+# ----------------------------------------------------------------------------
+# /*************群聊功能：群聊模块验收客户端（BE-GROUP-01~08）***************/
+#   同时使用 HTTP（建群/邀请/权限/资料）与 TCP（群消息实时投递/离线补推/群事件），
+#   复用 step1_tcp_echo 的 message.h / message_codec.h。
+# ----------------------------------------------------------------------------
+add_executable(test_group_client test_group_client.cpp)
+target_include_directories(test_group_client PRIVATE ${CMAKE_SOURCE_DIR}/step1_tcp_echo)
+target_link_libraries(test_group_client PRIVATE Threads::Threads)

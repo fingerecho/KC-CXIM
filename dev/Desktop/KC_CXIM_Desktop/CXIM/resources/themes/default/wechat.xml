@@ -60,11 +60,16 @@
                             <Button name="btn_voice_call" width="28" height="28" valign="center" border_round="6,6"
                                     normal_color="#00FFFFFF" hovered_color="#FFF2F4F7" pressed_color="#FFE7EBF0"
                                     normal_image="file='wechat_icon_phone.svg' width='20' height='20' valign='center' halign='center'" cursor_type="hand"/>
+                            <Button name="btn_members" width="28" height="28" margin="6,0,0,0" valign="center" border_round="6,6"
+                                    normal_color="#00FFFFFF" hovered_color="#FFF2F4F7" pressed_color="#FFE7EBF0"
+                                    normal_image="file='wechat_icon_member.svg' width='20' height='20' valign='center' halign='center'" cursor_type="hand"/>
                             <Button name="btn_more" width="28" height="28" margin="6,0,0,0" valign="center" border_round="6,6"
                                     normal_color="#00FFFFFF" hovered_color="#FFF2F4F7" pressed_color="#FFE7EBF0"
                                     normal_image="file='wechat_icon_more.svg' width='20' height='20' valign='center' halign='center'" cursor_type="hand"/>
                         </HBox>
                         <Control width="stretch" height="1" bkcolor="#FFEFF1F4"/>
+                        <Label name="chat_announcement_label" text="" height="24" visible="false" padding="20,0,20,0" valign="center"
+                               font="system_regular_11" normal_text_color="#FF8A93A2" bkcolor="#FFF7F9FC"/>
                         <VListBox name="chat_message_list" width="stretch" height="stretch" bkcolor="#FFFFFFFF" vscrollbar="true" padding="12,8,12,8"/>
                         <Control width="stretch" height="1" bkcolor="#FFEFF1F4"/>
                         <VBox width="stretch" height="176">
@@ -96,6 +101,83 @@
                                         normal_text_color="#FFFFFFFF" font="system_regular_13" text="发送  ▾" cursor_type="hand"/>
                             </HBox>
                         </VBox>
+                        <VBox name="group_member_panel" width="320" height="360" halign="center" valign="center" visible="false"
+                              border_size="1" border_color="#FFDCE3EC" border_round="8,8" bkcolor="#FFFFFFFF">
+                            <HBox height="34" padding="14,8,14,2">
+                                <Label text="群成员" width="stretch" valign="center" font="system_bold_13" normal_text_color="#FF1F2329"/>
+                                <Button name="btn_close_group_member" width="22" height="22" border_round="4,4"
+                                        normal_color="#00FFFFFF" hovered_color="#FFF2F4F7" pressed_color="#FFE7EBF0"
+                                        normal_text_color="#FF8A93A2" font="system_regular_12" text="✕" cursor_type="hand"/>
+                            </HBox>
+                            <VListBox name="group_member_list" width="stretch" height="stretch" vscrollbar="true" padding="6,2,6,6"/>
+                        </VBox>
+                        <Box name="group_op_panel" width="340" height="300" halign="center" valign="center" visible="false"
+                             border_size="1" border_color="#FFDCE3EC" border_round="8,8" bkcolor="#FFFFFFFF">
+                            <VBox width="stretch" height="stretch" padding="14,10,14,10">
+                                <HBox height="30">
+                                    <Label name="group_op_title" text="群管理" width="stretch" valign="center" font="system_bold_13" normal_text_color="#FF1F2329"/>
+                                    <Button name="btn_close_group_op" width="22" height="22" border_round="4,4"
+                                            normal_color="#00FFFFFF" hovered_color="#FFF2F4F7" pressed_color="#FFE7EBF0"
+                                            normal_text_color="#FF8A93A2" font="system_regular_12" text="✕" cursor_type="hand"/>
+                                </HBox>
+                                <HBox height="32" margin="0,6,0,0">
+                                    <Button name="btn_group_update" width="stretch" height="30" border_round="6,6" normal_text_color="#FF2C6BA5" font="system_regular_12" text="改资料" bkcolor="#FFF0F6FD" cursor_type="hand"/>
+                                    <Button name="btn_group_invite" width="stretch" height="30" margin="6,0,0,0" border_round="6,6" normal_text_color="#FF2C6BA5" font="system_regular_12" text="邀请" bkcolor="#FFF0F6FD" cursor_type="hand"/>
+                                    <Button name="btn_group_remove" width="stretch" height="30" margin="6,0,0,0" border_round="6,6" normal_text_color="#FF2C6BA5" font="system_regular_12" text="移出" bkcolor="#FFF0F6FD" cursor_type="hand"/>
+                                </HBox>
+                                <HBox height="32" margin="0,6,0,0">
+                                    <Button name="btn_group_admin" width="stretch" height="30" border_round="6,6" normal_text_color="#FF2C6BA5" font="system_regular_12" text="管理员" bkcolor="#FFF0F6FD" cursor_type="hand"/>
+                                    <Button name="btn_group_transfer" width="stretch" height="30" margin="6,0,0,0" border_round="6,6" normal_text_color="#FF2C6BA5" font="system_regular_12" text="转让" bkcolor="#FFF0F6FD" cursor_type="hand"/>
+                                    <Button name="btn_group_dismiss" width="stretch" height="30" margin="6,0,0,0" border_round="6,6" normal_text_color="#FFD2493D" font="system_regular_12" text="解散" bkcolor="#FFF3E1E1" cursor_type="hand"/>
+                                </HBox>
+                                <HBox height="32" margin="0,6,0,0">
+                                    <Button name="btn_group_quit" width="stretch" height="30" border_round="6,6" normal_text_color="#FFD2493D" font="system_regular_12" text="退群" bkcolor="#FFF3E1E1" cursor_type="hand"/>
+                                </HBox>
+                                <Label name="group_op_hint" height="34" margin="0,6,0,0" font="system_regular_11" normal_text_color="#FF9AA1AC"/>
+                            </VBox>
+                        </Box>
+                        <Box name="group_update_panel" width="320" height="180" halign="center" valign="center" visible="false"
+                             border_size="1" border_color="#FFDCE3EC" border_round="8,8" bkcolor="#FFFFFFFF">
+                            <VBox width="stretch" height="stretch" padding="14,10,14,10">
+                                <HBox height="26"><Label text="修改群资料" width="stretch" font="system_bold_13" normal_text_color="#FF1F2329" valign="center"/>
+                                    <Button name="btn_close_group_update" width="22" height="22" border_round="4,4" normal_text_color="#FF8A93A2" font="system_regular_12" text="✕" cursor_type="hand"/></HBox>
+                                <RichEdit2 name="group_name_edit" width="stretch" height="28" margin="0,4,0,0" bkcolor="#FFF2F4F7" border_size="0" border_round="6,6" prompt_mode="true" font="system_regular_12" prompt_text="群名(≤128字节)" text_padding="8,0,8,0"/>
+                                <RichEdit2 name="group_announcement_edit" width="stretch" height="40" margin="0,4,0,0" bkcolor="#FFF2F4F7" border_size="0" border_round="6,6" prompt_mode="true" multi_line="true" font="system_regular_12" prompt_text="群公告" text_padding="8,0,8,0"/>
+                                <Label name="group_update_hint" height="18" font="system_regular_11" normal_text_color="#FF9AA1AC"/>
+                                <Button name="btn_group_update_save" width="stretch" height="30" margin="0,4,0,0" border_round="6,6" bkcolor="#FF5FB8F0" bkcolor2="#FF48A8E8" bkcolor2_direction="1" normal_text_color="#FFFFFFFF" font="system_regular_12" text="保存" cursor_type="hand"/>
+                            </VBox>
+                        </Box>
+                        <Box name="group_remove_panel" width="320" height="130" halign="center" valign="center" visible="false"
+                             border_size="1" border_color="#FFDCE3EC" border_round="8,8" bkcolor="#FFFFFFFF">
+                            <VBox width="stretch" height="stretch" padding="14,10,14,10">
+                                <HBox height="26"><Label text="移出成员" width="stretch" font="system_bold_13" normal_text_color="#FF1F2329" valign="center"/>
+                                    <Button name="btn_close_group_remove" width="22" height="22" border_round="4,4" normal_text_color="#FF8A93A2" font="system_regular_12" text="✕" cursor_type="hand"/></HBox>
+                                <RichEdit2 name="group_remove_uid_edit" width="stretch" height="28" margin="0,4,0,0" bkcolor="#FFF2F4F7" border_size="0" border_round="6,6" prompt_mode="true" font="system_regular_12" prompt_text="被移出成员 userId" text_padding="8,0,8,0"/>
+                                <Label name="group_remove_hint" height="18" font="system_regular_11" normal_text_color="#FF9AA1AC"/>
+                                <Button name="btn_group_remove_ok" width="stretch" height="30" margin="0,4,0,0" border_round="6,6" bkcolor="#FF5FB8F0" normal_text_color="#FFFFFFFF" font="system_regular_12" text="移出" cursor_type="hand"/>
+                            </VBox>
+                        </Box>
+                        <Box name="group_admin_panel" width="320" height="150" halign="center" valign="center" visible="false"
+                             border_size="1" border_color="#FFDCE3EC" border_round="8,8" bkcolor="#FFFFFFFF">
+                            <VBox width="stretch" height="stretch" padding="14,10,14,10">
+                                <HBox height="26"><Label text="任命/取消管理员" width="stretch" font="system_bold_13" normal_text_color="#FF1F2329" valign="center"/>
+                                    <Button name="btn_close_group_admin" width="22" height="22" border_round="4,4" normal_text_color="#FF8A93A2" font="system_regular_12" text="✕" cursor_type="hand"/></HBox>
+                                <RichEdit2 name="group_admin_uid_edit" width="stretch" height="28" margin="0,4,0,0" bkcolor="#FFF2F4F7" border_size="0" border_round="6,6" prompt_mode="true" font="system_regular_12" prompt_text="成员 userId" text_padding="8,0,8,0"/>
+                                <CheckBox name="group_admin_set_check" width="180" height="24" margin="0,4,0,0" font="system_regular_12" text="任命为管理员(取消勾选则降为成员)" normal_text_color="#FF1F2329"/>
+                                <Label name="group_admin_hint" height="18" font="system_regular_11" normal_text_color="#FF9AA1AC"/>
+                                <Button name="btn_group_admin_ok" width="stretch" height="30" margin="0,2,0,0" border_round="6,6" bkcolor="#FF5FB8F0" normal_text_color="#FFFFFFFF" font="system_regular_12" text="确定" cursor_type="hand"/>
+                            </VBox>
+                        </Box>
+                        <Box name="group_transfer_panel" width="320" height="130" halign="center" valign="center" visible="false"
+                             border_size="1" border_color="#FFDCE3EC" border_round="8,8" bkcolor="#FFFFFFFF">
+                            <VBox width="stretch" height="stretch" padding="14,10,14,10">
+                                <HBox height="26"><Label text="转让群主" width="stretch" font="system_bold_13" normal_text_color="#FF1F2329" valign="center"/>
+                                    <Button name="btn_close_group_transfer" width="22" height="22" border_round="4,4" normal_text_color="#FF8A93A2" font="system_regular_12" text="✕" cursor_type="hand"/></HBox>
+                                <RichEdit2 name="group_transfer_uid_edit" width="stretch" height="28" margin="0,4,0,0" bkcolor="#FFF2F4F7" border_size="0" border_round="6,6" prompt_mode="true" font="system_regular_12" prompt_text="新群主 userId" text_padding="8,0,8,0"/>
+                                <Label name="group_transfer_hint" height="18" font="system_regular_11" normal_text_color="#FF9AA1AC"/>
+                                <Button name="btn_group_transfer_ok" width="stretch" height="30" margin="0,4,0,0" border_round="6,6" bkcolor="#FF5FB8F0" normal_text_color="#FFFFFFFF" font="system_regular_12" text="转让" cursor_type="hand"/>
+                            </VBox>
+                        </Box>
                     </VBox>
                 </HBox>
                 <HBox name="contacts_page" width="stretch" height="stretch">
@@ -124,9 +206,17 @@
                         <Button name="btn_new_friends" width="stretch" height="30" margin="12,0,12,4" visible="false" border_round="6,6"
                                 normal_color="#FFFDF1F1" hovered_color="#FFF9E0E0" pressed_color="#FFF4CFCF"
                                 normal_text_color="#FFE0483D" font="system_regular_12" text="新朋友" cursor_type="hand"/>
+                        <Button name="btn_group_requests" width="stretch" height="30" margin="12,0,12,4" visible="false" border_round="6,6"
+                                normal_color="#FFFDF1F1" hovered_color="#FFF9E0E0" pressed_color="#FFF4CFCF"
+                                normal_text_color="#FFE0483D" font="system_regular_12" text="入群申请" cursor_type="hand"/>
                         <TabBox name="contacts_list_pages" width="stretch" height="stretch" fade_switch="false">
                             <VListBox name="friend_list" width="stretch" height="stretch" bkcolor="#FFFFFFFF" vscrollbar="true" padding="0,4,0,4"/>
-                            <VBox name="group_list" width="stretch" height="stretch" bkcolor="#FFFFFFFF"/>
+                            <VBox name="group_list_page" width="stretch" height="stretch" bkcolor="#FFFFFFFF">
+                                <VListBox name="group_list" width="stretch" height="stretch" bkcolor="#FFFFFFFF" vscrollbar="true" padding="0,4,0,4"/>
+                                <Button name="btn_new_group" width="stretch" height="34" margin="12,6,12,8" border_round="6,6"
+                                        bkcolor="#FF5FB8F0" bkcolor2="#FF48A8E8" bkcolor2_direction="1" normal_text_color="#FFFFFFFF"
+                                        font="system_regular_12" text="＋ 新建群聊" cursor_type="hand"/>
+                            </VBox>
                         </TabBox>
                     </VBox>
                     <VBox width="stretch" height="stretch" bkcolor="#FFFFFFFF">
@@ -196,6 +286,30 @@
                             </HBox>
                             <Label name="friend_op_hint" height="18" margin="14,4,14,0" font="system_regular_11" normal_text_color="#FF9AA1AC"/>
                         </VBox>
+                        <Box name="create_group_panel" width="360" height="440" halign="center" valign="center" visible="false"
+                             border_size="1" border_color="#FFDCE3EC" border_round="8,8" bkcolor="#FFFFFFFF">
+                            <VBox width="stretch" height="stretch" padding="14,10,14,10">
+                                <HBox height="28">
+                                    <Label text="新建群聊 / 邀请" width="stretch" valign="center" font="system_bold_14" normal_text_color="#FF1F2329"/>
+                                    <Button name="btn_close_create_group" width="22" height="22" border_round="4,4" normal_text_color="#FF8A93A2" font="system_regular_12" text="✕" cursor_type="hand"/>
+                                </HBox>
+                                <RichEdit2 name="new_group_name_edit" width="stretch" height="30" margin="0,4,0,0" bkcolor="#FFF2F4F7" border_size="0" border_round="6,6" prompt_mode="true" font="system_regular_12" prompt_text="群名(≤128字节)" text_padding="8,0,8,0"/>
+                                <Label text="选择成员（初始成员须为好友）" height="20" margin="0,6,0,0" font="system_regular_12" normal_text_color="#FF5B5F6B"/>
+                                <VListBox name="create_group_friend_list" width="stretch" height="stretch" vscrollbar="true" bkcolor="#FFF7F9FC" border_round="6,6"/>
+                                <Label name="create_group_hint" height="18" margin="0,4,0,0" font="system_regular_11" normal_text_color="#FF9AA1AC"/>
+                                <Button name="btn_create_group" width="stretch" height="32" margin="0,4,0,0" border_round="6,6" bkcolor="#FF5FB8F0" bkcolor2="#FF48A8E8" bkcolor2_direction="1" normal_text_color="#FFFFFFFF" font="system_regular_12" text="创建" cursor_type="hand"/>
+                            </VBox>
+                        </Box>
+                        <Box name="join_request_panel" width="400" height="440" halign="center" valign="center" visible="false"
+                             border_size="1" border_color="#FFDCE3EC" border_round="8,8" bkcolor="#FFFFFFFF">
+                            <VBox width="stretch" height="stretch" padding="14,10,14,10">
+                                <HBox height="30">
+                                    <Label text="入群申请" width="stretch" valign="center" font="system_bold_14" normal_text_color="#FF1F2329"/>
+                                    <Button name="btn_close_join_request" width="22" height="22" border_round="4,4" normal_text_color="#FF8A93A2" font="system_regular_12" text="✕" cursor_type="hand"/>
+                                </HBox>
+                                <VListBox name="join_request_list" width="stretch" height="stretch" vscrollbar="true" padding="4,2,4,4"/>
+                            </VBox>
+                        </Box>
                         <Control width="stretch" height="stretch"/>
                     </VBox>
                 </HBox>

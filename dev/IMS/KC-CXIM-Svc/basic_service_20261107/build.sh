@@ -8,7 +8,8 @@ DEB_PACKAGE_VERSION="1.0.0"
 DEB_PACKAGE_ARCH=""
 DB_POOL_SIZE=50
 DB_WORKER_COUNT=8
-
+TCP_PORT=10001
+HTTP_PORT=10002
 # 生成 systemd 用户级服务文件到项目当前目录。
 # 安装后 CXIM.service 位于 /opt/CXIM/CXIM.service，由 postinst 拷贝到
 # 目标用户的 ~/.config/systemd/user/ 下。
@@ -22,9 +23,11 @@ Wants=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=/opt/CXIM
-ExecStart=/opt/CXIM/bin/tcp_echo_server
+ExecStart=/opt/CXIM/bin/cxim-server
 Environment=DB_CONFIG=/opt/CXIM/DBConfig.ini
 Environment=JWT_CONFIG=/opt/CXIM/JWTConfig.json
+Environment=TCP_PORT=${TCP_PORT}
+Environment=HTTP_PORT=${HTTP_PORT}
 Environment=DB_POOL_SIZE=${DB_POOL_SIZE}
 Environment=DB_WORKER_COUNT=${DB_WORKER_COUNT}
 Restart=on-failure
@@ -75,7 +78,7 @@ package_deb() {
         cp -f "${SCRIPT_DIR}/JWTConfig.json" "${stage_dir}/opt/CXIM/JWTConfig.json"
 
     # 保证主程序可执行
-    chmod 0755 "${stage_dir}/opt/CXIM/bin/tcp_echo_server" 2>/dev/null || true
+    chmod 0755 "${stage_dir}/opt/CXIM/bin/cxim-server" 2>/dev/null || true
 
     cat > "${stage_dir}/DEBIAN/control" <<EOF
 Package: ${DEB_PACKAGE_NAME}
@@ -246,8 +249,12 @@ if [[ -n "${OPENSSL_ROOT_DIR}" ]]; then
 fi
 
 cmake "${CMAKE_ARGS[@]}"
-cmake --build build -j
 
+if [[ "$(uname -s)" == Linux* ]]; then
+    cmake --build build -j2
+elif [[ "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* || "$(uname -s)" == CYGWIN* ]]; then
+    cmake --build build -j
+fi
 # Linux 下编译完成后自动生成服务文件并打包 .deb
 if [[ "$(uname -s)" == Linux* ]]; then
     package_deb

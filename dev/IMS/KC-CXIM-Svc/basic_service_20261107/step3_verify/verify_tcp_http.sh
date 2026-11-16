@@ -35,9 +35,9 @@ JWT_FILE="${JWT_CONFIG:-${PROJECT_DIR}/JWTConfig.json}"
 # ---------------------------------------------------------------------------
 SERVER_BIN=''
 if [[ "$(uname -s)" == Linux* ]]; then
-    SERVER_BIN="${BUILD_DIR}/bin/tcp_echo_server"
+    SERVER_BIN="${BUILD_DIR}/bin/cxim-server"
 elif [[ "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* || "$(uname -s)" == CYGWIN* ]]; then
-    SERVER_BIN="${BUILD_DIR}/bin/Debug/tcp_echo_server.exe"
+    SERVER_BIN="${BUILD_DIR}/bin/Debug/cxim-server.exe"
 fi
 
 if [[ ! -x "$SERVER_BIN" ]]; then
@@ -119,6 +119,22 @@ def http_post(path, payload):
     except urllib.error.HTTPError as e:
         return e.code, json.load(e)
 
+# /*************BE-SEND-01 适配：发消息前必须先互为好友***************/
+# 服务端在 do_send 里加了好友/拉黑关系校验（陌生人一律拒绝），
+# 本脚本早期版本没有好友步骤，这里补上“申请 + 通过”，否则第 4 步必然失败。
+def http_post_auth(path, payload, token):
+    data = json.dumps(payload, separators=(",", ":")).encode()
+    req = urllib.request.Request(BASE + path, data=data,
+                                 headers={"Content-Type": "application/json",
+                                          "Authorization": "Bearer " + token},
+                                 method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            return r.status, json.load(r)
+    except urllib.error.HTTPError as e:
+        return e.code, json.load(e)
+# /*************BE-SEND-01 适配结束***************/
+
 def recv_exact(sock, n):
     buf = b""
     while len(buf) < n:
@@ -187,6 +203,13 @@ st, r = http_post("/api/login", {"username": user_b, "password": PASSWORD})
 check(st == 200 and r.get("code") == 0 and bool(r.get("data", {}).get("token")),
       "HTTP 登录用户B并签发 token", str(r))
 token_b = r.get("data", {}).get("token")
+
+# ---- 2.5) 让 A、B 互为好友（BE-SEND-01 要求：非好友不能互发消息）-----------
+st, r = http_post_auth("/api/friends/requests", {"toUserId": uid_b, "message": "hi"}, token_a)
+check(st == 200 and r.get("code") == 0, "A 向 B 发起好友申请", str(r))
+req_id = r.get("data", {}).get("request", {}).get("requestId")
+st, r = http_post_auth("/api/friends/requests/%s/accept" % req_id, {}, token_b)
+check(st == 200 and r.get("code") == 0, "B 通过好友申请（双方成为好友）", str(r))
 
 # ---- 3) TCP 登录 -----------------------------------------------------------
 def tcp_login(token, uid):

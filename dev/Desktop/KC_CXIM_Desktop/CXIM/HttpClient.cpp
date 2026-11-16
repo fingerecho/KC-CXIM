@@ -186,70 +186,86 @@ bool HttpClient::Request(const std::string& method, const std::string& path, con
         return false;
     }
 
-    HINTERNET session = ::WinHttpOpen(L"CXIM-Desktop/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
-                                      WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
-    if (session == nullptr) {
-        return false;
-    }
-    ::WinHttpSetTimeouts(session, 3000, 3000, 5000, 5000);
+    // 共享/远程服务端偶发会在响应前关闭连接（尤其 POST 群请求），此处对“传输层失败
+    // （statusCode==0）”做最多 3 次重试；业务错误码不重试，避免重复副作用。
+    bool success = false;
+    for (int attempt = 0; attempt < 3; ++attempt) {
+        statusCode = 0;
+        responseBody.clear();
 
-    HINTERNET connection = ::WinHttpConnect(session, host.c_str(), m_port, 0);
-    if (connection == nullptr) {
-        ::WinHttpCloseHandle(session);
-        return false;
-    }
+        HINTERNET session = ::WinHttpOpen(L"CXIM-Desktop/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+                                          WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+        if (session == nullptr) {
+            ::Sleep(200);
+            continue;
+        }
+        ::WinHttpSetTimeouts(session, 3000, 3000, 5000, 5000);
 
-    HINTERNET request = ::WinHttpOpenRequest(connection, verb.c_str(), requestPath.c_str(), nullptr,
-                                             WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, 0);
-    if (request == nullptr) {
-        ::WinHttpCloseHandle(connection);
-        ::WinHttpCloseHandle(session);
-        return false;
-    }
+        HINTERNET connection = ::WinHttpConnect(session, host.c_str(), m_port, 0);
+        if (connection == nullptr) {
+            ::WinHttpCloseHandle(session);
+            ::Sleep(200);
+            continue;
+        }
 
-    std::wstring headers = L"Content-Type: application/json\r\nConnection: close\r\n";
+        HINTERNET request = ::WinHttpOpenRequest(connection, verb.c_str(), requestPath.c_str(), nullptr,
+                                                 WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, 0);
+        if (request == nullptr) {
+            ::WinHttpCloseHandle(connection);
+            ::WinHttpCloseHandle(session);
+            ::Sleep(200);
+            continue;
+        }
+
+        std::wstring headers = L"Content-Type: application/json\r\nConnection: close\r\n";
 #ifdef CXIM_IMS_CORE_SDK_VERSION
-    if (withAuth) {
-        headers += L"Authorization: Bearer ";
-        headers += ToWideString(ImsSession::Instance().Token());
-        headers += L"\r\n";
-    }
+        if (withAuth) {
+            headers += L"Authorization: Bearer ";
+            headers += ToWideString(ImsSession::Instance().Token());
+            headers += L"\r\n";
+        }
 #endif
 
-    const bool hasBody = !body.empty();
-    bool success = ::WinHttpSendRequest(request, headers.c_str(), static_cast<DWORD>(-1),
-                                        hasBody ? const_cast<char*>(body.data()) : nullptr,
-                                        static_cast<DWORD>(hasBody ? body.size() : 0),
-                                        static_cast<DWORD>(hasBody ? body.size() : 0), 0) != FALSE;
-    if (success) {
-        success = ::WinHttpReceiveResponse(request, nullptr) != FALSE;
-    }
-    if (success) {
-        DWORD status = 0;
-        DWORD statusSize = sizeof(status);
-        if (::WinHttpQueryHeaders(request, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
-                                  WINHTTP_HEADER_NAME_BY_INDEX, &status, &statusSize,
-                                  WINHTTP_NO_HEADER_INDEX) != FALSE) {
-            statusCode = static_cast<int>(status);
+        const bool hasBody = !body.empty();
+        success = ::WinHttpSendRequest(request, headers.c_str(), static_cast<DWORD>(-1),
+                                       hasBody ? const_cast<char*>(body.data()) : nullptr,
+                                       static_cast<DWORD>(hasBody ? body.size() : 0),
+                                       static_cast<DWORD>(hasBody ? body.size() : 0), 0) != FALSE;
+        if (success) {
+            success = ::WinHttpReceiveResponse(request, nullptr) != FALSE;
+        }
+        if (success) {
+            DWORD status = 0;
+            DWORD statusSize = sizeof(status);
+            if (::WinHttpQueryHeaders(request, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+                                      WINHTTP_HEADER_NAME_BY_INDEX, &status, &statusSize,
+                                      WINHTTP_NO_HEADER_INDEX) != FALSE) {
+                statusCode = static_cast<int>(status);
+            }
+
+            DWORD available = 0;
+            while (::WinHttpQueryDataAvailable(request, &available) != FALSE && (available > 0)) {
+                std::string buffer(available, '\0');
+                DWORD bytesRead = 0;
+                if (::WinHttpReadData(request, buffer.data(), available, &bytesRead) == FALSE) {
+                    break;
+                }
+                if (bytesRead == 0) {
+                    break;
+                }
+                responseBody.append(buffer.data(), bytesRead);
+            }
         }
 
-        DWORD available = 0;
-        while (::WinHttpQueryDataAvailable(request, &available) != FALSE && (available > 0)) {
-            std::string buffer(available, '\0');
-            DWORD bytesRead = 0;
-            if (::WinHttpReadData(request, buffer.data(), available, &bytesRead) == FALSE) {
-                break;
-            }
-            if (bytesRead == 0) {
-                break;
-            }
-            responseBody.append(buffer.data(), bytesRead);
-        }
-    }
+        ::WinHttpCloseHandle(request);
+        ::WinHttpCloseHandle(connection);
+        ::WinHttpCloseHandle(session);
 
-    ::WinHttpCloseHandle(request);
-    ::WinHttpCloseHandle(connection);
-    ::WinHttpCloseHandle(session);
+        if (statusCode != 0) {
+            break;   // 拿到了 HTTP 状态码即视为一次完整往返，不再重试
+        }
+        ::Sleep(250);
+    }
     return success;
 #else
     (void)method;
@@ -441,6 +457,149 @@ HttpClient::ApiResult HttpClient::UnblockFriend(uint64_t friendId)
 {
     ImsJson data;
     return PostAuth("/api/friends/" + std::to_string(friendId) + "/unblock", "{}", data);
+}
+
+namespace {
+
+/** 把 uint64 数组拼成 JSON 数组字面量，如 "[1,2,3]" */
+std::string IdArrayJson(const std::vector<uint64_t>& ids)
+{
+    std::string s = "[";
+    for (size_t i = 0; i < ids.size(); ++i) {
+        if (i != 0) {
+            s += ",";
+        }
+        s += std::to_string(ids[i]);
+    }
+    s += "]";
+    return s;
+}
+
+} // namespace
+
+// ---------------------------------------------------------------------------
+// 群聊模块（readme §5.13），统一走 Bearer 鉴权与 {code,message,data} 解析
+// ---------------------------------------------------------------------------
+HttpClient::ApiResult HttpClient::CreateGroup(const std::string& name,
+                                              const std::vector<uint64_t>& memberIds, ImsGroupInfo& out)
+{
+    ImsJson data;
+    const std::string body = "{\"name\":" + ImsJsonEscape(name) +
+                             ",\"memberIds\":" + IdArrayJson(memberIds) + "}";
+    const ApiResult result = PostAuth("/api/groups", body, data);
+    if (result.ok) {
+        ParseGroupInfo(data["group"], out);
+    }
+    return result;
+}
+
+HttpClient::ApiResult HttpClient::GetGroups(std::vector<ImsGroupInfo>& out)
+{
+    ImsJson data;
+    const ApiResult result = DoAuthGet("/api/groups", data);
+    if (result.ok) {
+        ParseGroupList(data, out);
+    }
+    return result;
+}
+
+HttpClient::ApiResult HttpClient::GetGroupDetail(uint64_t groupId, ImsGroupInfo& group,
+                                                 std::vector<ImsGroupMember>& members)
+{
+    ImsJson data;
+    const ApiResult result = DoAuthGet("/api/groups/" + std::to_string(groupId), data);
+    if (result.ok) {
+        ParseGroupInfo(data["group"], group);
+        ParseGroupMembers(data, members);
+    }
+    return result;
+}
+
+HttpClient::ApiResult HttpClient::UpdateGroup(uint64_t groupId, const std::string& name,
+                                              const std::string& announcement, const std::string& intro,
+                                              const std::string& avatarUrl)
+{
+    // 只带要改的字段，空串=不修改（服务端同样接受空串并忽略）
+    const std::string body = "{\"name\":" + ImsJsonEscape(name) +
+                             ",\"announcement\":" + ImsJsonEscape(announcement) +
+                             ",\"intro\":" + ImsJsonEscape(intro) +
+                             ",\"avatarUrl\":" + ImsJsonEscape(avatarUrl) + "}";
+    return PatchAuth("/api/groups/" + std::to_string(groupId), body);
+}
+
+HttpClient::ApiResult HttpClient::InviteMembers(uint64_t groupId, const std::vector<uint64_t>& memberIds)
+{
+    ImsJson data;
+    const std::string body = "{\"memberIds\":" + IdArrayJson(memberIds) + "}";
+    return PostAuth("/api/groups/" + std::to_string(groupId) + "/members", body, data);
+}
+
+HttpClient::ApiResult HttpClient::RemoveMember(uint64_t groupId, uint64_t userId)
+{
+    return DeleteAuth("/api/groups/" + std::to_string(groupId) + "/members/" + std::to_string(userId));
+}
+
+HttpClient::ApiResult HttpClient::SetAdmin(uint64_t groupId, uint64_t userId, bool admin)
+{
+    ImsJson data;
+    const std::string body = "{\"userId\":" + std::to_string(userId) +
+                             ",\"admin\":" + (admin ? "true" : "false") + "}";
+    return PostAuth("/api/groups/" + std::to_string(groupId) + "/admins", body, data);
+}
+
+HttpClient::ApiResult HttpClient::TransferGroup(uint64_t groupId, uint64_t toUserId)
+{
+    ImsJson data;
+    const std::string body = "{\"toUserId\":" + std::to_string(toUserId) + "}";
+    return PostAuth("/api/groups/" + std::to_string(groupId) + "/transfer", body, data);
+}
+
+HttpClient::ApiResult HttpClient::QuitGroup(uint64_t groupId)
+{
+    ImsJson data;
+    return PostAuth("/api/groups/" + std::to_string(groupId) + "/quit", "{}", data);
+}
+
+HttpClient::ApiResult HttpClient::DismissGroup(uint64_t groupId)
+{
+    ImsJson data;
+    return PostAuth("/api/groups/" + std::to_string(groupId) + "/dismiss", "{}", data);
+}
+
+HttpClient::ApiResult HttpClient::CreateGroupRequest(uint64_t groupId, const std::string& message,
+                                                     ImsGroupRequestInfo& out)
+{
+    ImsJson data;
+    const std::string body = "{\"groupId\":" + std::to_string(groupId) +
+                             ",\"message\":" + ImsJsonEscape(message) + "}";
+    const ApiResult result = PostAuth("/api/groups/requests", body, data);
+    if (result.ok) {
+        ParseOneGroupRequest(data["request"], out);
+    }
+    return result;
+}
+
+HttpClient::ApiResult HttpClient::GetGroupRequests(const std::string& direction,
+                                                   std::vector<ImsGroupRequestInfo>& out)
+{
+    ImsJson data;
+    const ApiResult result = DoAuthGet("/api/groups/requests?direction=" + UrlEncode(direction), data);
+    if (result.ok) {
+        ParseGroupRequests(data, out);
+    }
+    return result;
+}
+
+HttpClient::ApiResult HttpClient::AcceptGroupRequest(uint64_t requestId)
+{
+    ImsJson data;
+    return PostAuth("/api/groups/requests/" + std::to_string(requestId) + "/accept", "{}", data);
+}
+
+HttpClient::ApiResult HttpClient::RejectGroupRequest(uint64_t requestId)
+{
+    ImsJson data;
+    return PostAuth("/api/groups/requests/" + std::to_string(requestId) + "/reject", "{}", data);
 }
 
 #endif // CXIM_IMS_CORE_SDK_VERSION

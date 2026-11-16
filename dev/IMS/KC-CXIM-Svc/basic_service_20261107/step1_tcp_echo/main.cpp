@@ -23,29 +23,24 @@
 //   4) 用多个线程同时 run() 这个 io_context，充分利用多核处理高并发连接。
 //
 // 用法：
-//   tcp_echo_server [tcp_port] [DBConfig.ini] [http_port]
+//   cxim-server [tcp_port] [DBConfig.ini] [http_port]
 //   环境变量：DB_CONFIG=... JWT_CONFIG=... HTTP_PORT=...
 // ============================================================================
 
 int main(int argc, char* argv[]) {
-    unsigned short port = 8888;                                  // TCP 默认端口
-    if (argc > 1) {                                              // 第一个参数：TCP 端口
-        try { port = static_cast<unsigned short>(std::stoi(argv[1])); }   // 解析端口
-        catch (...) { port = 8888; }                             // 解析失败回退默认值
+    unsigned short tcpPort = 8888;                                  // TCP 默认端口
+    if (const char* env = std::getenv("TCP_PORT")) {            // 环境变量优先
+        try { tcpPort = static_cast<unsigned short>(std::stoi(env)); } catch (...) {}
     }
-
-    std::string cfgPath = "DBConfig.ini";                        // 数据库配置默认路径
-    if (const char* env = std::getenv("DB_CONFIG")) {            // 环境变量优先
-        if (env[0] != '\0') cfgPath = env;                       // 非空才覆盖
-    }
-    if (argc > 2) cfgPath = argv[2];                             // 第二个参数覆盖
 
     unsigned short httpPort = 8080;                              // HTTP 默认端口
     if (const char* env = std::getenv("HTTP_PORT")) {            // 环境变量优先
         try { httpPort = static_cast<unsigned short>(std::stoi(env)); } catch (...) {}
     }
-    if (argc > 3) {                                              // 第三个参数：HTTP 端口
-        try { httpPort = static_cast<unsigned short>(std::stoi(argv[3])); } catch (...) {}
+
+    std::string cfgPath = "DBConfig.ini";                        // 数据库配置默认路径
+    if (const char* env = std::getenv("DB_CONFIG")) {            // 环境变量优先
+        if (env[0] != '\0') cfgPath = env;                       // 非空才覆盖
     }
 
     std::string jwtPath = "JWTConfig.json";                      // JWT 配置默认在项目根目录
@@ -85,7 +80,7 @@ int main(int argc, char* argv[]) {
         kc::TokenService tokens(jwtCfg);                         // 无状态签名/验签服务
 
         // 同一个 io_context 里挂两个 acceptor：TCP 长连接 + HTTP 短连接。
-        kc::server srv(io, port, db, tokens);                    // 创建 TCP 监听
+        kc::server srv(io, tcpPort, db, tokens);                    // 创建 TCP 监听
         // HTTP 层与 TCP 层共享同一个 SessionManager：
         // 好友申请/通过等写操作走 HTTP，完成后通过在线表把事件推给 TCP 长连接。
         kc::http_server http(io, httpPort, db, tokens, srv.sessions());

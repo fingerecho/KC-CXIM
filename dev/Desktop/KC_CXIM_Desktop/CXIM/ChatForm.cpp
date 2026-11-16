@@ -113,7 +113,7 @@ void ChatForm::OnInitWindow()
         tabGroup->Selected(false, false);
         tabGroup->AttachClick([contactsListPages](const ui::EventArgs&) {
             if (contactsListPages != nullptr) {
-                contactsListPages->SelectItem(_T("group_list"));
+                contactsListPages->SelectItem(_T("group_list_page"));
             }
             return true;
         });
@@ -350,6 +350,7 @@ void ChatForm::OnInitWindow()
             return true;
         });
     }
+
 #endif
 
 #ifdef CXIM_IMS_CORE_SDK_VERSION
@@ -784,10 +785,14 @@ void ChatForm::InitIms()
     }
     if (tabGroup != nullptr) {
         tabGroup->Selected(false, false);
-        tabGroup->AttachClick([contactsListPages](const ui::EventArgs&) {
+        tabGroup->AttachClick([this, contactsListPages](const ui::EventArgs&) {
             if (contactsListPages != nullptr) {
-                contactsListPages->SelectItem(_T("group_list"));
+                // 页面子控件名是 group_list_page（内层列表才是 group_list）
+                contactsListPages->SelectItem(_T("group_list_page"));
             }
+            RefreshGroupList();
+            RefreshGroupRequests();
+            RenderGroupList();
             return true;
         });
     }
@@ -814,11 +819,14 @@ void ChatForm::InitIms()
         });
     }
 
-    // 6) 聊天区“更多”按钮 → 当前好友操作面板
+    // 6) 聊天区"更多"按钮 → 当前会话的操作面板（群→群管理，单聊→好友操作）
     ui::Button* btnMore = dynamic_cast<ui::Button*>(FindControl(_T("btn_more")));
     if (btnMore != nullptr) {
         btnMore->AttachClick([this](const ui::EventArgs&) {
-            if (m_currentPeer != 0) {
+            if (m_currentGroup != 0) {
+                ShowGroupOpMenu(m_currentGroup);
+            }
+            else if (m_currentPeer != 0) {
                 ShowFriendOpPanel(m_currentPeer);
             }
             return true;
@@ -1124,8 +1132,221 @@ void ChatForm::InitIms()
             return true;
         });
     }
-}
 
+    // 10) 群聊 UI 接线（wechat.xml 新增控件，缺失时安全跳过）
+    {
+        // 成员按钮（聊天区工具栏/标题栏）→ 群成员侧栏
+        ui::Button* btnMembers = dynamic_cast<ui::Button*>(FindControl(_T("btn_members")));
+        if (btnMembers != nullptr) {
+            btnMembers->AttachClick([this](const ui::EventArgs&) {
+                if (m_currentGroup != 0) {
+                    ShowGroupMemberPanel(m_currentGroup);
+                }
+                return true;
+            });
+        }
+
+        // 新建群聊入口（群聊页签底部）
+        ui::Button* btnNewGroup = dynamic_cast<ui::Button*>(FindControl(_T("btn_new_group")));
+        if (btnNewGroup != nullptr) {
+            btnNewGroup->AttachClick([this](const ui::EventArgs&) {
+                ShowCreateGroupDialog();
+                return true;
+            });
+        }
+
+        // 入群申请入口（红点）
+        ui::Button* btnGroupRequests = dynamic_cast<ui::Button*>(FindControl(_T("btn_group_requests")));
+        if (btnGroupRequests != nullptr) {
+            btnGroupRequests->SetVisible(false);
+            btnGroupRequests->AttachClick([this](const ui::EventArgs&) {
+                ShowJoinRequestPanel();
+                return true;
+            });
+        }
+
+        // 建群/邀请面板
+        ui::Box* createPanel = dynamic_cast<ui::Box*>(FindControl(_T("create_group_panel")));
+        if (createPanel != nullptr) {
+            createPanel->SetVisible(false);
+        }
+        ui::Button* btnCloseCreate = dynamic_cast<ui::Button*>(FindControl(_T("btn_close_create_group")));
+        if (btnCloseCreate != nullptr) {
+            btnCloseCreate->AttachClick([this](const ui::EventArgs&) {
+                ui::Box* p = dynamic_cast<ui::Box*>(FindControl(_T("create_group_panel")));
+                if (p != nullptr) {
+                    p->SetVisible(false);
+                }
+                m_inviteTargetGroupId = 0;
+                return true;
+            });
+        }
+        ui::Button* btnCreateGroup = dynamic_cast<ui::Button*>(FindControl(_T("btn_create_group")));
+        if (btnCreateGroup != nullptr) {
+            btnCreateGroup->SetText(_T("创建"));
+            // 只在此处绑定一次：根据 m_inviteTargetGroupId 分派“建群/邀请”，
+            // 避免每次打开对话框重复 AttachClick 导致一次点击触发多次创建（群列表重复）。
+            btnCreateGroup->AttachClick([this](const ui::EventArgs&) {
+                OnCreateDialogConfirm();
+                return true;
+            });
+        }
+
+        // 群成员面板
+        ui::Box* memberPanel = dynamic_cast<ui::Box*>(FindControl(_T("group_member_panel")));
+        if (memberPanel != nullptr) {
+            memberPanel->SetVisible(false);
+        }
+        ui::Button* btnCloseMember = dynamic_cast<ui::Button*>(FindControl(_T("btn_close_group_member")));
+        if (btnCloseMember != nullptr) {
+            btnCloseMember->AttachClick([this](const ui::EventArgs&) {
+                ui::Box* p = dynamic_cast<ui::Box*>(FindControl(_T("group_member_panel")));
+                if (p != nullptr) {
+                    p->SetVisible(false);
+                }
+                return true;
+            });
+        }
+
+        // 入群申请面板
+        ui::Box* joinPanel = dynamic_cast<ui::Box*>(FindControl(_T("join_request_panel")));
+        if (joinPanel != nullptr) {
+            joinPanel->SetVisible(false);
+        }
+        ui::Button* btnCloseJoin = dynamic_cast<ui::Button*>(FindControl(_T("btn_close_join_request")));
+        if (btnCloseJoin != nullptr) {
+            btnCloseJoin->AttachClick([this](const ui::EventArgs&) {
+                ui::Box* p = dynamic_cast<ui::Box*>(FindControl(_T("join_request_panel")));
+                if (p != nullptr) {
+                    p->SetVisible(false);
+                }
+                return true;
+            });
+        }
+
+        // 群管理菜单（group_op_panel）
+        ui::Box* opPanel = dynamic_cast<ui::Box*>(FindControl(_T("group_op_panel")));
+        if (opPanel != nullptr) {
+            opPanel->SetVisible(false);
+        }
+        ui::Button* btnCloseOp = dynamic_cast<ui::Button*>(FindControl(_T("btn_close_group_op")));
+        if (btnCloseOp != nullptr) {
+            btnCloseOp->AttachClick([this](const ui::EventArgs&) {
+                ui::Box* p = dynamic_cast<ui::Box*>(FindControl(_T("group_op_panel")));
+                if (p != nullptr) {
+                    p->SetVisible(false);
+                }
+                return true;
+            });
+        }
+        // 管理动作按钮：先隐藏，由 ShowGroupOpMenu 按角色显示；点击行为按 myRole 由 DoGroupMenuAction 兜底
+        struct OpDef { const DString* name; const char* action; };
+        const DString nUpdate = _T("btn_group_update"), nInvite = _T("btn_group_invite"),
+                      nRemove = _T("btn_group_remove"), nAdmin = _T("btn_group_admin"),
+                      nTransfer = _T("btn_group_transfer"), nDismiss = _T("btn_group_dismiss"),
+                      nQuit = _T("btn_group_quit");
+        const OpDef ops[] = {
+            { &nUpdate, "update" }, { &nInvite, "invite" }, { &nRemove, "remove" },
+            { &nAdmin, "admin" }, { &nTransfer, "transfer" }, { &nDismiss, "dismiss" }, { &nQuit, "quit" }
+        };
+        for (const OpDef& op : ops) {
+            ui::Button* b = dynamic_cast<ui::Button*>(FindControl(*op.name));
+            if (b == nullptr) {
+                continue;
+            }
+            b->SetVisible(false);
+            const std::string action = op.action;
+            b->AttachClick([this, action](const ui::EventArgs&) {
+                const uint64_t gid = m_opPanelGroupId;
+                if (gid == 0) {
+                    return true;
+                }
+                // 需要输入的动作先打开对应子面板；其余直接执行
+                if (action == "update") {
+                    HideOverlayPanels();
+                    ui::Box* p = dynamic_cast<ui::Box*>(FindControl(_T("group_update_panel")));
+                    if (p != nullptr) {
+                        p->SetVisible(true);
+                        ui::RichEdit2* nameEdit = dynamic_cast<ui::RichEdit2*>(FindControl(_T("group_name_edit")));
+                        if ((nameEdit != nullptr) && (FindGroupInfo(gid) != nullptr)) {
+                            nameEdit->SetText(ui::StringConvert::UTF8ToT(FindGroupInfo(gid)->name));
+                        }
+                    }
+                }
+                else if (action == "remove") {
+                    HideOverlayPanels();
+                    ui::Box* p = dynamic_cast<ui::Box*>(FindControl(_T("group_remove_panel")));
+                    if (p != nullptr) {
+                        p->SetVisible(true);
+                    }
+                }
+                else if (action == "admin") {
+                    HideOverlayPanels();
+                    ui::Box* p = dynamic_cast<ui::Box*>(FindControl(_T("group_admin_panel")));
+                    if (p != nullptr) {
+                        p->SetVisible(true);
+                    }
+                }
+                else if (action == "transfer") {
+                    HideOverlayPanels();
+                    ui::Box* p = dynamic_cast<ui::Box*>(FindControl(_T("group_transfer_panel")));
+                    if (p != nullptr) {
+                        p->SetVisible(true);
+                    }
+                }
+                else {
+                    DoGroupMenuAction(gid, action);
+                }
+                return true;
+            });
+        }
+
+        // 子面板“确定”按钮 + 关闭按钮
+        struct SubDef { const DString* okName; const DString* closeName; const DString* panelName; const char* action; };
+        const DString okUpdate = _T("btn_group_update_save"), okRemove = _T("btn_group_remove_ok"),
+                      okAdmin = _T("btn_group_admin_ok"), okTransfer = _T("btn_group_transfer_ok");
+        const DString closeUpd = _T("btn_close_group_update"), closeRem = _T("btn_close_group_remove"),
+                      closeAdm = _T("btn_close_group_admin"), closeTr = _T("btn_close_group_transfer");
+        const DString pUpd = _T("group_update_panel"), pRem = _T("group_remove_panel"),
+                      pAdm = _T("group_admin_panel"), pTr = _T("group_transfer_panel");
+        const SubDef subs[] = {
+            { &okUpdate, &closeUpd, &pUpd, "update" }, { &okRemove, &closeRem, &pRem, "remove" },
+            { &okAdmin, &closeAdm, &pAdm, "admin" }, { &okTransfer, &closeTr, &pTr, "transfer" }
+        };
+        for (const SubDef& s : subs) {
+            ui::Box* panel = dynamic_cast<ui::Box*>(FindControl(*s.panelName));
+            if (panel != nullptr) {
+                panel->SetVisible(false);
+            }
+            ui::Button* closeBtn = dynamic_cast<ui::Button*>(FindControl(*s.closeName));
+            if (closeBtn != nullptr) {
+                const DString pn = *s.panelName;
+                closeBtn->AttachClick([this, pn](const ui::EventArgs&) {
+                    ui::Box* p = dynamic_cast<ui::Box*>(FindControl(pn));
+                    if (p != nullptr) {
+                        p->SetVisible(false);
+                    }
+                    return true;
+                });
+            }
+            ui::Button* okBtn = dynamic_cast<ui::Button*>(FindControl(*s.okName));
+            if (okBtn != nullptr) {
+                const std::string action = s.action;
+                okBtn->AttachClick([this, action](const ui::EventArgs&) {
+                    const uint64_t gid = m_opPanelGroupId;
+                    if (gid != 0) {
+                        DoGroupMenuAction(gid, action);
+                    }
+                    return true;
+                });
+            }
+        }
+    }
+
+    // 11) 登录后刷新群列表与入群申请红点
+    RefreshGroupList();
+    RefreshGroupRequests();
+}
 // ---------------------------------------------------------------------------
 // TCP 事件入口（网络线程 → UI 线程）
 // ---------------------------------------------------------------------------
@@ -1140,6 +1361,10 @@ void ChatForm::OnTcpLoginResult(bool success, const std::string& error, bool fir
             // 登录后全量拉取好友与申请，保证最终一致（列表变化事件不持久化）
             RefreshFriendList();
             RefreshFriendRequests();
+            // 群聊一致性总策略（提示词11.5）：每次登录成功（含重连）都全量刷新群列表，
+            // 再对当前打开的群逐个拉详情；事件只作为增量刷新触发器。
+            RefreshGroupList();
+            RefreshGroupRequests();
         }
         else {
             if (logger) {
@@ -1162,13 +1387,14 @@ void ChatForm::OnTcpDisconnected()
 
 void ChatForm::OnTcpMessage(const ImsMessage& msg)
 {
-    // 投递回执在线程上直接发送，无需切回 UI 线程
+    // 投递回执在线程上直接发送，无需切回 UI 线程（单聊/群聊规则一致，带 conversation_id+seq）
     if ((msg.type == static_cast<int>(ImsMsgType::Text)) || (msg.type == static_cast<int>(ImsMsgType::Image))) {
-        if ((msg.from != 0) && (msg.conversation_id != 0) && (msg.seq != 0)) {
+        if ((msg.conversation_id != 0) && (msg.seq != 0)) {
             ImsMessage ack;
             ack.type = static_cast<int>(ImsMsgType::Ack);
             ack.conversation_id = msg.conversation_id;
             ack.seq = msg.seq;
+            ack.is_group = msg.is_group;
             ack.content = "delivered";
             TcpClient::Instance().Send(ack);
         }
@@ -1176,16 +1402,32 @@ void ChatForm::OnTcpMessage(const ImsMessage& msg)
 
     ImsMessage copy = msg;
     PostToUi([this, copy]() {
+        const bool isGroup = copy.is_group;
         switch (copy.type) {
         case static_cast<int>(ImsMsgType::Text):
         case static_cast<int>(ImsMsgType::Image):
-            HandleChatMessage(copy, false);
+            if (isGroup) {
+                HandleGroupChatMessage(copy);   // 群消息：to=groupId, from=发送者
+            }
+            else {
+                HandleChatMessage(copy, false);
+            }
             break;
         case static_cast<int>(ImsMsgType::HistoryResp):
-            HandleHistoryResp(copy);
+            if (isGroup) {
+                HandleGroupHistoryResp(copy);
+            }
+            else {
+                HandleHistoryResp(copy);
+            }
             break;
         case static_cast<int>(ImsMsgType::SendAck):
-            HandleSendAck(copy);
+            if (isGroup) {
+                HandleGroupSendAck(copy);
+            }
+            else {
+                HandleSendAck(copy);
+            }
             break;
         case static_cast<int>(ImsMsgType::Error):
             HandleTcpError(copy);
@@ -1194,6 +1436,13 @@ void ChatForm::OnTcpMessage(const ImsMessage& msg)
         case static_cast<int>(ImsMsgType::FriendRequestResult):
         case static_cast<int>(ImsMsgType::FriendListChanged):
             HandleFriendEvent(copy);
+            break;
+        case static_cast<int>(ImsMsgType::GroupMemberChanged):
+        case static_cast<int>(ImsMsgType::GroupDismissed):
+        case static_cast<int>(ImsMsgType::GroupInfoChanged):
+        case static_cast<int>(ImsMsgType::GroupRequest):
+        case static_cast<int>(ImsMsgType::GroupRequestResult):
+            HandleGroupEvent(copy.type, copy);
             break;
         default:
             break;
@@ -1250,11 +1499,20 @@ void ChatForm::HandleChatMessage(const ImsMessage& msg, bool fromHistory)
 
 void ChatForm::HandleSendAck(const ImsMessage& msg)
 {
-    if (m_pendingSends.empty()) {
+    // 单聊 SendAck：弹出队列中第一条非群发送
+    size_t idx = 0;
+    bool found = false;
+    for (; idx < m_pendingSends.size(); ++idx) {
+        if (!m_pendingSends[idx].isGroup) {
+            found = true;
+            break;
+        }
+    }
+    if (!found) {
         return;
     }
-    const PendingSend pending = m_pendingSends.front();
-    m_pendingSends.erase(m_pendingSends.begin());
+    const PendingSend pending = m_pendingSends[idx];
+    m_pendingSends.erase(m_pendingSends.begin() + static_cast<long>(idx));
 
     if (pending.bubble != nullptr) {
         const std::string suffix = (msg.content == "duplicate") ? "  [已发送(去重)]" : "  [已发送]";
@@ -1291,7 +1549,7 @@ void ChatForm::HandleHistoryResp(const ImsMessage& msg)
         }
         return;
     }
-    const uint64_t peerId = m_historyFifo.front();
+    const uint64_t peerId = m_historyFifo.front().id;
     m_historyFifo.erase(m_historyFifo.begin());
 
     std::vector<ImsHistoryMessage> history;
@@ -1395,7 +1653,9 @@ void ChatForm::RequestHistory(uint64_t peerId, uint64_t beforeSeq)
     req.to = peerId;
     req.seq = beforeSeq;
     req.content = "20";
-    m_historyFifo.push_back(peerId);
+    req.is_group = false;
+    HistoryKey key; key.isGroup = false; key.id = peerId;
+    m_historyFifo.push_back(key);
     TcpClient::Instance().Send(req);
 }
 
@@ -1487,6 +1747,21 @@ void ChatForm::RenderPeerMessages()
 
 void ChatForm::SendCurrentMessage()
 {
+    // 群会话：走群发送链路（type=1,is_group=true,to=groupId）
+    if (m_currentGroup != 0) {
+        ui::RichEdit2* messageEdit = dynamic_cast<ui::RichEdit2*>(FindControl(_T("message_edit")));
+        if (messageEdit == nullptr) {
+            return;
+        }
+        const std::string text = ImsTrim(ui::StringConvert::TToUTF8(messageEdit->GetText()));
+        if (text.empty()) {
+            return;
+        }
+        messageEdit->SetText(_T(""));
+        SendCurrentGroupMessage(m_currentGroup, text);
+        return;
+    }
+
     if (m_currentPeer == 0) {
         auto logger = spdlog::get("im_file_logger");
         if (logger) {
@@ -1536,23 +1811,39 @@ void ChatForm::SendCurrentMessage()
 }
 
 // ---------------------------------------------------------------------------
-// 会话列表
+// 会话列表（合并单聊 + 群聊，按最后消息时间排序，新消息置顶）
 // ---------------------------------------------------------------------------
 void ChatForm::EnsureConversationRow(uint64_t peerId, const std::string& text)
 {
-    auto iter = std::find(m_conversationOrder.begin(), m_conversationOrder.end(), peerId);
+    const std::string key = ConvKey(false, peerId);
+    auto iter = std::find(m_conversationOrder.begin(), m_conversationOrder.end(), key);
     if (iter != m_conversationOrder.end()) {
         if (iter != m_conversationOrder.begin()) {
             m_conversationOrder.erase(iter);
-            m_conversationOrder.insert(m_conversationOrder.begin(), peerId);
+            m_conversationOrder.insert(m_conversationOrder.begin(), key);
         }
     }
     else {
-        m_conversationOrder.insert(m_conversationOrder.begin(), peerId);
+        m_conversationOrder.insert(m_conversationOrder.begin(), key);
     }
-    m_lastSnippet[peerId] = text;
+    m_lastSnippet[key] = text;
     RenderConversationList();
 }
+
+namespace {
+
+/** 会话行描述（单聊/群聊统一） */
+struct ConvRow {
+    bool isGroup = false;
+    uint64_t id = 0;
+    std::string key;
+    std::string title;
+    std::string snippet;
+    uint64_t lastTs = 0;
+    int unread = 0;
+};
+
+} // namespace
 
 void ChatForm::RenderConversationList()
 {
@@ -1563,24 +1854,76 @@ void ChatForm::RenderConversationList()
     conversationList->RemoveAllItems();
 
     const uint64_t selfId = ImsSelfId();
-    for (uint64_t peerId : m_conversationOrder) {
-        auto stateIter = m_peers.find(peerId);
-        if (stateIter == m_peers.end()) {
+    std::vector<ConvRow> rows;
+
+    // 单聊会话
+    for (const auto& kv : m_peers) {
+        const PeerState& state = kv.second;
+        if (state.items.empty()) {
             continue;
         }
-        PeerState& state = stateIter->second;
-        std::string snippet;
-        std::string clock;
-        if (!state.items.empty()) {
-            const PeerState::Item& last = state.items.back();
-            snippet = (last.fromSelf ? "我: " : "") + last.text;
-            clock = ImsFormatClock(last.ts);
-        }
-        auto snippetIter = m_lastSnippet.find(peerId);
-        if (snippet.empty() && snippetIter != m_lastSnippet.end()) {
-            snippet = snippetIter->second;
-        }
+        ConvRow row;
+        row.isGroup = false;
+        row.id = kv.first;
+        row.key = ConvKey(false, kv.first);
+        row.title = PeerDisplayName(kv.first);
+        const PeerState::Item& last = state.items.back();
+        row.snippet = (last.fromSelf ? "我: " : "") + last.text;
+        row.lastTs = last.ts;
+        row.unread = state.unread;
+        rows.push_back(row);
+    }
 
+    // 群聊会话（提示词12.3：群会话行显示群图标+群名+"[群] xxx"摘要，未读角标）
+    for (const auto& kv : m_groups) {
+        const GroupState& state = kv.second;
+        if (state.removed || state.info.status != 0) {
+            continue;   // 已不在该群/已解散：不展示
+        }
+        ConvRow row;
+        row.isGroup = true;
+        row.id = kv.first;
+        row.key = ConvKey(true, kv.first);
+        row.title = GroupDisplayName(kv.first);
+        if (!state.items.empty()) {
+            const GroupState::Item& last = state.items.back();
+            row.snippet = "[群] " + last.text;
+            row.lastTs = last.ts;
+        }
+        else {
+            row.snippet = "[群] ";
+            row.lastTs = state.info.createdTs;
+        }
+        row.unread = state.unread;
+        (void)selfId;
+        rows.push_back(row);
+    }
+
+    // 置顶/排序：先按本地会话顺序（新消息置顶），未登记的排在其后按时间倒序
+    std::vector<ConvRow> ordered;
+    ordered.reserve(rows.size());
+    for (const std::string& key : m_conversationOrder) {
+        for (ConvRow& row : rows) {
+            if (row.key == key) {
+                ordered.push_back(row);
+                row.key.clear();   // 标记已消费
+                break;
+            }
+        }
+    }
+    std::vector<ConvRow> rest;
+    for (ConvRow& row : rows) {
+        if (!row.key.empty()) {
+            rest.push_back(row);
+        }
+    }
+    std::stable_sort(rest.begin(), rest.end(),
+        [](const ConvRow& a, const ConvRow& b) { return a.lastTs > b.lastTs; });
+    for (const ConvRow& row : rest) {
+        ordered.push_back(row);
+    }
+
+    for (const ConvRow& row : ordered) {
         ui::ListBoxItemH* item = new ui::ListBoxItemH(this);
         item->SetAttribute(_T("width"), _T("stretch"));
         item->SetAttribute(_T("height"), _T("60"));
@@ -1592,21 +1935,32 @@ void ChatForm::RenderConversationList()
         item->SetAttribute(_T("selected_normal_color"), _T("#FFE3F1FD"));
         item->SetAttribute(_T("fade_hovered"), _T("false"));
 
+        // 群聊头像占位（单聊留空）
+        if (row.isGroup) {
+            ui::Control* icon = new ui::Control(this);
+            icon->SetAttribute(_T("width"), _T("40"));
+            icon->SetAttribute(_T("height"), _T("40"));
+            icon->SetAttribute(_T("valign"), _T("center"));
+            icon->SetAttribute(_T("mouse_enabled"), _T("false"));
+            icon->SetAttribute(_T("normal_image"), _T("file='wechat_icon_group.svg' width='34' height='34' valign='center' halign='center'"));
+            item->AddItem(icon);
+        }
+
         ui::VBox* textBox = new ui::VBox(this);
         textBox->SetAttribute(_T("width"), _T("stretch"));
         textBox->SetAttribute(_T("height"), _T("stretch"));
         textBox->SetAttribute(_T("mouse_enabled"), _T("false"));
 
-        std::string nameText = PeerDisplayName(peerId);
-        if (state.unread > 0) {
-            nameText += " (" + std::to_string(state.unread) + ")";
+        std::string nameText = row.title;
+        if (row.unread > 0) {
+            nameText += " (" + std::to_string(row.unread) + ")";
         }
         ui::Label* nameLabel = new ui::Label(this);
         nameLabel->SetAttribute(_T("height"), _T("26"));
         nameLabel->SetAttribute(_T("margin"), _T("0,6,0,0"));
         nameLabel->SetAttribute(_T("valign"), _T("center"));
         nameLabel->SetAttribute(_T("font"), _T("system_regular_13"));
-        nameLabel->SetAttribute(_T("normal_text_color"), state.unread > 0 ? _T("#FFE0483D") : _T("#FF1F2329"));
+        nameLabel->SetAttribute(_T("normal_text_color"), row.unread > 0 ? _T("#FFE0483D") : _T("#FF1F2329"));
         nameLabel->SetAttribute(_T("mouse_enabled"), _T("false"));
         nameLabel->SetAttribute(_T("text"), ui::StringConvert::UTF8ToT(nameText));
 
@@ -1615,20 +1969,27 @@ void ChatForm::RenderConversationList()
         snippetLabel->SetAttribute(_T("font"), _T("system_regular_11"));
         snippetLabel->SetAttribute(_T("normal_text_color"), _T("#FF9AA1AC"));
         snippetLabel->SetAttribute(_T("mouse_enabled"), _T("false"));
-        const std::string snippetText = snippet + (clock.empty() ? std::string() : ("  " + clock));
+        const std::string clock = ImsFormatClock(row.lastTs);
+        const std::string snippetText = row.snippet + (clock.empty() ? std::string() : ("  " + clock));
         snippetLabel->SetAttribute(_T("text"), ui::StringConvert::UTF8ToT(snippetText));
 
         textBox->AddItem(nameLabel);
         textBox->AddItem(snippetLabel);
         item->AddItem(textBox);
 
-        item->AttachClick([this, peerId](const ui::EventArgs&) {
-            SelectPeer(peerId);
+        const bool isGroup = row.isGroup;
+        const uint64_t id = row.id;
+        item->AttachClick([this, isGroup, id](const ui::EventArgs&) {
+            if (isGroup) {
+                SelectGroup(id);
+            }
+            else {
+                SelectPeer(id);
+            }
             return true;
         });
 
         conversationList->AddItem(item);
-        (void)selfId;
     }
 }
 
@@ -1663,6 +2024,13 @@ void ChatForm::SelectPeer(uint64_t peerId)
         return;
     }
     m_currentPeer = peerId;
+    m_currentGroup = 0;   // 与群会话互斥
+
+    // 单聊不显示群公告条
+    ui::Label* announceLabel = dynamic_cast<ui::Label*>(FindControl(_T("chat_announcement_label")));
+    if (announceLabel != nullptr) {
+        announceLabel->SetVisible(false);
+    }
 
     ui::TabBox* mainPages = dynamic_cast<ui::TabBox*>(FindControl(_T("main_pages")));
     if (mainPages != nullptr) {
@@ -2030,7 +2398,12 @@ void ChatForm::RenderFriendRequests(const std::vector<FriendRequestInfo>& reques
 // ---------------------------------------------------------------------------
 void ChatForm::HideOverlayPanels()
 {
-    const DString names[] = { _T("add_friend_panel"), _T("request_panel"), _T("friend_op_panel") };
+    const DString names[] = {
+        _T("add_friend_panel"), _T("request_panel"), _T("friend_op_panel"),
+        _T("create_group_panel"), _T("group_member_panel"), _T("group_op_panel"),
+        _T("join_request_panel"), _T("group_update_panel"), _T("group_remove_panel"),
+        _T("group_admin_panel"), _T("group_transfer_panel")
+    };
     for (const DString& name : names) {
         ui::Box* panel = dynamic_cast<ui::Box*>(FindControl(name));
         if (panel != nullptr) {
@@ -2068,6 +2441,1444 @@ void ChatForm::ShowFriendOpPanel(uint64_t friendId)
     }
     if (panel != nullptr) {
         panel->SetVisible(true);
+    }
+}
+
+// ===========================================================================
+// 群聊：会话模型 / TCP 收发 / 事件 / UI（提示词 10、11、12）
+// ===========================================================================
+
+/** 群气泡（发送者昵称在气泡上方，多行显示） */
+void ChatForm::AppendGroupBubble(bool fromSelf, const std::string& senderName, const std::string& text,
+                                 ui::Label** outLabel)
+{
+    ui::VListBox* messageList = dynamic_cast<ui::VListBox*>(FindControl(_T("chat_message_list")));
+    if (messageList == nullptr) {
+        return;
+    }
+    ui::ListBoxItemH* item = new ui::ListBoxItemH(this);
+    item->SetAttribute(_T("width"), _T("stretch"));
+    item->SetAttribute(_T("height"), _T("auto"));
+    item->SetAttribute(_T("padding"), _T("0,2,0,2"));
+
+    ui::Control* spacer = new ui::Control(this);
+    spacer->SetAttribute(_T("width"), _T("stretch"));
+    spacer->SetAttribute(_T("height"), _T("auto"));
+
+    ui::VBox* col = new ui::VBox(this);
+    col->SetAttribute(_T("width"), _T("auto"));
+    col->SetAttribute(_T("height"), _T("auto"));
+
+    if (!fromSelf && !senderName.empty()) {
+        ui::Label* name = new ui::Label(this);
+        name->SetAttribute(_T("width"), _T("auto"));
+        name->SetAttribute(_T("height"), _T("16"));
+        name->SetAttribute(_T("font"), _T("system_regular_10"));
+        name->SetAttribute(_T("normal_text_color"), _T("#FF9AA1AC"));
+        name->SetAttribute(_T("mouse_enabled"), _T("false"));
+        name->SetAttribute(_T("text"), ui::StringConvert::UTF8ToT(senderName));
+        col->AddItem(name);
+    }
+
+    ui::Label* bubble = new ui::Label(this);
+    bubble->SetAttribute(_T("width"), _T("auto"));
+    bubble->SetAttribute(_T("height"), _T("auto"));
+    bubble->SetAttribute(_T("padding"), _T("10,5,10,5"));
+    bubble->SetAttribute(_T("border_round"), _T("8,8"));
+    bubble->SetAttribute(_T("bkcolor"), fromSelf ? _T("#FFD9ECFD") : _T("#FFF2F4F7"));
+    bubble->SetAttribute(_T("normal_text_color"), _T("#FF1F2329"));
+    bubble->SetAttribute(_T("font"), _T("system_regular_12"));
+    bubble->SetAttribute(_T("text_align"), _T("left,vcenter"));
+    bubble->SetAttribute(_T("mouse_enabled"), _T("false"));
+    bubble->SetAttribute(_T("end_ellipsis_char"), _T(""));
+    bubble->SetAttribute(_T("single_line"), _T("false"));
+    bubble->SetAttribute(_T("text"), ui::StringConvert::UTF8ToT(text));
+    col->AddItem(bubble);
+
+    if (fromSelf) {
+        item->AddItem(spacer);
+        item->AddItem(col);
+    }
+    else {
+        item->AddItem(col);
+        item->AddItem(spacer);
+    }
+    messageList->AddItem(item);
+    const size_t count = messageList->GetItemCount();
+    if (count > 0) {
+        messageList->EnsureVisible(count - 1);
+    }
+    messageList->EndDown();
+    if (outLabel != nullptr) {
+        *outLabel = bubble;
+    }
+}
+
+const ImsGroupInfo* ChatForm::FindGroupInfo(uint64_t groupId) const
+{
+    auto iter = m_groups.find(groupId);
+    if (iter != m_groups.end()) {
+        return &iter->second.info;
+    }
+    for (const ImsGroupInfo& g : m_groupList) {
+        if (g.groupId == groupId) {
+            return &g;
+        }
+    }
+    return nullptr;
+}
+
+std::string ChatForm::GroupDisplayName(uint64_t groupId) const
+{
+    const ImsGroupInfo* info = FindGroupInfo(groupId);
+    if (info != nullptr && !info->name.empty()) {
+        return info->name;
+    }
+    return "群" + std::to_string(groupId);
+}
+
+std::string ChatForm::GroupMemberName(uint64_t groupId, uint64_t userId) const
+{
+    auto iter = m_groups.find(groupId);
+    if (iter != m_groups.end()) {
+        auto nameIter = iter->second.memberNames.find(userId);
+        if (nameIter != iter->second.memberNames.end() && !nameIter->second.empty()) {
+            return nameIter->second;
+        }
+    }
+    // 取不到先显示 userId（提示词10.3）
+    return std::to_string(userId);
+}
+
+void ChatForm::SelectGroup(uint64_t groupId)
+{
+    if (groupId == 0) {
+        return;
+    }
+    m_currentGroup = groupId;
+    m_currentPeer = 0;   // 与单聊会话互斥
+
+    ui::TabBox* mainPages = dynamic_cast<ui::TabBox*>(FindControl(_T("main_pages")));
+    if (mainPages != nullptr) {
+        mainPages->SelectItem(_T("chat_page"));
+    }
+    ui::Option* navChat = dynamic_cast<ui::Option*>(FindControl(_T("nav_chat")));
+    if (navChat != nullptr) {
+        navChat->Selected(true, false);
+    }
+    ui::Option* navContacts = dynamic_cast<ui::Option*>(FindControl(_T("nav_contacts")));
+    if (navContacts != nullptr) {
+        navContacts->Selected(false, false);
+    }
+
+    ui::Label* titleLabel = dynamic_cast<ui::Label*>(FindControl(_T("chat_title_label")));
+    if (titleLabel != nullptr) {
+        titleLabel->SetText(ui::StringConvert::UTF8ToT(GroupDisplayName(groupId)));
+    }
+    UpdateGroupAnnouncementBar();
+
+    // 确保本地有该群会话（即便事件先到但还没进列表）
+    GroupState& gs = m_groups[groupId];
+    if (gs.info.groupId == 0) {
+        const ImsGroupInfo* info = FindGroupInfo(groupId);
+        if (info != nullptr) {
+            gs.info = *info;
+        }
+        else {
+            gs.info.groupId = groupId;
+        }
+    }
+
+    RenderGroupMessages(groupId);
+    RequestGroupHistory(groupId, 0);
+    MarkGroupRead(groupId);
+
+    auto logger = spdlog::get("im_file_logger");
+    if (logger) {
+        logger->info("打开群会话 groupId={}", groupId);
+    }
+}
+
+void ChatForm::UpdateGroupAnnouncementBar()
+{
+    ui::Label* announceLabel = dynamic_cast<ui::Label*>(FindControl(_T("chat_announcement_label")));
+    if (announceLabel == nullptr) {
+        return;
+    }
+    if (m_currentGroup == 0) {
+        announceLabel->SetVisible(false);
+        return;
+    }
+    const ImsGroupInfo* info = FindGroupInfo(m_currentGroup);
+    if ((info != nullptr) && !info->announcement.empty()) {
+        announceLabel->SetVisible(true);
+        announceLabel->SetText(ui::StringConvert::UTF8ToT("公告: " + info->announcement));
+    }
+    else {
+        announceLabel->SetVisible(false);
+    }
+}
+
+void ChatForm::RequestGroupHistory(uint64_t groupId, uint64_t beforeSeq)
+{
+    ImsMessage req;
+    req.type = static_cast<int>(ImsMsgType::HistoryReq);
+    req.to = groupId;              // 群聊：to = groupId
+    req.seq = beforeSeq;           // seq = before_seq（0=最新）
+    req.content = "20";
+    req.is_group = true;
+    HistoryKey key; key.isGroup = true; key.id = groupId;
+    m_historyFifo.push_back(key);
+    TcpClient::Instance().Send(req);
+}
+
+void ChatForm::RenderGroupMessages(uint64_t groupId)
+{
+    ui::VListBox* messageList = dynamic_cast<ui::VListBox*>(FindControl(_T("chat_message_list")));
+    if (messageList == nullptr) {
+        return;
+    }
+    messageList->RemoveAllItems();
+    auto iter = m_groups.find(groupId);
+    if (iter == m_groups.end()) {
+        return;
+    }
+    GroupState& state = iter->second;
+    std::vector<GroupState::Item> items = state.items;
+    std::stable_sort(items.begin(), items.end(),
+        [](const GroupState::Item& left, const GroupState::Item& right) {
+            return left.seq < right.seq;   // seq 升序，最新在底部
+        });
+    for (const GroupState::Item& item : items) {
+        const std::string sender = item.fromSelf ? std::string() : GroupMemberName(groupId, item.senderId);
+        AppendGroupBubble(item.fromSelf, sender, item.text, nullptr);
+    }
+    const size_t count = messageList->GetItemCount();
+    if (count > 0) {
+        messageList->EnsureVisible(count - 1);
+    }
+    messageList->EndDown();
+}
+
+void ChatForm::MarkGroupRead(uint64_t groupId)
+{
+    auto iter = m_groups.find(groupId);
+    if (iter == m_groups.end()) {
+        return;
+    }
+    GroupState& state = iter->second;
+    state.unread = 0;
+    uint64_t conv = 0;
+    uint64_t maxSeq = 0;
+    for (const GroupState::Item& item : state.items) {
+        if (!item.fromSelf && (item.conversation_id != 0) && (item.seq > maxSeq)) {
+            conv = item.conversation_id;
+            maxSeq = item.seq;
+        }
+    }
+    if ((conv != 0) && (maxSeq != 0)) {
+        ImsMessage readAck;
+        readAck.type = static_cast<int>(ImsMsgType::Ack);
+        readAck.conversation_id = conv;
+        readAck.seq = maxSeq;
+        readAck.is_group = true;      // 空 content=已读，带 conversation_id+seq（提示词10.3）
+        TcpClient::Instance().Send(readAck);
+    }
+    RenderConversationList();
+}
+
+void ChatForm::HandleGroupChatMessage(const ImsMessage& msg)
+{
+    const uint64_t groupId = msg.to;   // 群消息：to=groupId
+    if (groupId == 0) {
+        return;
+    }
+    GroupState& state = m_groups[groupId];
+    if (state.removed || (state.info.status != 0)) {
+        return;   // 已不在该群：不再渲染后续消息（提示词10.5）
+    }
+    const std::pair<uint64_t, uint64_t> key(msg.conversation_id, msg.seq);
+    if (state.seen.count(key) != 0) {
+        return;   // 离线补推/重连重复，按 (conversation_id, seq) 去重
+    }
+    state.seen.insert(key);
+
+    GroupState::Item item;
+    item.fromSelf = false;
+    item.senderId = msg.from;
+    item.sender = GroupMemberName(groupId, msg.from);
+    item.text = msg.content;
+    item.conversation_id = msg.conversation_id;
+    item.seq = msg.seq;
+    item.ts = msg.ts;
+    state.items.push_back(item);
+    if ((state.minSeq == 0) || (msg.seq < state.minSeq)) {
+        state.minSeq = msg.seq;
+    }
+
+    if (groupId == m_currentGroup) {
+        AppendGroupBubble(false, item.sender, item.text, nullptr);
+        ImsMessage readAck;
+        readAck.type = static_cast<int>(ImsMsgType::Ack);
+        readAck.conversation_id = msg.conversation_id;
+        readAck.seq = msg.seq;
+        readAck.is_group = true;
+        TcpClient::Instance().Send(readAck);
+    }
+    else {
+        state.unread++;
+    }
+    EnsureConversationGroupRow(groupId, item.text);
+}
+
+void ChatForm::HandleGroupSendAck(const ImsMessage& msg)
+{
+    // 找到队列中第一条群发送
+    size_t idx = 0;
+    bool found = false;
+    for (; idx < m_pendingSends.size(); ++idx) {
+        if (m_pendingSends[idx].isGroup) {
+            found = true;
+            break;
+        }
+    }
+    if (!found) {
+        return;
+    }
+    const PendingSend pending = m_pendingSends[idx];
+    m_pendingSends.erase(m_pendingSends.begin() + static_cast<long>(idx));
+
+    if (pending.bubble != nullptr) {
+        const std::string suffix = (msg.content == "duplicate") ? "  [已发送(去重)]" : "  [已发送]";
+        pending.bubble->SetText(ui::StringConvert::UTF8ToT(pending.text + suffix));
+    }
+
+    GroupState& state = m_groups[pending.groupId];
+    const std::pair<uint64_t, uint64_t> key(msg.conversation_id, msg.seq);
+    if (state.seen.count(key) == 0) {
+        state.seen.insert(key);
+        GroupState::Item item;
+        item.fromSelf = true;
+        item.senderId = ImsSelfId();
+        item.text = pending.text;
+        item.conversation_id = msg.conversation_id;
+        item.seq = msg.seq;
+        item.ts = msg.ts;
+        state.items.push_back(item);
+        if ((state.minSeq == 0) || (msg.seq < state.minSeq)) {
+            state.minSeq = msg.seq;
+        }
+    }
+    EnsureConversationGroupRow(pending.groupId, pending.text);
+
+    auto logger = spdlog::get("im_file_logger");
+    if (logger) {
+        logger->info("群 SendAck: conv={}, seq={}, {}", msg.conversation_id, msg.seq, msg.content);
+    }
+}
+
+void ChatForm::HandleGroupHistoryResp(const ImsMessage& msg)
+{
+    if (m_historyFifo.empty()) {
+        return;
+    }
+    const uint64_t groupId = m_historyFifo.front().id;
+    m_historyFifo.erase(m_historyFifo.begin());
+
+    std::vector<ImsHistoryMessage> history;
+    std::string err;
+    if (!ParseImsHistory(msg.content, history, err)) {
+        auto logger = spdlog::get("im_file_logger");
+        if (logger) {
+            logger->error("群历史解析失败: {}", err);
+        }
+        return;
+    }
+    std::stable_sort(history.begin(), history.end(),
+        [](const ImsHistoryMessage& left, const ImsHistoryMessage& right) {
+            return left.seq < right.seq;
+        });
+
+    const uint64_t selfId = ImsSelfId();
+    GroupState& state = m_groups[groupId];
+    bool hasNewItems = false;
+    for (const ImsHistoryMessage& m : history) {
+        const std::pair<uint64_t, uint64_t> key(m.conversation_id, m.seq);
+        if (state.seen.count(key) != 0) {
+            continue;
+        }
+        state.seen.insert(key);
+        GroupState::Item item;
+        item.fromSelf = (m.from == selfId);
+        item.senderId = m.from;
+        item.text = m.content;
+        item.conversation_id = m.conversation_id;
+        item.seq = m.seq;
+        item.ts = m.ts;
+        state.items.push_back(item);
+        if ((state.minSeq == 0) || (m.seq < state.minSeq)) {
+            state.minSeq = m.seq;   // 上拉翻页用当前最小 seq
+        }
+        hasNewItems = true;
+    }
+    state.historyLoaded = true;
+
+    if (groupId == m_currentGroup) {
+        RenderGroupMessages(groupId);
+        MarkGroupRead(groupId);
+    }
+    else if (hasNewItems) {
+        EnsureConversationGroupRow(groupId, state.items.empty() ? std::string() : state.items.back().text);
+    }
+}
+
+void ChatForm::SendCurrentGroupMessage(uint64_t groupId, const std::string& text)
+{
+    if (!TcpClient::Instance().IsLoggedIn()) {
+        AppendGroupBubble(true, std::string(), text + "  [发送失败: 未连接服务器]", nullptr);
+        return;
+    }
+    if (m_nextTempMsgId == 0) {
+        const auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        m_nextTempMsgId = static_cast<uint64_t>(nowMs);
+    }
+    const uint64_t tempMsgId = ++m_nextTempMsgId;
+
+    ui::Label* bubble = nullptr;
+    AppendGroupBubble(true, std::string(), text + "  [发送中...]", &bubble);
+
+    PendingSend pending;
+    pending.bubble = bubble;
+    pending.isGroup = true;
+    pending.groupId = groupId;
+    pending.text = text;
+    m_pendingSends.push_back(pending);
+
+    ImsMessage msg;
+    msg.type = static_cast<int>(ImsMsgType::Text);
+    msg.to = groupId;
+    msg.is_group = true;
+    msg.msg_id = tempMsgId;
+    msg.content = text;
+    if (!TcpClient::Instance().Send(msg)) {
+        HandleTcpError(ImsMessage());
+    }
+    EnsureConversationGroupRow(groupId, text);
+}
+
+void ChatForm::EnsureConversationGroupRow(uint64_t groupId, const std::string& text)
+{
+    const std::string key = ConvKey(true, groupId);
+    auto iter = std::find(m_conversationOrder.begin(), m_conversationOrder.end(), key);
+    if (iter != m_conversationOrder.end()) {
+        if (iter != m_conversationOrder.begin()) {
+            m_conversationOrder.erase(iter);
+            m_conversationOrder.insert(m_conversationOrder.begin(), key);
+        }
+    }
+    else {
+        m_conversationOrder.insert(m_conversationOrder.begin(), key);
+    }
+    m_lastSnippet[key] = text;
+    RenderConversationList();
+}
+
+// ---------------------------------------------------------------------------
+// 群事件处理（type=140~144）（提示词11）
+// ---------------------------------------------------------------------------
+void ChatForm::HandleGroupEvent(int type, const ImsMessage& msg)
+{
+    auto logger = spdlog::get("im_file_logger");
+
+    if ((type == static_cast<int>(ImsMsgType::GroupMemberChanged)) ||
+        (type == static_cast<int>(ImsMsgType::GroupDismissed)) ||
+        (type == static_cast<int>(ImsMsgType::GroupInfoChanged))) {
+        ImsGroupEvent e;
+        if (!ParseImsGroupEvent(msg.content, e)) {
+            if (logger) {
+                logger->warn("群事件 content 解析失败: {}", msg.content);
+            }
+            return;
+        }
+        const uint64_t selfId = ImsSelfId();
+
+        if (type == static_cast<int>(ImsMsgType::GroupDismissed)) {
+            const std::string name = e.name.empty() ? GroupDisplayName(e.groupId) : e.name;
+            if (logger) {
+                logger->info("群解散 groupId={} name={}", e.groupId, name);
+            }
+            ui::VListBox* ml = dynamic_cast<ui::VListBox*>(FindControl(_T("chat_message_list")));
+            if (m_currentGroup == e.groupId && ml != nullptr) {
+                ml->RemoveAllItems();
+                AppendGroupBubble(false, std::string(), "群《" + name + "》已被解散", nullptr);
+            }
+            auto g = m_groups.find(e.groupId);
+            if (g != m_groups.end()) {
+                g->second.removed = true;
+                g->second.info.status = 1;
+            }
+            for (size_t i = 0; i < m_groupList.size(); ++i) {
+                if (m_groupList[i].groupId == e.groupId) {
+                    m_groupList.erase(m_groupList.begin() + static_cast<long>(i));
+                    break;
+                }
+            }
+            m_groups.erase(e.groupId);
+            RenderGroupList();
+            RenderConversationList();
+            return;
+        }
+
+        if (type == static_cast<int>(ImsMsgType::GroupInfoChanged)) {
+            auto g = m_groups.find(e.groupId);
+            if (g != m_groups.end() && !e.name.empty()) {
+                g->second.info.name = e.name;
+            }
+            if (m_currentGroup == e.groupId) {
+                ui::Label* titleLabel = dynamic_cast<ui::Label*>(FindControl(_T("chat_title_label")));
+                if (titleLabel != nullptr) {
+                    titleLabel->SetText(ui::StringConvert::UTF8ToT(GroupDisplayName(e.groupId)));
+                }
+            }
+            RefreshGroupDetail(e.groupId);
+            RenderGroupList();
+            RenderConversationList();
+            return;
+        }
+
+        // 140 GroupMemberChanged
+        const bool tracked = (m_groups.count(e.groupId) != 0);
+        if ((e.action == "added") && (e.userId == selfId)) {
+            if (logger) {
+                logger->info("我被加入群 groupId={} operator={}", e.groupId, e.operatorId);
+            }
+            GroupState& gs = m_groups[e.groupId];
+            if (gs.info.groupId == 0) {
+                gs.info.groupId = e.groupId;
+            }
+            RefreshGroupDetail(e.groupId);
+            RefreshGroupList();
+        }
+        else if (((e.action == "removed") || (e.action == "quit")) && (e.userId == selfId)) {
+            if (logger) {
+                logger->info("我已不在群 groupId={} action={}", e.groupId, e.action);
+            }
+            if (m_currentGroup == e.groupId) {
+                ui::VListBox* ml = dynamic_cast<ui::VListBox*>(FindControl(_T("chat_message_list")));
+                if (ml != nullptr) {
+                    ml->RemoveAllItems();
+                    AppendGroupBubble(false, std::string(), "你已不在该群", nullptr);
+                }
+            }
+            m_groups.erase(e.groupId);
+            for (size_t i = 0; i < m_groupList.size(); ++i) {
+                if (m_groupList[i].groupId == e.groupId) {
+                    m_groupList.erase(m_groupList.begin() + static_cast<long>(i));
+                    break;
+                }
+            }
+            RenderGroupList();
+            RenderConversationList();
+        }
+        else if ((e.action == "transferred") || (e.action == "roleChanged")) {
+            if (tracked || e.userId == selfId) {
+                RefreshGroupDetail(e.groupId);
+            }
+            if (logger) {
+                logger->info("群角色变化 groupId={} action={} user={}", e.groupId, e.action, e.userId);
+            }
+        }
+        else if (tracked) {
+            RefreshGroupDetail(e.groupId);
+        }
+        return;
+    }
+
+    if ((type == static_cast<int>(ImsMsgType::GroupRequest)) ||
+        (type == static_cast<int>(ImsMsgType::GroupRequestResult))) {
+        std::string event;
+        ImsGroupRequestInfo info;
+        if (!ParseImsGroupRequestEvent(msg.content, event, info)) {
+            if (logger) {
+                logger->warn("入群申请事件解析失败: {}", msg.content);
+            }
+            return;
+        }
+        if (info.requestId == 0) {
+            info.requestId = msg.msg_id;   // msg_id 复用为 requestId
+        }
+        if (type == static_cast<int>(ImsMsgType::GroupRequest)) {
+            m_groupRequestGroups.insert(info.groupId);
+            if (logger) {
+                logger->info("收到入群申请 event={} groupId={} requester={}", event, info.groupId, info.RequesterName());
+            }
+            UpdateGroupRequestRedDot();
+            ui::Box* panel = dynamic_cast<ui::Box*>(FindControl(_T("join_request_panel")));
+            if ((panel != nullptr) && panel->IsVisible()) {
+                RefreshGroupRequests();
+            }
+        }
+        else {
+            const bool accepted = (event == "accepted");
+            m_outgoingRequestState[info.requestId] = accepted ? "已通过" : "已拒绝";
+            if (logger) {
+                logger->info("入群申请结果 requestId={} event={}", info.requestId, event);
+            }
+            if (accepted) {
+                GroupState& gs = m_groups[info.groupId];
+                if (gs.info.groupId == 0) {
+                    gs.info.groupId = info.groupId;
+                }
+                RefreshGroupList();
+            }
+        }
+        return;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 群列表 / 群详情（HTTP）
+// ---------------------------------------------------------------------------
+void ChatForm::RefreshGroupList()
+{
+    auto ctx = std::make_shared<std::pair<HttpClient::ApiResult, std::vector<ImsGroupInfo>>>();
+    RunAsync([ctx]() {
+        ctx->first = HttpClient::Instance().GetGroups(ctx->second);
+    }, [this, ctx]() {
+        if (!ctx->first.ok) {
+            if (ctx->first.unauthorized) {
+                HandleApiUnauthorized(ctx->first.error);
+            }
+            return;
+        }
+        m_groupList = ctx->second;
+        std::set<uint64_t> present;
+        for (const ImsGroupInfo& g : m_groupList) {
+            present.insert(g.groupId);
+            GroupState& gs = m_groups[g.groupId];
+            if (gs.info.groupId == 0) {
+                gs.info = g;
+            }
+            else {
+                gs.info.name = g.name;
+                gs.info.announcement = g.announcement;
+                gs.info.memberCount = g.memberCount;
+                gs.info.myRole = g.myRole;
+                gs.info.status = g.status;
+                gs.info.conversationId = g.conversationId;
+                gs.info.ownerId = g.ownerId;
+                gs.info.memberLimit = g.memberLimit;
+                gs.removed = false;
+            }
+        }
+        // 不在群列表里的本地群（被移出/解散离线丢失时兜底）
+        for (auto& kv : m_groups) {
+            if ((present.count(kv.first) == 0) && !kv.second.removed) {
+                kv.second.removed = true;
+                if (m_currentGroup == kv.first) {
+                    m_currentGroup = 0;
+                }
+            }
+        }
+        if (m_currentGroup != 0 && present.count(m_currentGroup) != 0) {
+            RefreshGroupDetail(m_currentGroup);
+        }
+        RenderGroupList();
+        RenderConversationList();
+        auto logger = spdlog::get("im_file_logger");
+        if (logger) {
+            logger->info("群列表刷新完成，共 {} 个群", m_groupList.size());
+        }
+    });
+}
+
+void ChatForm::RenderGroupList()
+{
+    ui::VListBox* groupList = dynamic_cast<ui::VListBox*>(FindControl(_T("group_list")));
+    if (groupList == nullptr) {
+        return;
+    }
+    groupList->RemoveAllItems();
+
+    for (const ImsGroupInfo& g : m_groupList) {
+        if (g.status != 0) {
+            continue;
+        }
+        const uint64_t gid = g.groupId;
+        ui::ListBoxItemH* item = new ui::ListBoxItemH(this);
+        item->SetAttribute(_T("width"), _T("stretch"));
+        item->SetAttribute(_T("height"), _T("46"));
+        item->SetAttribute(_T("padding"), _T("10,0,10,0"));
+        item->SetAttribute(_T("border_round"), _T("6,6"));
+        item->SetAttribute(_T("hovered_color"), _T("#FFF2F7FC"));
+        item->SetAttribute(_T("pressed_color"), _T("#FFE6F1FB"));
+        item->SetAttribute(_T("fade_hovered"), _T("false"));
+
+        ui::Control* icon = new ui::Control(this);
+        icon->SetAttribute(_T("width"), _T("34"));
+        icon->SetAttribute(_T("height"), _T("34"));
+        icon->SetAttribute(_T("valign"), _T("center"));
+        icon->SetAttribute(_T("mouse_enabled"), _T("false"));
+        icon->SetAttribute(_T("normal_image"), _T("file='wechat_icon_group.svg' width='30' height='30' valign='center' halign='center'"));
+
+        ui::VBox* textBox = new ui::VBox(this);
+        textBox->SetAttribute(_T("width"), _T("stretch"));
+        textBox->SetAttribute(_T("height"), _T("stretch"));
+        textBox->SetAttribute(_T("mouse_enabled"), _T("false"));
+
+        ui::Label* nameLabel = new ui::Label(this);
+        nameLabel->SetAttribute(_T("height"), _T("22"));
+        nameLabel->SetAttribute(_T("margin"), _T("0,6,0,0"));
+        nameLabel->SetAttribute(_T("font"), _T("system_regular_13"));
+        nameLabel->SetAttribute(_T("normal_text_color"), _T("#FF1F2329"));
+        nameLabel->SetAttribute(_T("mouse_enabled"), _T("false"));
+        nameLabel->SetAttribute(_T("text"), ui::StringConvert::UTF8ToT(g.name));
+
+        ui::Label* countLabel = new ui::Label(this);
+        countLabel->SetAttribute(_T("height"), _T("18"));
+        countLabel->SetAttribute(_T("font"), _T("system_regular_11"));
+        countLabel->SetAttribute(_T("normal_text_color"), _T("#FF9AA1AC"));
+        countLabel->SetAttribute(_T("mouse_enabled"), _T("false"));
+        countLabel->SetAttribute(_T("text"), ui::StringConvert::UTF8ToT(std::to_string(g.memberCount) + " 人"));
+
+        textBox->AddItem(nameLabel);
+        textBox->AddItem(countLabel);
+        item->AddItem(icon);
+        item->AddItem(textBox);
+        item->AttachClick([this, gid](const ui::EventArgs&) {
+            SelectGroup(gid);
+            return true;
+        });
+        groupList->AddItem(item);
+    }
+}
+
+void ChatForm::RefreshGroupDetail(uint64_t groupId)
+{
+    auto ctx = std::make_shared<std::tuple<HttpClient::ApiResult, ImsGroupInfo, std::vector<ImsGroupMember>>>();
+    RunAsync([ctx, groupId]() {
+        ImsGroupInfo& g = std::get<1>(*ctx);
+        std::vector<ImsGroupMember>& ms = std::get<2>(*ctx);
+        std::get<0>(*ctx) = HttpClient::Instance().GetGroupDetail(groupId, g, ms);
+    }, [this, ctx, groupId]() {
+        const HttpClient::ApiResult& result = std::get<0>(*ctx);
+        if (!result.ok) {
+            if (result.unauthorized) {
+                HandleApiUnauthorized(result.error);
+            }
+            auto logger = spdlog::get("im_file_logger");
+            if (logger) {
+                logger->warn("群详情刷新失败 groupId={} err={}", groupId, result.error);
+            }
+            return;
+        }
+        const ImsGroupInfo& g = std::get<1>(*ctx);
+        const std::vector<ImsGroupMember>& ms = std::get<2>(*ctx);
+        GroupState& gs = m_groups[groupId];
+        gs.info = g;
+        gs.memberNames.clear();
+        for (const ImsGroupMember& m : ms) {
+            gs.memberNames[m.userId] = m.DisplayName();
+        }
+        if (m_currentGroup == groupId) {
+            ui::Label* titleLabel = dynamic_cast<ui::Label*>(FindControl(_T("chat_title_label")));
+            if (titleLabel != nullptr) {
+                titleLabel->SetText(ui::StringConvert::UTF8ToT(GroupDisplayName(groupId)));
+            }
+            UpdateGroupAnnouncementBar();
+        }
+        ui::Box* panel = dynamic_cast<ui::Box*>(FindControl(_T("group_member_panel")));
+        if ((panel != nullptr) && panel->IsVisible()) {
+            RenderGroupMembers(ms);
+        }
+        RenderGroupList();
+    });
+}
+
+void ChatForm::ShowGroupMemberPanel(uint64_t groupId)
+{
+    HideOverlayPanels();
+    ui::Box* panel = dynamic_cast<ui::Box*>(FindControl(_T("group_member_panel")));
+    if (panel != nullptr) {
+        panel->SetVisible(true);
+    }
+    auto g = m_groups.find(groupId);
+    if (g != m_groups.end()) {
+        std::vector<ImsGroupMember> ms;
+        for (const auto& kv : g->second.memberNames) {
+            ImsGroupMember m; m.userId = kv.first; m.groupNickname = kv.second; ms.push_back(m);
+        }
+        RenderGroupMembers(ms);
+    }
+    RefreshGroupDetail(groupId);
+}
+
+void ChatForm::RenderGroupMembers(const std::vector<ImsGroupMember>& members)
+{
+    ui::VListBox* list = dynamic_cast<ui::VListBox*>(FindControl(_T("group_member_list")));
+    if (list == nullptr) {
+        return;
+    }
+    list->RemoveAllItems();
+    for (const ImsGroupMember& m : members) {
+        ui::ListBoxItemH* item = new ui::ListBoxItemH(this);
+        item->SetAttribute(_T("width"), _T("stretch"));
+        item->SetAttribute(_T("height"), _T("36"));
+        item->SetAttribute(_T("padding"), _T("8,0,8,0"));
+
+        ui::Label* nameLabel = new ui::Label(this);
+        nameLabel->SetAttribute(_T("width"), _T("stretch"));
+        nameLabel->SetAttribute(_T("height"), _T("auto"));
+        nameLabel->SetAttribute(_T("valign"), _T("center"));
+        nameLabel->SetAttribute(_T("font"), _T("system_regular_12"));
+        nameLabel->SetAttribute(_T("normal_text_color"), _T("#FF1F2329"));
+        nameLabel->SetAttribute(_T("mouse_enabled"), _T("false"));
+        std::string disp = !m.groupNickname.empty() ? m.groupNickname : m.DisplayName();
+        nameLabel->SetAttribute(_T("text"), ui::StringConvert::UTF8ToT(disp));
+
+        const char* roleText = "成员";
+        if (m.role == 1) {
+            roleText = "群主";
+        }
+        else if (m.role == 2) {
+            roleText = "管理员";
+        }
+        ui::Label* roleLabel = new ui::Label(this);
+        roleLabel->SetAttribute(_T("width"), _T("52"));
+        roleLabel->SetAttribute(_T("height"), _T("auto"));
+        roleLabel->SetAttribute(_T("valign"), _T("center"));
+        roleLabel->SetAttribute(_T("font"), _T("system_regular_11"));
+        roleLabel->SetAttribute(_T("normal_text_color"), _T("#FF2C9BD6"));
+        roleLabel->SetAttribute(_T("mouse_enabled"), _T("false"));
+        roleLabel->SetAttribute(_T("text"), ui::StringConvert::UTF8ToT(roleText));
+
+        item->AddItem(nameLabel);
+        item->AddItem(roleLabel);
+        list->AddItem(item);
+    }
+}
+
+void ChatForm::ShowGroupOpMenu(uint64_t groupId)
+{
+    m_opPanelGroupId = groupId;
+    HideOverlayPanels();
+    ui::Box* panel = dynamic_cast<ui::Box*>(FindControl(_T("group_op_panel")));
+    if (panel == nullptr) {
+        return;
+    }
+    panel->SetVisible(true);
+
+    const ImsGroupInfo* info = FindGroupInfo(groupId);
+    const int myRole = (info != nullptr) ? info->myRole : 0;
+
+    ui::Label* title = dynamic_cast<ui::Label*>(FindControl(_T("group_op_title")));
+    if (title != nullptr) {
+        std::string roleText = "普通成员";
+        if (myRole == 1) {
+            roleText = "群主";
+        }
+        else if (myRole == 2) {
+            roleText = "管理员";
+        }
+        title->SetText(ui::StringConvert::UTF8ToT("群管理 - " + GroupDisplayName(groupId) + "（" + roleText + "）"));
+    }
+
+    const auto show = [this](const DString& name, bool visible) {
+        ui::Button* b = dynamic_cast<ui::Button*>(FindControl(name));
+        if (b != nullptr) {
+            b->SetVisible(visible);
+        }
+    };
+    const bool owner = (myRole == 1);
+    const bool admin = (myRole == 2);
+    show(_T("btn_group_update"), owner || admin);
+    show(_T("btn_group_invite"), owner || admin);
+    show(_T("btn_group_remove"), owner || admin);
+    show(_T("btn_group_admin"), owner);
+    show(_T("btn_group_transfer"), owner);
+    show(_T("btn_group_dismiss"), owner);
+    show(_T("btn_group_quit"), !owner);
+}
+
+void ChatForm::DoGroupMenuAction(uint64_t groupId, const std::string& action)
+{
+    const ImsGroupInfo* info = FindGroupInfo(groupId);
+    const int myRole = (info != nullptr) ? info->myRole : 0;
+    auto logger = spdlog::get("im_file_logger");
+
+    if ((action == "quit") && (myRole == 1)) {
+        ui::Box* panel = dynamic_cast<ui::Box*>(FindControl(_T("group_op_panel")));
+        ui::Label* hint = panel ? dynamic_cast<ui::Label*>(this->FindControl(_T("group_op_hint"))) : nullptr;
+        if (hint != nullptr) {
+            hint->SetText(_T("请先转让群主"));
+        }
+        return;
+    }
+
+    auto finish = [this, groupId, action, logger](const HttpClient::ApiResult& r, const std::string& okText) {
+        if (r.unauthorized) {
+            HandleApiUnauthorized(r.error);
+            return;
+        }
+        ui::Box* panel = dynamic_cast<ui::Box*>(FindControl(_T("group_op_panel")));
+        ui::Label* hint = panel ? dynamic_cast<ui::Label*>(this->FindControl(_T("group_op_hint"))) : nullptr;
+        if (logger) {
+            logger->info("群操作 {} groupId={} ok={} err={}", action, groupId, r.ok, r.error);
+        }
+        if (!r.ok) {
+            if (hint != nullptr) {
+                hint->SetText(ui::StringConvert::UTF8ToT(r.error));   // 400 文案原样提示
+            }
+            return;
+        }
+        if (hint != nullptr) {
+            hint->SetText(ui::StringConvert::UTF8ToT(okText));
+        }
+        RefreshGroupDetail(groupId);
+        RefreshGroupList();
+    };
+
+    if (action == "dismiss") {
+        auto ctx = std::make_shared<HttpClient::ApiResult>();
+        RunAsync([ctx, groupId]() { *ctx = HttpClient::Instance().DismissGroup(groupId); },
+            [finish, ctx]() { finish(*ctx, "已解散该群"); });
+    }
+    else if (action == "quit") {
+        auto ctx = std::make_shared<HttpClient::ApiResult>();
+        RunAsync([ctx, groupId]() { *ctx = HttpClient::Instance().QuitGroup(groupId); },
+            [this, finish, ctx, groupId]() {
+                finish(*ctx, "已退出该群");
+                if (ctx->ok) {
+                    m_groups.erase(groupId);
+                    if (m_currentGroup == groupId) {
+                        m_currentGroup = 0;
+                    }
+                    RenderGroupList();
+                    RenderConversationList();
+                }
+            });
+    }
+    else if (action == "update") {
+        ui::Box* panel = dynamic_cast<ui::Box*>(FindControl(_T("group_update_panel")));
+        if (panel == nullptr) {
+            return;
+        }
+        ui::RichEdit2* nameEdit = dynamic_cast<ui::RichEdit2*>(this->FindControl(_T("group_name_edit")));
+        ui::RichEdit2* annEdit = dynamic_cast<ui::RichEdit2*>(this->FindControl(_T("group_announcement_edit")));
+        const std::string name = (nameEdit != nullptr) ? ImsTrim(ui::StringConvert::TToUTF8(nameEdit->GetText())) : std::string();
+        const std::string ann = (annEdit != nullptr) ? ImsTrim(ui::StringConvert::TToUTF8(annEdit->GetText())) : std::string();
+        if (name.size() > 128) {
+            ui::Label* hint = dynamic_cast<ui::Label*>(this->FindControl(_T("group_update_hint")));
+            if (hint != nullptr) {
+                hint->SetText(_T("群名最大 128 字节"));
+            }
+            return;
+        }
+        auto ctx = std::make_shared<HttpClient::ApiResult>();
+        RunAsync([ctx, groupId, name, ann]() {
+            *ctx = HttpClient::Instance().UpdateGroup(groupId, name, ann, "", "");
+        }, [this, finish, ctx, groupId]() {
+            finish(*ctx, "群资料已更新");
+            ui::Box* p = dynamic_cast<ui::Box*>(FindControl(_T("group_update_panel")));
+            if (p != nullptr) {
+                p->SetVisible(false);
+            }
+        });
+    }
+    else if (action == "invite") {
+        ShowInviteDialog(groupId);
+    }
+    else if (action == "remove") {
+        ui::Box* panel = dynamic_cast<ui::Box*>(FindControl(_T("group_remove_panel")));
+        if (panel == nullptr) {
+            return;
+        }
+        ui::RichEdit2* idEdit = dynamic_cast<ui::RichEdit2*>(this->FindControl(_T("group_remove_uid_edit")));
+        const std::string idStr = (idEdit != nullptr) ? ImsTrim(ui::StringConvert::TToUTF8(idEdit->GetText())) : std::string();
+        uint64_t uid = 0;
+        try { uid = idStr.empty() ? 0 : std::stoull(idStr); } catch (...) { uid = 0; }
+        if (uid == 0) {
+            ui::Label* hint = dynamic_cast<ui::Label*>(this->FindControl(_T("group_remove_hint")));
+            if (hint != nullptr) {
+                hint->SetText(_T("请输入要移出成员的 userId"));
+            }
+            return;
+        }
+        auto ctx = std::make_shared<HttpClient::ApiResult>();
+        RunAsync([ctx, groupId, uid]() { *ctx = HttpClient::Instance().RemoveMember(groupId, uid); },
+            [this, finish, ctx, groupId]() {
+                finish(*ctx, "已移出成员");
+                ui::Box* p = dynamic_cast<ui::Box*>(FindControl(_T("group_remove_panel")));
+                if (p != nullptr) {
+                    p->SetVisible(false);
+                }
+            });
+    }
+    else if (action == "admin") {
+        ui::Box* panel = dynamic_cast<ui::Box*>(FindControl(_T("group_admin_panel")));
+        if (panel == nullptr) {
+            return;
+        }
+        ui::RichEdit2* idEdit = dynamic_cast<ui::RichEdit2*>(this->FindControl(_T("group_admin_uid_edit")));
+        ui::CheckBox* isAdmin = dynamic_cast<ui::CheckBox*>(this->FindControl(_T("group_admin_set_check")));
+        const std::string idStr = (idEdit != nullptr) ? ImsTrim(ui::StringConvert::TToUTF8(idEdit->GetText())) : std::string();
+        uint64_t uid = 0;
+        try { uid = idStr.empty() ? 0 : std::stoull(idStr); } catch (...) { uid = 0; }
+        const bool setAdmin = (isAdmin != nullptr) && isAdmin->IsSelected();
+        if (uid == 0) {
+            ui::Label* hint = dynamic_cast<ui::Label*>(this->FindControl(_T("group_admin_hint")));
+            if (hint != nullptr) {
+                hint->SetText(_T("请输入 userId"));
+            }
+            return;
+        }
+        auto ctx = std::make_shared<HttpClient::ApiResult>();
+        RunAsync([ctx, groupId, uid, setAdmin]() { *ctx = HttpClient::Instance().SetAdmin(groupId, uid, setAdmin); },
+            [this, finish, ctx, groupId]() {
+                finish(*ctx, "管理员设置已更新");
+                ui::Box* p = dynamic_cast<ui::Box*>(FindControl(_T("group_admin_panel")));
+                if (p != nullptr) {
+                    p->SetVisible(false);
+                }
+            });
+    }
+    else if (action == "transfer") {
+        ui::Box* panel = dynamic_cast<ui::Box*>(FindControl(_T("group_transfer_panel")));
+        if (panel == nullptr) {
+            return;
+        }
+        ui::RichEdit2* idEdit = dynamic_cast<ui::RichEdit2*>(this->FindControl(_T("group_transfer_uid_edit")));
+        const std::string idStr = (idEdit != nullptr) ? ImsTrim(ui::StringConvert::TToUTF8(idEdit->GetText())) : std::string();
+        uint64_t uid = 0;
+        try { uid = idStr.empty() ? 0 : std::stoull(idStr); } catch (...) { uid = 0; }
+        if (uid == 0) {
+            ui::Label* hint = dynamic_cast<ui::Label*>(this->FindControl(_T("group_transfer_hint")));
+            if (hint != nullptr) {
+                hint->SetText(_T("请输入新群主 userId"));
+            }
+            return;
+        }
+        auto ctx = std::make_shared<HttpClient::ApiResult>();
+        RunAsync([ctx, groupId, uid]() { *ctx = HttpClient::Instance().TransferGroup(groupId, uid); },
+            [this, finish, ctx, groupId]() {
+                finish(*ctx, "已转让群主");
+                ui::Box* p = dynamic_cast<ui::Box*>(FindControl(_T("group_transfer_panel")));
+                if (p != nullptr) {
+                    p->SetVisible(false);
+                }
+            });
+    }
+}
+
+void ChatForm::ShowCreateGroupDialog()
+{
+    HideOverlayPanels();
+    ui::Box* panel = dynamic_cast<ui::Box*>(FindControl(_T("create_group_panel")));
+    if (panel == nullptr) {
+        return;
+    }
+    m_inviteTargetGroupId = 0;   // 建群模式
+    panel->SetVisible(true);
+    ui::RichEdit2* nameEdit = dynamic_cast<ui::RichEdit2*>(this->FindControl(_T("new_group_name_edit")));
+    if (nameEdit != nullptr) {
+        nameEdit->SetVisible(true);
+        nameEdit->SetText(_T(""));
+    }
+    ui::Button* btnCreate = dynamic_cast<ui::Button*>(this->FindControl(_T("btn_create_group")));
+    if (btnCreate != nullptr) {
+        btnCreate->SetText(_T("创建"));   // 点击回调只在 InitIms 绑定一次，这里不再 AttachClick
+    }
+    ui::Label* hint = dynamic_cast<ui::Label*>(this->FindControl(_T("create_group_hint")));
+    if (hint != nullptr) {
+        hint->SetText(_T("加载中..."));
+    }
+    RenderCreateGroupFriends();
+    auto ctx = std::make_shared<std::pair<HttpClient::ApiResult, std::vector<FriendInfo>>>();
+    RunAsync([ctx]() { ctx->first = HttpClient::Instance().GetFriends(ctx->second); },
+        [this, ctx]() {
+            if (ctx->first.ok) {
+                RenderCreateGroupFriends(ctx->second);
+            }
+        });
+}
+
+void ChatForm::RenderCreateGroupFriends()
+{
+    std::vector<FriendInfo> fs;
+    for (const auto& kv : m_friends) {
+        fs.push_back(kv.second);
+    }
+    RenderCreateGroupFriends(fs);
+}
+
+void ChatForm::RenderCreateGroupFriends(const std::vector<FriendInfo>& friends)
+{
+    ui::VListBox* list = dynamic_cast<ui::VListBox*>(FindControl(_T("create_group_friend_list")));
+    ui::Label* hint = dynamic_cast<ui::Label*>(FindControl(_T("create_group_hint")));
+    if (list == nullptr) {
+        return;
+    }
+    list->RemoveAllItems();
+    if (m_createGroupSelected == nullptr) {
+        m_createGroupSelected = std::make_shared<std::set<uint64_t>>();
+    }
+    m_createGroupSelected->clear();
+    if (friends.empty()) {
+        if (hint != nullptr) {
+            hint->SetText(_T("请先添加好友（建群初始成员须为好友）"));
+        }
+        return;
+    }
+    if (hint != nullptr && m_inviteTargetGroupId == 0) {
+        hint->SetText(_T("勾选成员并输入群名"));
+    }
+    for (const FriendInfo& f : friends) {
+        const uint64_t uid = f.userId;
+        ui::ListBoxItemH* item = new ui::ListBoxItemH(this);
+        item->SetAttribute(_T("width"), _T("stretch"));
+        item->SetAttribute(_T("height"), _T("34"));
+        item->SetAttribute(_T("padding"), _T("8,0,8,0"));
+        item->SetAttribute(_T("border_round"), _T("4,4"));
+        item->SetAttribute(_T("hovered_color"), _T("#FFF2F7FC"));
+        item->SetAttribute(_T("fade_hovered"), _T("false"));
+
+        // 可见的勾选标记：☑/☐，点击整行切换（比不可见的 CheckBox 更易用）
+        ui::Label* mark = new ui::Label(this);
+        mark->SetAttribute(_T("width"), _T("24"));
+        mark->SetAttribute(_T("height"), _T("auto"));
+        mark->SetAttribute(_T("valign"), _T("center"));
+        mark->SetAttribute(_T("halign"), _T("center"));
+        mark->SetAttribute(_T("font"), _T("system_regular_14"));
+        mark->SetAttribute(_T("normal_text_color"), _T("#FF2C9BD6"));
+        mark->SetAttribute(_T("mouse_enabled"), _T("false"));
+        mark->SetAttribute(_T("text"), _T("☐"));
+
+        ui::Label* nameLabel = new ui::Label(this);
+        nameLabel->SetAttribute(_T("width"), _T("stretch"));
+        nameLabel->SetAttribute(_T("height"), _T("auto"));
+        nameLabel->SetAttribute(_T("valign"), _T("center"));
+        nameLabel->SetAttribute(_T("font"), _T("system_regular_12"));
+        nameLabel->SetAttribute(_T("normal_text_color"), _T("#FF1F2329"));
+        nameLabel->SetAttribute(_T("mouse_enabled"), _T("false"));
+        nameLabel->SetAttribute(_T("text"), ui::StringConvert::UTF8ToT(f.DisplayName() + " (" + std::to_string(uid) + ")"));
+
+        auto selected = m_createGroupSelected;
+        item->AttachClick([selected, uid, mark](const ui::EventArgs&) {
+            bool now = false;
+            if (selected->count(uid) != 0) {
+                selected->erase(uid);
+            }
+            else {
+                selected->insert(uid);
+                now = true;
+            }
+            mark->SetText(now ? _T("☑") : _T("☐"));
+            return true;
+        });
+
+        item->AddItem(mark);
+        item->AddItem(nameLabel);
+        list->AddItem(item);
+    }
+}
+
+void ChatForm::DoCreateGroup()
+{
+    ui::Box* panel = dynamic_cast<ui::Box*>(FindControl(_T("create_group_panel")));
+    if (panel == nullptr) {
+        return;
+    }
+    ui::RichEdit2* nameEdit = dynamic_cast<ui::RichEdit2*>(this->FindControl(_T("new_group_name_edit")));
+    ui::Label* hint = dynamic_cast<ui::Label*>(this->FindControl(_T("create_group_hint")));
+    const std::string name = (nameEdit != nullptr) ? ImsTrim(ui::StringConvert::TToUTF8(nameEdit->GetText())) : std::string();
+    std::vector<uint64_t> ids;
+    if (m_createGroupSelected != nullptr) {
+        for (uint64_t uid : *m_createGroupSelected) {
+            ids.push_back(uid);
+        }
+    }
+    if (name.empty() || (name.size() > 128)) {
+        if (hint != nullptr) {
+            hint->SetText(_T("群名不能为空且 ≤128 字节"));
+        }
+        return;
+    }
+    if (ids.empty()) {
+        if (hint != nullptr) {
+            hint->SetText(_T("至少选择 1 位好友成员"));
+        }
+        return;
+    }
+    m_groupSubmitting = true;
+    auto ctx = std::make_shared<std::pair<HttpClient::ApiResult, ImsGroupInfo>>();
+    RunAsync([ctx, name, ids]() { ctx->first = HttpClient::Instance().CreateGroup(name, ids, ctx->second); },
+        [this, ctx, panel]() {
+            m_groupSubmitting = false;
+            if (ctx->first.unauthorized) {
+                HandleApiUnauthorized(ctx->first.error);
+                return;
+            }
+            ui::Label* hint = dynamic_cast<ui::Label*>(this->FindControl(_T("create_group_hint")));
+            if (!ctx->first.ok) {
+                if (hint != nullptr) {
+                    hint->SetText(ui::StringConvert::UTF8ToT(ctx->first.error));
+                }
+                return;
+            }
+            if (hint != nullptr) {
+                hint->SetText(_T("建群成功"));
+            }
+            panel->SetVisible(false);
+            const uint64_t gid = ctx->second.groupId;
+            GroupState& gs = m_groups[gid];
+            gs.info = ctx->second;
+            RefreshGroupDetail(gid);
+            RefreshGroupList();
+            SelectGroup(gid);
+        });
+}
+
+// 建群/邀请对话框“确定”按钮的统一入口（只在 InitIms 绑定一次，避免重复 AttachClick 造成重复创建）
+void ChatForm::OnCreateDialogConfirm()
+{
+    if (m_groupSubmitting) {
+        return;   // 防抖：一次提交未完成前忽略重复点击
+    }
+    if (m_inviteTargetGroupId == 0) {
+        DoCreateGroup();
+    }
+    else {
+        DoInviteSelected(m_inviteTargetGroupId);
+    }
+}
+
+void ChatForm::DoInviteSelected(uint64_t groupId)
+{
+    std::vector<uint64_t> ids;
+    if (m_createGroupSelected != nullptr) {
+        for (uint64_t uid : *m_createGroupSelected) {
+            ids.push_back(uid);
+        }
+    }
+    ui::Box* p = dynamic_cast<ui::Box*>(FindControl(_T("create_group_panel")));
+    ui::Label* h = p ? dynamic_cast<ui::Label*>(this->FindControl(_T("create_group_hint"))) : nullptr;
+    if (ids.empty()) {
+        if (h != nullptr) {
+            h->SetText(_T("至少选择 1 位好友"));
+        }
+        return;
+    }
+    m_groupSubmitting = true;
+    auto ctx = std::make_shared<HttpClient::ApiResult>();
+    RunAsync([ctx, groupId, ids]() { *ctx = HttpClient::Instance().InviteMembers(groupId, ids); },
+        [this, ctx, groupId, p]() {
+            m_groupSubmitting = false;
+            if (ctx->unauthorized) {
+                HandleApiUnauthorized(ctx->error);
+                return;
+            }
+            ui::Label* h2 = p ? dynamic_cast<ui::Label*>(this->FindControl(_T("create_group_hint"))) : nullptr;
+            if (h2 != nullptr) {
+                h2->SetText(ui::StringConvert::UTF8ToT(ctx->ok ? std::string("已邀请") : ctx->error));
+            }
+            if (ctx->ok) {
+                if (p != nullptr) {
+                    p->SetVisible(false);
+                }
+                m_inviteTargetGroupId = 0;
+                RefreshGroupDetail(groupId);
+                RefreshGroupList();
+            }
+        });
+}
+
+void ChatForm::ShowInviteDialog(uint64_t groupId)
+{
+    HideOverlayPanels();
+    ui::Box* panel = dynamic_cast<ui::Box*>(FindControl(_T("create_group_panel")));
+    if (panel == nullptr) {
+        return;
+    }
+    m_inviteTargetGroupId = groupId;
+    panel->SetVisible(true);
+    ui::RichEdit2* nameEdit = dynamic_cast<ui::RichEdit2*>(this->FindControl(_T("new_group_name_edit")));
+    if (nameEdit != nullptr) {
+        nameEdit->SetVisible(false);
+    }
+    ui::Button* btnCreate = dynamic_cast<ui::Button*>(this->FindControl(_T("btn_create_group")));
+    if (btnCreate != nullptr) {
+        btnCreate->SetText(_T("邀请"));   // 点击回调只在 InitIms 绑定一次，这里不再 AttachClick
+    }
+    ui::Label* hint = dynamic_cast<ui::Label*>(this->FindControl(_T("create_group_hint")));
+    if (hint != nullptr) {
+        hint->SetText(_T("勾选要邀请的好友"));
+    }
+    RenderCreateGroupFriends();
+}
+
+void ChatForm::RefreshGroupRequests()
+{
+    auto ctx = std::make_shared<std::pair<HttpClient::ApiResult, std::vector<ImsGroupRequestInfo>>>();
+    RunAsync([ctx]() { ctx->first = HttpClient::Instance().GetGroupRequests("incoming", ctx->second); },
+        [this, ctx]() {
+            if (!ctx->first.ok) {
+                if (ctx->first.unauthorized) {
+                    HandleApiUnauthorized(ctx->first.error);
+                }
+                return;
+            }
+            m_groupRequestGroups.clear();
+            std::vector<ImsGroupRequestInfo> pending;
+            for (const ImsGroupRequestInfo& r : ctx->second) {
+                if (r.status == 0) {
+                    pending.push_back(r);
+                    m_groupRequestGroups.insert(r.groupId);
+                }
+            }
+            UpdateGroupRequestRedDot();
+            ui::Box* panel = dynamic_cast<ui::Box*>(FindControl(_T("join_request_panel")));
+            if ((panel != nullptr) && panel->IsVisible()) {
+                RenderJoinRequests(pending);
+            }
+        });
+}
+
+void ChatForm::UpdateGroupRequestRedDot()
+{
+    const int count = static_cast<int>(m_groupRequestGroups.size());
+    ui::Button* btn = dynamic_cast<ui::Button*>(FindControl(_T("btn_group_requests")));
+    if (btn == nullptr) {
+        return;
+    }
+    if (count > 0) {
+        btn->SetVisible(true);
+        btn->SetText(ui::StringConvert::UTF8ToT("入群申请(" + std::to_string(count) + ")"));
+    }
+    else {
+        btn->SetVisible(false);
+    }
+}
+
+void ChatForm::ShowJoinRequestPanel()
+{
+    HideOverlayPanels();
+    ui::Box* panel = dynamic_cast<ui::Box*>(FindControl(_T("join_request_panel")));
+    if (panel != nullptr) {
+        panel->SetVisible(true);
+    }
+    RefreshGroupRequests();
+}
+
+void ChatForm::RenderJoinRequests(const std::vector<ImsGroupRequestInfo>& requests)
+{
+    ui::VListBox* list = dynamic_cast<ui::VListBox*>(FindControl(_T("join_request_list")));
+    if (list == nullptr) {
+        return;
+    }
+    list->RemoveAllItems();
+    if (requests.empty()) {
+        ui::ListBoxItemH* item = new ui::ListBoxItemH(this);
+        item->SetAttribute(_T("width"), _T("stretch"));
+        item->SetAttribute(_T("height"), _T("40"));
+        ui::Label* label = new ui::Label(this);
+        label->SetAttribute(_T("width"), _T("stretch"));
+        label->SetAttribute(_T("valign"), _T("center"));
+        label->SetAttribute(_T("halign"), _T("center"));
+        label->SetAttribute(_T("font"), _T("system_regular_12"));
+        label->SetAttribute(_T("normal_text_color"), _T("#FF9AA1AC"));
+        label->SetAttribute(_T("text"), _T("暂无入群申请"));
+        item->AddItem(label);
+        list->AddItem(item);
+        return;
+    }
+    for (const ImsGroupRequestInfo& r : requests) {
+        ui::ListBoxItemH* item = new ui::ListBoxItemH(this);
+        item->SetAttribute(_T("width"), _T("stretch"));
+        item->SetAttribute(_T("height"), _T("60"));
+        item->SetAttribute(_T("padding"), _T("6,2,6,2"));
+
+        ui::VBox* textBox = new ui::VBox(this);
+        textBox->SetAttribute(_T("width"), _T("stretch"));
+        textBox->SetAttribute(_T("height"), _T("stretch"));
+        textBox->SetAttribute(_T("mouse_enabled"), _T("false"));
+
+        const std::string name = r.RequesterName().empty() ? std::to_string(r.requesterId) : r.RequesterName();
+        ui::Label* nameLabel = new ui::Label(this);
+        nameLabel->SetAttribute(_T("height"), _T("22"));
+        nameLabel->SetAttribute(_T("font"), _T("system_regular_12"));
+        nameLabel->SetAttribute(_T("normal_text_color"), _T("#FF1F2329"));
+        nameLabel->SetAttribute(_T("mouse_enabled"), _T("false"));
+        nameLabel->SetAttribute(_T("text"),
+            ui::StringConvert::UTF8ToT(name + " 申请加入《" + r.groupName + "》 " + ImsFormatClock(r.createdTs)));
+
+        ui::Label* msgLabel = new ui::Label(this);
+        msgLabel->SetAttribute(_T("height"), _T("20"));
+        msgLabel->SetAttribute(_T("font"), _T("system_regular_11"));
+        msgLabel->SetAttribute(_T("normal_text_color"), _T("#FF9AA1AC"));
+        msgLabel->SetAttribute(_T("mouse_enabled"), _T("false"));
+        msgLabel->SetAttribute(_T("text"), ui::StringConvert::UTF8ToT(r.message));
+
+        textBox->AddItem(nameLabel);
+        textBox->AddItem(msgLabel);
+        item->AddItem(textBox);
+
+        const uint64_t rid = r.requestId;
+        ui::Button* accept = new ui::Button(this);
+        accept->SetAttribute(_T("width"), _T("44"));
+        accept->SetAttribute(_T("height"), _T("24"));
+        accept->SetAttribute(_T("valign"), _T("center"));
+        accept->SetAttribute(_T("border_round"), _T("4,4"));
+        accept->SetAttribute(_T("bkcolor"), _T("#FF5FB8F0"));
+        accept->SetAttribute(_T("normal_text_color"), _T("#FFFFFFFF"));
+        accept->SetAttribute(_T("font"), _T("system_regular_11"));
+        accept->SetAttribute(_T("text"), _T("通过"));
+        accept->SetAttribute(_T("cursor_type"), _T("hand"));
+        accept->AttachClick([this, rid](const ui::EventArgs&) {
+            auto ctx = std::make_shared<HttpClient::ApiResult>();
+            RunAsync([ctx, rid]() { *ctx = HttpClient::Instance().AcceptGroupRequest(rid); },
+                [this, ctx, rid]() {
+                    if (ctx->unauthorized) {
+                        HandleApiUnauthorized(ctx->error);
+                        return;
+                    }
+                    auto logger = spdlog::get("im_file_logger");
+                    if (logger) {
+                        logger->info("审批入群申请 accept rid={} ok={} err={}", rid, ctx->ok, ctx->error);
+                    }
+                    RefreshGroupRequests();
+                    RefreshGroupList();
+                });
+            return true;
+        });
+
+        ui::Button* reject = new ui::Button(this);
+        reject->SetAttribute(_T("width"), _T("44"));
+        reject->SetAttribute(_T("height"), _T("24"));
+        reject->SetAttribute(_T("valign"), _T("center"));
+        reject->SetAttribute(_T("margin"), _T("6,0,0,0"));
+        reject->SetAttribute(_T("border_round"), _T("4,4"));
+        reject->SetAttribute(_T("bkcolor"), _T("#FFEFEFF4"));
+        reject->SetAttribute(_T("normal_text_color"), _T("#FF5B5F6B"));
+        reject->SetAttribute(_T("font"), _T("system_regular_11"));
+        reject->SetAttribute(_T("text"), _T("拒绝"));
+        reject->SetAttribute(_T("cursor_type"), _T("hand"));
+        reject->AttachClick([this, rid](const ui::EventArgs&) {
+            auto ctx = std::make_shared<HttpClient::ApiResult>();
+            RunAsync([ctx, rid]() { *ctx = HttpClient::Instance().RejectGroupRequest(rid); },
+                [this, ctx, rid]() {
+                    if (ctx->unauthorized) {
+                        HandleApiUnauthorized(ctx->error);
+                        return;
+                    }
+                    RefreshGroupRequests();
+                });
+            return true;
+        });
+
+        item->AddItem(accept);
+        item->AddItem(reject);
+        list->AddItem(item);
     }
 }
 

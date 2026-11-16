@@ -95,3 +95,148 @@
 
 【提示词7：联调与验收】
 完成对接后请做端到端验收：启动服务端 tcp_echo_server 8888 DBConfig.ini 8080（构建方式见 readme.md 第 2 节，数据库初始化用 db/schema.sql）；对照 step3_verify/verify_friend.sh 与 verify_tcp_http.sh 的用例，在桌面端跑通完整流程：注册A/B(已有功能)→A 登录→TCP 登录成功→搜索 B→发好友申请→B 收到 130 事件→B 通过→双方 131/132 事件与好友列表自动刷新→A 发消息 B 实时收到并回 112 回执→A 收到 113 SendAck→B 离线 A 继续发若干条→B 重新登录后收到离线补推与 pending 申请→打开会话拉历史消息(翻页、顺序、去重正确)→修改备注/删除好友/拉黑/取消拉黑各状态 UI 一致。同时验证异常路径：空闲 60s 前心跳不断线、断网自动重连并恢复接收、同一账号双开被踢提示、token 过期 401 返回登录页。验收通过后提交代码，确保 TENCENT_CLOUD_IM_SDK_VERSION 与 CXIM_IMS_CORE_SDK_VERSION 两种宏配置都能编译通过。
+
+#请结合这个《铖信》即时通讯项目的代码，总结一份项目的技术栈、关键技术点、技术难点等，写两段文字，每段200字，注意不要提及腾讯云的SDK部分。这些内容很重要，我需要写入简历。
+#请结合cvs/方克铖_9年工作经验_C++开发工程师_20261116.docx.md这个md文件的内容，根据当前index.html的风格完善cv.html,注意不要占用CPU\GPU等硬件资源，尽量少占用内存，在cv.html中提供cv.pdf的下载链接，点击下载pdf版简历，即可下载cv.pdf到本地。
+
+请问根据现有的D:/FKC/KC-CXIM/dev/IMS/KC-CXIM-Svc/basic_service_20261107的即时通信项目中群聊功能，结合D:/FKC/KC-CXIM/dev/IMS/KC-CXIM-Svc/basic_service_20261107/readme.md文件，关于怎么写提示词更新D:/FKC/KC-CXIM/dev/Desktop/KC_CXIM_Desktop/CXIM客户端项目的代码使得其能实现基本IM闭环功能，请直接将提示词的内容追加到D:/FKC/KC-CXIM/docs/desktop_llm_prompt_word.txt文件末尾，注意不要删改文件。
+
+============================================================================
+2026.11.16 桌面端对接 KC-CXIM IMS 服务端【群聊功能】，打通基本 IM 闭环
+接口依据：D:/FKC/KC-CXIM/dev/IMS/KC-CXIM-Svc/basic_service_20261107/readme.md
+  §5.13 群聊模块（11 个 HTTP 接口 + 角色权限矩阵）、
+  §6.1 Message 新增 is_group 字段、§6.2 新增 TCP type=140~144、
+  §6.12 群事件、§6.13 群消息发送/历史/回执。
+服务端源码对照：step1_tcp_echo 下 message.h、message_codec.h、group_types.h（事件字段以它为准）、
+  session.cpp（do_send_group/do_history_group/push_group_events）、http_server.cpp（群路由）；
+  测试对照 step2_test_client/test_group_client.cpp，验收脚本 step3_verify/verify_group.sh。
+注意：服务端可执行文件已由 tcp_echo_server 改名为 cxim-server（build/bin/Debug/cxim-server.exe）。
+现状：单聊+好友已按 2026.11.15 的提示词1~7 完成，已有 ImsSession/HttpClient/TcpClient/ImsTypes/ImsJson/ChatForm；
+  wechat.xml 的“群聊”页签(tab_group)下 group_list 目前是空列表。
+总体约定（以下每条提示词默认遵守）：所有新增 C++ 代码均在 CXIM_IMS_CORE_SDK_VERSION 宏包裹下；
+  复用 HttpClient 与 TcpClient，不另起网络栈；必要时新建类文件；
+  用 auto logger = spdlog::get("im_file_logger"); logger->info(...) 打印必要日志；
+  网络在后台线程，回调刷 UI 前检查 m_alive；字段命名严格对照本文所列，不得凭猜测。
+============================================================================
+
+【提示词8：协议层扩展（is_group 字段、type=140~144、群领域模型与事件解析）】
+请在 ImsTypes.h/.cpp 中做向后兼容的协议扩展：
+1) ImsMessage 与 ImsHistoryMessage 各新增 bool is_group = false 字段：
+   SerializeImsMessage 始终写出 "is_group":true/false；ParseImsMessage 可选读取该键
+   （兼容 bool 与 int 0/1 两种写法，缺省 false=单聊）；ParseImsHistory 同步解析历史数组元素里的 "is_group"。
+   这与服务端 message_codec.h 的行为一一对应，旧字段语义一律不变。
+2) ImsMsgType 枚举新增：GroupMemberChanged=140、GroupDismissed=141、GroupInfoChanged=142、
+   GroupRequest=143、GroupRequestResult=144（下行事件，客户端只收不发的类型与 130~132 同理）。
+3) 新增群领域结构体（字段对照服务端 readme §5.13 的 HTTP 响应，小驼峰）：
+   ImsGroupInfo{ groupId, conversationId, name, announcement, intro, avatarUrl, ownerId,
+                 status(0=正常,1=已解散), memberLimit, memberCount, myRole(1=群主,2=管理员,3=成员), createdTs }；
+   ImsGroupMember{ userId, username, nickname, avatarUrl, groupNickname, role, joinedTs }，
+     提供 DisplayName()（groupNickname > nickname > username 优先）；
+   ImsGroupRequestInfo{ requestId, groupId, groupName, ownerId, requesterId, requesterUsername,
+     requesterNickname, handlerId, message, status(0=待处理,1=已通过,2=已拒绝,3=已取消), createdTs }。
+4) 新增群事件解析函数（content 均为 JSON 字符串，需二次解析）。注意两组事件的命名风格不同，别搞混：
+   - type=140/141/142 的字段是下划线风格（对照 group_types.h 的 serialize_group_*）：
+     140: {event:"group_member_changed", action:"added|removed|quit|roleChanged|transferred", group_id, user_id, role, operator_id}
+     141: {event:"group_dismissed", group_id, operator_id, name}
+     142: {event:"group_info_changed", group_id, operator_id, name}
+     定义 struct ImsGroupEvent 承载以上三类。
+   - type=143/144 的外层是 "event"（143: new|pending；144: accepted|rejected），
+     内嵌对象是小驼峰风格（复用 write_request_json）：requestId, groupId, groupName, ownerId,
+     requesterId, requesterUsername, requesterNickname, handlerId, message, status, createdTs，
+     解析进 ImsGroupRequestInfo；143/144 的 msg_id 复用为 requestId，可直接调审批接口。
+5) 为解析函数补最小自测入口（参考现有 ImsSmokeTest.cpp 的写法），用服务端实际下发的样例字符串验证。
+
+【提示词9：HTTP 群聊接口封装（11 个接口，全部 Bearer 鉴权）】
+请在 HttpClient 中封装以下方法并解析成提示词8 的结构体（统一响应 {code,message,data}；
+401 走既有“登录已过期回登录页”逻辑；业务 400 的 message 文案原样提示给用户）：
+1) 建群 POST /api/groups，body {"name":"群名","memberIds":[1002,1003]}；name ≤128 字节、memberIds ≥1；
+   MVP 约束：初始成员必须是自己好友，否则服务端 400。响应 data.group。
+2) 我的群列表 GET /api/groups -> data.groups[]（只含未解散、我是成员的群）。
+3) 群详情 GET /api/groups/{groupId} -> data.group + data.members[]（非成员 400 "not a group member"）。
+4) 改群资料 PATCH /api/groups/{groupId}，body 只带要改的字段 {"name":..,"announcement":..,"intro":..,"avatarUrl":..}；
+   空串=不修改该字段；仅群主/管理员可用。
+5) 邀请 POST /api/groups/{groupId}/members，body {"memberIds":[..]}；仅群主/管理员；
+   已在群内的 id 静默跳过（幂等）；超过 memberLimit 返回 400。
+6) 移出 DELETE /api/groups/{groupId}/members/{userId}；仅群主/管理员，且只能移普通成员(role=3)。
+7) 任命/取消管理员 POST /api/groups/{groupId}/admins，body {"userId":1002,"admin":true}；仅群主。
+8) 转让群主 POST /api/groups/{groupId}/transfer，body {"toUserId":1002}；仅群主；旧群主自动降为管理员。
+9) 退群 POST /api/groups/{groupId}/quit；群主必须先转让，否则 400 "owner must transfer first"。
+10) 解散 POST /api/groups/{groupId}/dismiss；仅群主；软删，解散后该群消息收发/历史均被拒。
+11) 申请与审批：POST /api/groups/requests body {"groupId":1,"message":".."}（message ≤255 字节）；
+    GET /api/groups/requests?direction=incoming|outgoing|all（incoming=需我审批的待处理申请）；
+    POST /api/groups/requests/{requestId}/accept 与 /reject（群主/管理员）。
+请把上述接口整理成群 API 封装类（如 GroupApi，或挂 HttpClient 均可），每个方法注释里标注对应 readme 章节号，
+并用 curl 对照本地服务端逐一验证字段解析。
+
+【提示词10：TCP 群消息收发、群历史、回执（会话模型扩展为 单聊+群聊 双形态）】
+基于现有 TcpClient 实现群消息链路（对照 readme §6.13 与 session.cpp 的 do_send_group/do_history_group）：
+1) 会话唯一键扩展：用 (is_group, peerOrGroupId) 作为本地会话 key——单聊 key=C:uid、群聊 key=G:groupId；
+   会话对象记录 conversation_id（服务端 SendAck/消息里带回）。本地消息去重一律用 (conversation_id, seq)。
+2) 发群消息：type=1（图片 type=2），to=groupId，is_group=true，msg_id=本地自增临时号，content=文本；
+   服务端回 SendAck=113（is_group=true，带 conversation_id/seq/ts；content="sent"/"duplicate"），
+   气泡状态机与单聊一致（发送中→已发送/失败）。
+3) 接收群消息：下行 type=1/2 且 is_group=true 时，to=groupId（不是接收者自己），from=发送者 userId；
+   渲染到对应群会话（气泡上方显示发送者昵称，从群成员表取，取不到先显示 userId），
+   并照单聊规则回 112 回执（"delivered"=已投递、content 空=已读，带 conversation_id+seq）。
+   注意：登录时服务端会补推离线群消息（同样 is_group=true），并且“在线收到过但未 ACK”的消息重连时会再次下发，
+   必须按 (conversation_id, seq) 去重，不重复渲染、不重复计数。
+4) 群历史：打开群会话发 type=110 {to=groupId, is_group=true, seq=0(=before_seq), content="20"}；
+   响应 111 的 content 是 JSON 数组文本（元素含 msg_id/conversation_id/seq/from/type/ts/content/is_group），
+   二次解析、按 seq 升序渲染、最新在底部、上拉翻页用当前最小 seq；非成员/已解散的群服务端直接回 Error(102)。
+5) 被移出/退群/解散时：立即停止该群的收发展示，会话行变灰或移除（提示“你已不在该群”），
+   不再渲染该群后续消息；服务端是唯一事实源，客户端不要自行推断成员状态。
+
+【提示词11：群事件处理（type=140~144）与本地群缓存一致性】
+1) 140 GroupMemberChanged：action=added/quit/removed/roleChanged/transferred——
+   若 group_id 是我已打开/已缓存的群：更新成员表与 memberCount；
+   added 的 user_id 是我自己（被邀请/申请通过/建群）：调 GET /api/groups/{id} 拉详情后把群加入会话与群列表；
+   removed/quit 的 user_id 是我自己，或该群被解散：清理该群会话并按第 5) 点处理；
+   transferred/roleChanged：只更新我的 myRole（决定 UI 上群管理菜单项的显隐）。
+2) 141 GroupDismissed：弹提示“群《name》已被解散”，从群列表与会话列表移除（或标记已解散）。
+3) 142 GroupInfoChanged：更新本地群名/公告缓存；若打开着该群会话，刷新标题与公告条。
+4) 143/144 入群申请事件：143(event=new/pending) 说明有人申请我管理的群——
+   在“群管理/新朋友”入口显示红点，进入时调 GET /api/groups/requests?direction=incoming 拉列表，
+   提供“通过/拒绝”按钮（accept/reject）；144(event=accepted/rejected) 更新我发出申请的状态并提示。
+   143 的 pending 是登录补推（服务端按 group_requests 状态持久化补偿），可能一次来多条，逐条处理并去重。
+5) 一致性总策略（必须实现，因为成员/资料/解散类事件不持久化、离线会丢）：
+   每次 TCP 登录成功（含断线重连后）都重新 GET /api/groups 全量刷新群列表，
+   再对当前打开的群逐个拉详情；事件只作为“增量刷新触发器”，不作为唯一数据源。
+
+【提示词12：群聊 UI 接线（wechat.xml + ChatForm.cpp），完成基本 IM 闭环】
+1) 群聊页签 group_list：登录后填充真实群列表（群头像占位图、群名、memberCount），
+   点击进入该群聊天区（右侧 chat_title_label 显示群名，标题下方显示群公告，可折叠）；
+   替换现有空列表与演示数据。
+2) 建群入口：好友页“+”旁或群聊页签底部加“新建群聊”按钮——弹出多选好友对话框（数据源 GET /api/friends），
+   勾选成员+输入群名，调 POST /api/groups；成功后刷新群列表并打开该群会话。
+3) 消息页 message_list：合并单聊与群聊会话，按最后消息时间排序；
+   群会话行显示群图标+群名+最后一条消息摘要（"[群] xxx"），新消息未读角标、置顶；
+   未读数本地按 (conversation_id, seq) > 本地已读游标计算，打开会话即回 112 已读。
+4) 群成员侧栏：聊天区右上角“成员”按钮弹出成员列表（GET /api/groups/{id} 的 members），
+   每行显示 群内昵称>昵称>用户名 + 角色标签（群主/管理员/成员）。
+5) 群管理菜单（按 myRole 控制显隐，对照 readme §5.13 权限矩阵）：
+   群主：修改群资料、邀请、移出成员、任命/取消管理员、转让、解散；
+   管理员：修改群资料、邀请、移出普通成员；成员：仅查看与发言；
+   退群按钮对管理员/成员显示，群主点击时提示“请先转让群主”。
+   所有操作成功后按返回体刷新本地缓存，并处理服务端 400 文案的原样弹窗提示。
+6) 入群审批入口：我是群主/管理员且有 143 pending 时，群聊页签显示红点，
+   点开是“入群申请”列表（requesterName+message+时间+通过/拒绝按钮）。
+7) 双客户端联调：同一构建分别启动两个实例（或用不同测试账号），验证 A/B 两个桌面端
+   建群、拉人、互发群消息、离线补推、解散全链路可用。
+
+【提示词13：端到端联调与验收（对齐服务端 verify_group.sh 场景）】
+1) 启动服务端：bash build.sh 后运行 build/bin/Debug/cxim-server.exe 8888 DBConfig.ini 8080
+   （数据库已应用 db/schema.sql，含 groups/group_members/group_requests 三张新表）。
+2) 桌面端跑通完整 IM 闭环用例：注册/登录(已有)→TCP 登录→加好友(已有)→A 建群拉 B、C→
+   B、C 群列表自动出现新群→A 发群消息 B/C 实时收到并回 112→重复 client msg_id 只渲染一条(duplicate)→
+   B 掉线 A 继续发→B 重连收到离线补推且无重复渲染→打开群会话拉历史(上拉翻页、顺序正确)→
+   A 邀请 D→A 任命 B 管理员→B 移出 D→D 端提示被移出且无法再收该群消息→C 退群→
+   A 转让给 B→B 解散→所有成员端群消失→D 申请入群→A 收到 143→A 通过→D 收到 144 且群列表自动新增。
+3) 异常路径：非成员发群消息/拉历史被服务端 Error 拒绝时 UI 不崩溃、给出提示；
+   token 过期 401 回登录页；断网重连（指数退避）后群列表与打开中的会话全量刷新正确；
+   同一账号双开被踢提示；空闲期心跳 25s 不断线。
+4) 回归：单聊收发、好友申请/通过/删除/拉黑、离线补推、历史分页全部不受影响；
+   消息列表 单聊+群聊 混排、未读、置顶逻辑正确。
+5) 编译验收：CXIM_IMS_CORE_SDK_VERSION 与 TENCENT_CLOUD_IM_SDK_VERSION 两种宏配置都能编译通过，
+   完成后提交代码并简要总结新增/修改文件清单与关键调用链。
+
+您好，wechat.xml这个界面的UI及并没有群聊相关的功能，请补充，我要完整的群聊闭环功能。请完成后运行./x64/Release/CXIM.exe，测试的几个账号为 User:fingerecho11  Pass:asdfls  , User:helloworld0 Pass:helloworld, User:helloworld1 Pass:asdfls , User:helloworld2 Pass:asdfls ,  User:helloworld3 Pass:asdfls , 请完成UI对应的功能并测试几个账号的群聊、单聊。

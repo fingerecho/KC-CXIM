@@ -222,3 +222,85 @@ delete friend      : 140.25 / 1094.41 / 1112.87 / 267.11 / 1115.00 ms  (n=100)
 请模仿step2_test_client/目录下的其它.cpp文件，实现一个step2_test_client/test_send_msg_to_blockFriendAndBlackFriend.cpp,实现发送消息给非好友和拉黑的账户的功能测试用例。
 
 请问我需要在Desktop桌面端对接现有的API接口(包括TCP和HTTP，除了登录注册之外的接口)，怎么写提示词？请参照/d/FKC/KC-CXIM/dev/IMS/KC-CXIM-Svc/basic_service_20261107/readme.md文档，以及/d/FKC/KC-CXIM/dev/IMS/KC-CXIM-Svc/basic_service_20261107目录下相应的代码，将对接接口的提示词整理出来之后将所有提示词内容追加到/d/FKC/KC-CXIM/docs/desktop_llm_prompt_word.txt文件中。
+
+请问我需要在现有的D:/FKC/KC-CXIM/dev/IMS/KC-CXIM-Svc/basic_service_20261107的即时通信项目中增加群聊功能，需要怎么写提示词，请直接将提示词的内容追加到D:/FKC/KC-CXIM/docs/IMS_llm_prompt_word_info.txt文件末尾，注意不要删改文件。
+
+以下为群聊功能的提示词（可直接复制使用；写法沿用本文件第 64~127 行“角色/项目背景/目标/功能/约束/交付物/验收/工作方式”的结构）：
+
+# 角色
+你是熟悉 C++17、Boost.Asio / Boost.Beast、MariaDB 的即时通讯（IM）后端工程师。
+
+# 项目背景
+- 项目目录：dev/IMS/KC-CXIM-Svc/basic_service_20261107
+- 技术栈：C++17 + Boost.Asio（TCP 长连接）+ Boost.Beast（HTTP 短连接）+ MariaDB + RapidJSON + JWT(HS256)
+- 设计原则（必须沿用）：HTTP 负责“写事实”，TCP 负责“推事件”；注册/登录/好友模块已按此模式实现
+- 现有表（db/schema.sql）：users / friends / friend_requests / conversations / conversation_members / messages / offline_messages
+  - conversations 已预留 type 字段：1=单聊，2=群聊；群聊 dedup_key=NULL
+  - conversations.last_seq 是会话内 seq 生成器；conversation_members 存每个成员的投递/已读游标
+- TCP 帧协议：4 字节大端长度头 + JSON Message（from/to/type/msg_id/ts/conversation_id/seq/content）
+- 现有 MsgType：1 文本、2 图片、3 心跳、100/101/102 登录、110/111 历史、112 回执、113 SendAck、130/131/132 好友事件
+- 鉴权：HTTP 用 Authorization: Bearer <JWT>；TCP 登录后只信 JWT sub 作为 userId，不信客户端自报 from
+- 参考文档：readme.md（全部 API 与协议）、docs/TODO-LIST.md 3.6.2 群聊（BE-GROUP-01~10）
+
+# 目标
+在不破坏现有单聊/好友功能的前提下增加群聊功能，MVP 范围覆盖 BE-GROUP-01~05、07、08：
+建群、解散、退群、转让群主、邀请/申请入群与审批、角色权限（群主/管理员/普通成员）、
+群资料（群名/公告/简介/头像）维护、群消息写扩散（在线直推 + 离线入队补推）、
+群历史分页、群已读回执（游标方案，统计已读人数）。
+@提及（BE-GROUP-09）、群文件（BE-GROUP-10）、超大群读扩散（BE-LARGE-*）本期不实现，只在设计中说明预留思路。
+
+# 功能需求
+1. 数据库（修改 db/schema.sql，新增表带完整中文注释说明设计原理；不破坏现有表）：
+   - groups：group_id、name、announcement、intro、avatar_url、owner_id、status（0=正常 1=已解散）、member_limit、created_ts
+   - group_members：group_id、user_id、role（1=群主 2=管理员 3=成员）、group_nickname、joined_ts；(group_id,user_id) 唯一
+   - group_requests：申请/审批记录（申请人、群、状态、附言），风格参照 friend_requests
+   - 会话复用 conversations(type=2)：建群时同事务创建对应 conversation；消息仍写 messages / offline_messages，不新建消息表
+2. HTTP API（沿用 /api 前缀、统一 {code,message,data} JSON 响应、JWT 鉴权与错误码风格）：
+   - POST /api/groups 建群（初始成员列表；MVP 要求初始成员必须是自己的好友）
+   - GET /api/groups 我的群列表；GET /api/groups/{groupId} 群详情+成员列表
+   - PATCH /api/groups/{groupId} 改群名/公告/简介/头像（仅群主/管理员）
+   - POST /api/groups/{groupId}/dismiss 解散（仅群主）
+   - POST /api/groups/{groupId}/quit 退群（群主须先转让）
+   - POST /api/groups/{groupId}/transfer 转让群主（仅群主）
+   - POST /api/groups/{groupId}/members 邀请成员；DELETE /api/groups/{groupId}/members/{userId} 移出成员（群主/管理员可移普通成员）
+   - POST /api/groups/{groupId}/roles 设置/取消管理员
+   - POST /api/groups/requests、POST /api/groups/requests/{requestId}/accept|reject 申请与审批入群
+3. TCP 协议（新增消息号不得复用或改变现有 type 语义）：
+   - 群消息发送：复用 type=1/2，to 填 groupId，按会话 type 区分单聊/群聊；
+   - 服务端在同一事务内分配 conversation_id/seq、写 messages，经 SendAck=113 确认（复用现有机制）
+   - 历史 110：支持按群会话拉取，必须校验请求者是该群成员（含已退群者不可拉取的处理策略说明）
+   - 回执 112：复用 delivered/read 语义，更新 conversation_members 中该成员游标，服务端聚合已读人数
+   - 新增事件推送 type 建议 140~146（避开 130~132）：群成员变化（加入/被移出/退群/角色变化/转让）、群解散、群资料变更、入群申请与审批结果；离线期间的事件按现有好友模块“登录补推”的思路说明是否持久化及取舍
+4. 群消息写扩散（本期统一用写扩散，说明与万人群读扩散的切换预留）：
+   - 单事务：原子 UPDATE conversations.last_seq 分配 seq、插入 messages、按 (conversation_id, sender_id, client_msg_id) 唯一键去重
+   - 提交后：在线成员经 session_manager 直推，离线成员逐人写 offline_messages，登录补推 + ACK 删除（复用现有机制）
+   - 扩散的 SQL 一律在 Db worker 执行，io 线程只做收包/解析/入队/回写
+5. 权限与校验：
+   - 发群消息、拉群历史、发回执都必须是群成员；邀请/移除/改资料/解散/转让按角色校验
+   - 服务端一律以 JWT 身份为准；解散/移除后即时生效，受害者收不到后续消息
+
+# 技术约束
+- 不改 TCP 分帧协议与现有 Message 字段语义；确需新增字段请加上必要的注释；
+- 复用现有 Db / ConnectionPool / http_server / session / session_manager / token_service 的代码风格与机制，尽量少改现有代码
+- 不引入新第三方库；不改单进程架构；如遇缺库停止任务并报告
+- 所有新增/修改代码加中文注释，解释原理、机制、功能（我是后端初学者）
+- 关键代码块顶部添加形如 "/*************群聊功能：<模块名>*************" 的分块注释
+
+# 交付物
+- 新增/修改文件清单及职责（如 group_types.h、session.cpp 群分支、http_server 群路由、db.h/db.cpp 群 DAO）
+- readme.md 追加“群聊”章节：HTTP API、TCP type、示例（curl + Message JSON）
+- step2_test_client/test_group_client.cpp 验收客户端
+- step3_verify/verify_group.sh 验收脚本：建群→邀请→改资料→发群消息（在线/离线补推/去重）→历史分页→已读回执→移出/退群→转让→解散
+- 关键调用链、事务边界与 seq 原子分配的说明
+
+# 验收标准
+1. bash build.sh（或 build_step.sh）编译通过
+2. 建群/邀请/角色校验正确；非成员发群消息、拉群历史被拒绝
+3. A 发群消息：在线 B/C 实时收到；B 离线时入库并上线补推；重复 client_msg_id 不产生两条消息
+4. 群历史按 seq keyset 分页正确；已读游标只增不减
+5. 退群/被移出/解散即时生效，对应成员不再收到该群消息
+6. 现有 verify_tcp_http.sh、verify_friend.sh 功能不被破坏
+
+# 工作方式
+先阅读 readme.md、db/schema.sql、step1_tcp_echo 全部源码，输出：现状分析 + 表结构与 TCP type 编号方案（含方案 A/B 取舍建议）+ 分步实施计划 + 需要我确认的问题；
+我确认后再动手改代码；按可独立编译、可验证的小步骤推进，每完成一步给出构建与验证命令。

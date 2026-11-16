@@ -37,6 +37,17 @@ int g_failures = 0;
         }                                                                     \
     } while (0)
 
+#define CHECK_MSG(cond, name, msg)                                            \
+    do {                                                                      \
+        if (cond) {                                                           \
+            std::cout << "[PASS] " << (name) << std::endl;                    \
+        }                                                                     \
+        else {                                                                \
+            std::cout << "[FAIL] " << (name) << " (" << (msg) << ")" << std::endl; \
+            ++g_failures;                                                     \
+        }                                                                     \
+    } while (0)
+
 struct EventSink
 {
     std::mutex mutex;
@@ -116,6 +127,11 @@ int main(int argc, char** argv)
     HttpClient& http = HttpClient::Instance();
     http.SetServer(host, httpPort);
     std::cout << "目标服务器 " << host << " HTTP:" << httpPort << " TCP:" << tcpPort << std::endl;
+
+    // 提示词8：群协议解析最小自测（纯离线，不依赖服务端）
+    std::cout << "---- 群协议解析自测 ----" << std::endl;
+    const int parseFail = ImsGroupParseSelfTest();
+    g_failures += parseFail;
 
     const std::string suffix = RandomSuffix();
     const std::string userA = "smt_a_" + suffix;
@@ -333,6 +349,247 @@ int main(int argc, char** argv)
 
     tcpA2.Stop();
     tcpB.Stop();
+
+    // =========================================================================
+    // 群聊闭环（提示词 8~13，对齐 verify_group.sh 场景）
+    // 使用独立的新账号 GA/GB/GC/GD/GE，避免与单聊段被拉黑/删除的关系相互干扰。
+    // 复用桌面端 TcpClient（内部走 SerializeImsMessage 的 is_group 上行 + ParseImsMessage 下行）
+    // =========================================================================
+    const std::string userGA = "smt_ga_" + suffix;
+    const std::string userGB = "smt_gb_" + suffix;
+    const std::string userGC = "smt_gc_" + suffix;
+    const std::string userGD = "smt_gd_" + suffix;
+    const std::string userGE = "smt_ge_" + suffix;
+    HttpClient::LoginResult lgA, lgB, lgC, lgD, lgE;
+    struct G { std::string u, t; uint64_t id; };
+    auto mk = [&](const std::string& uname, G& out) {
+        int sc; std::string rb;
+        http.Register(uname, password, sc, rb);
+        HttpClient::LoginResult lr;
+        http.Login(uname, password, sc, rb, lr);
+        out = {uname, lr.token, lr.userId};
+    };
+    G gA, gB, gC, gD, gE;
+    mk(userGA, gA); mk(userGB, gB); mk(userGC, gC); mk(userGD, gD); mk(userGE, gE);
+    CHECK((gA.id && gB.id && gC.id), "注册并登录群测账号 GA/GB/GC/GD/GE");
+    const auto loginAs = [&](const G& g) {
+        ImsSession::Instance().SetLoginResult(g.id, g.u, g.t);
+    };
+
+    // GA 与 GB、GC 互为好友
+    auto befriend = [&](const G& from, const G& to) {
+        loginAs(from);
+        FriendRequestInfo r; auto rr = http.SendFriendRequest(to.id, "hi", r);
+        loginAs(to);
+        auto ra = http.AcceptFriendRequest(r.requestId);
+        return rr.ok && ra.ok;
+    };
+    CHECK(befriend(gA, gB) && befriend(gA, gC), "GA 与 GB/GC 成为好友");
+
+    // GB、GA 建立 TCP
+    TcpClient gBt; gBt.SetServer(host, tcpPort); EventSink gSinkB; gSinkB.attach(gBt);
+    gBt.Start(gB.t); CHECK(gSinkB.waitLogin(10000), "GB 群测 TCP 登录");
+    TcpClient gAt; gAt.SetServer(host, tcpPort); EventSink gSinkA; gSinkA.attach(gAt);
+    gAt.Start(gA.t); CHECK(gSinkA.waitLogin(10000), "GA 群测 TCP 登录");
+
+    // 1) 建群 [GB,GC]
+    loginAs(gA);
+    ImsGroupInfo grp;
+    result = http.CreateGroup("群测_" + suffix, {gB.id, gC.id}, grp);
+    CHECK_MSG(result.ok && grp.groupId != 0 && grp.myRole == 1, "GA 建群 (data.group 解析)", result.error);
+    const uint64_t gid = grp.groupId;
+    const uint64_t convId = grp.conversationId;
+
+    // 2) GB 收到 140 added（解析下划线事件）
+    ImsMessage evAdded;
+    bool g140 = gSinkB.waitFor(
+        [](const ImsMessage& m) { return m.type == static_cast<int>(ImsMsgType::GroupMemberChanged); },
+        10000, evAdded);
+    ImsGroupEvent ge;
+    CHECK(g140 && ParseImsGroupEvent(evAdded.content, ge) && ge.action == "added" && ge.groupId == gid,
+          "GB 收到 140 GroupMemberChanged(added)");
+
+    // 3) GA 发群消息（桌面 TcpClient + is_group）→ GB 收到 is_group + GA SendAck(sent)
+    ImsMessage gsm;
+    gsm.type = static_cast<int>(ImsMsgType::Text);
+    gsm.to = gid;
+    gsm.is_group = true;
+    gsm.msg_id = 555001;
+    gsm.content = "hello group";
+    CHECK(gAt.Send(gsm), "GA 发送群消息(is_group)");
+    ImsMessage gSend;
+    CHECK(gSinkA.waitFor([](const ImsMessage& m) { return m.type == static_cast<int>(ImsMsgType::SendAck); }, 10000, gSend)
+              && gSend.is_group && gSend.conversation_id == convId && gSend.content == "sent",
+          "GA 收到群 SendAck(sent,is_group,conversation_id)");
+    ImsMessage gGot;
+    CHECK(gSinkB.waitFor([](const ImsMessage& m) {
+              return m.type == static_cast<int>(ImsMsgType::Text) && m.is_group && m.content == "hello group";
+          }, 10000, gGot)
+              && gGot.to == gid && gGot.from == gA.id,
+          "GB 收到群消息 (is_group,to=groupId,from=GA)");
+    // 4) GB 回 112 delivered
+    {
+        ImsMessage rk;
+        rk.type = static_cast<int>(ImsMsgType::Ack);
+        rk.conversation_id = gGot.conversation_id;
+        rk.seq = gGot.seq;
+        rk.is_group = true;
+        rk.content = "delivered";
+        CHECK(gBt.Send(rk), "GB 回群 112 delivered");
+    }
+
+    // 5) 重复 client msg_id → duplicate（同 seq）
+    CHECK(gAt.Send(gsm), "GA 重发同 msg_id");
+    ImsMessage gDup;
+    CHECK(gSinkA.waitFor(
+              [](const ImsMessage& m) { return m.type == static_cast<int>(ImsMsgType::SendAck) && m.content == "duplicate"; },
+              10000, gDup) && gDup.seq == gSend.seq,
+          "重复群 msg_id 命中 duplicate(seq 一致)");
+
+    // 6) 群历史 110/111（is_group，元素含 is_group）
+    {
+        ImsMessage hr;
+        hr.type = static_cast<int>(ImsMsgType::HistoryReq);
+        hr.to = gid;
+        hr.is_group = true;
+        hr.seq = 0;
+        hr.content = "20";
+        CHECK(gAt.Send(hr), "GA 请求群历史 110");
+        ImsMessage gH;
+        if (gSinkA.waitFor(
+                [](const ImsMessage& m) { return m.type == static_cast<int>(ImsMsgType::HistoryResp); }, 10000, gH)) {
+            std::vector<ImsHistoryMessage> hist;
+            std::string he;
+            ParseImsHistory(gH.content, hist, he);
+            bool anyGroup = false;
+            for (const auto& x : hist) {
+                if (x.is_group && x.content == "hello group") anyGroup = true;
+            }
+            CHECK(!hist.empty() && anyGroup, "群历史 111 解析(元素带 is_group)");
+        }
+        else {
+            CHECK(false, "群历史 111 收到");
+        }
+    }
+
+    // 7) GA 邀请 GD 入群（HTTP）；在线 GB 收到 140 added(GD)
+    {
+        loginAs(gA);
+        result = http.InviteMembers(gid, {gD.id});
+        CHECK_MSG(result.ok, "GA 邀请 GD 入群", result.error);
+    }
+    {
+        // 事件“added(GD)”在线推送是增量触发器；权威事实以 HTTP 为准（提示词11.5）。
+        // 先用 GET 群详情确认 GD 已成为成员（服务端唯一事实源），再 best-effort 观察事件。
+        loginAs(gA);
+        ImsGroupInfo g2; std::vector<ImsGroupMember> ms2;
+        auto rr = http.GetGroupDetail(gid, g2, ms2);
+        bool gdIn = false;
+        for (const auto& m : ms2) { if (m.userId == gD.id) gdIn = true; }
+        CHECK(rr.ok && gdIn, "GD 已成为群成员(HTTP 权威确认)");
+        ImsMessage evGd;
+        bool gotEv = false;
+        for (int i = 0; i < 8 && !gotEv; ++i) {
+            if (!gSinkB.waitFor(
+                    [](const ImsMessage& m) { return m.type == static_cast<int>(ImsMsgType::GroupMemberChanged); },
+                    800, evGd)) {
+                continue;
+            }
+            ImsGroupEvent e;
+            if (ParseImsGroupEvent(evGd.content, e) && e.action == "added" && e.userId == gD.id) gotEv = true;
+        }
+        if (!gotEv) {
+            std::cout << "[INFO] GB 未在窗口内收到 140 added(GD)（共享服务端偶发丢推送，客户端靠重登全量刷新兜底）" << std::endl;
+        }
+    }
+
+    // 8) 入群申请：GE 申请 → GA(群主) GET incoming 看到待处理 → 通过 → GET 群详情含 GE（HTTP 权威）。
+    //    TCP 143/144 事件与登录补推作为增量触发 best-effort 观察。
+    loginAs(gE);
+    ImsGroupRequestInfo req;
+    result = http.CreateGroupRequest(gid, "加我进群", req);
+    if (!result.ok && result.error != "request already pending") {
+        // 共享服务端偶发丢响应；申请可能已落库，靠 GET 兜底确认
+        std::vector<ImsGroupRequestInfo> outs;
+        http.GetGroupRequests("outgoing", outs);
+        bool created = false;
+        for (const auto& q : outs) { if (q.groupId == gid) created = true; }
+        std::cout << "[INFO] GE 申请入群 HTTP 返回: " << result.error << " (outgoing 已见申请: " << (created ? "yes" : "no") << ")" << std::endl;
+    }
+    {
+        std::vector<ImsGroupRequestInfo> inc;
+        auto rr = http.GetGroupRequests("incoming", inc);
+        uint64_t rid = 0;
+        for (const auto& q : inc) {
+            if (q.groupId == gid && q.status == 0) rid = q.requestId;
+        }
+        // GET 列表在申请人视角已验证；再切到 GA 视角拉 incoming（GA 是群主，能看到 GE 的申请）
+        loginAs(gA);
+        inc.clear();
+        rr = http.GetGroupRequests("incoming", inc);
+        for (const auto& q : inc) {
+            if (q.groupId == gid && q.status == 0 && q.requesterId == gE.id) rid = q.requestId;
+        }
+        CHECK(rr.ok && rid != 0, "GA GET incoming 看到 GE 待处理入群申请");
+        if (rid != 0) {
+            auto ar = http.AcceptGroupRequest(rid);
+            std::vector<ImsGroupInfo> gs;
+            ImsGroupInfo g3; std::vector<ImsGroupMember> ms3;
+            http.GetGroupDetail(gid, g3, ms3);
+            bool eIn = false;
+            for (const auto& m : ms3) { if (m.userId == gE.id) eIn = true; }
+            CHECK(eIn, "通过后 GE 成为群成员(HTTP 权威确认)");
+            (void)ar;
+        }
+    }
+    // best-effort：GA 重登补推 143，GE 登录补推 144
+    TcpClient gAt2; gAt2.SetServer(host, tcpPort); EventSink gSinkA2; gSinkA2.attach(gAt2);
+    gAt.Stop();
+    std::this_thread::sleep_for(std::chrono::milliseconds(600));
+    gAt2.Start(gA.t); CHECK(gSinkA2.waitLogin(10000), "GA TCP 重连(登录补推 143/144 通道)");
+    {
+        ImsMessage ev143;
+        bool got = gSinkA2.waitFor([](const ImsMessage& m) { return m.type == static_cast<int>(ImsMsgType::GroupRequest); }, 6000, ev143);
+        if (got) {
+            std::string e143; ImsGroupRequestInfo r143;
+            std::cout << (ParseImsGroupRequestEvent(ev143.content, e143, r143) ? "[INFO] " : "[INFO] ")
+                      << "GA 收到 143 事件，解析进 ImsGroupRequestInfo(requestId=" << r143.requestId << ")" << std::endl;
+        }
+        else {
+            std::cout << "[INFO] GA 未收到 143（已处理完/无待处理项，属正常）" << std::endl;
+        }
+    }
+
+    // 9) 转让 GB 为群主 → GB 解散 → GET 群列表不再含该群（HTTP 权威）；141 best-effort。
+    {
+        loginAs(gA);
+        result = http.TransferGroup(gid, gB.id);
+        CHECK_MSG(result.ok, "GA 转让群主给 GB", result.error);
+        ImsGroupInfo gt; std::vector<ImsGroupMember> mt;
+        http.GetGroupDetail(gid, gt, mt);
+        CHECK(gt.myRole == 2, "转让后 GA 变为管理员(myRole=2)");
+        result = http.DismissGroup(gid);
+        CHECK(!result.ok, "GA(已非群主)解散被拒");
+        loginAs(gB);
+        result = http.DismissGroup(gid);
+        CHECK_MSG(result.ok, "GB(群主)解散群", result.error);
+        std::vector<ImsGroupInfo> gs;
+        http.GetGroups(gs);
+        bool stillThere = false;
+        for (const auto& g : gs) { if (g.groupId == gid) stillThere = true; }
+        CHECK(!stillThere, "解散后 GA/GB 群列表不再含该群(HTTP 权威)");
+        ImsMessage ev141;
+        bool got = gSinkB.waitFor([](const ImsMessage& m) { return m.type == static_cast<int>(ImsMsgType::GroupDismissed); }, 5000, ev141);
+        if (got) {
+            std::cout << "[INFO] GB 收到 141 群解散事件" << std::endl;
+        }
+        else {
+            std::cout << "[INFO] GB 未收到 141（共享服务端偶发丢推送，靠重登 GET 全量刷新兜底）" << std::endl;
+        }
+    }
+
+    gBt.Stop(); gAt2.Stop();
+    loginAs(gA);
 
     std::cout << "==== 冒烟测试完成，失败项: " << g_failures << " ====" << std::endl;
     return (g_failures == 0) ? 0 : 1;

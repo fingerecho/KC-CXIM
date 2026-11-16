@@ -14,6 +14,7 @@
 
 #include "db_config.h"
 #include "friend_types.h"
+#include "group_types.h"      // /*************群聊功能：群领域模型（GroupInfo 等）***************/
 #include "message.h"
 
 namespace sql { class Connection; }   // 不在头文件里暴露 Connector 细节
@@ -163,6 +164,117 @@ public:
     // 任一方向 status=2 则 blocked=true（用于区分错误文案）。
     // 陌生人与被对方拉黑都会得到 areFriends=false，从而在落库前被拒绝。
     void areFriends(std::uint64_t sender, std::uint64_t to, RelationCb cb);
+
+    // ========================================================================
+    // /*************群聊功能：群 DAO（BE-GROUP-01~08）***************/
+    // ------------------------------------------------------------------------
+    // 与好友模块一致的分工：
+    //   * 所有“写事实”（建群/邀请/移除/转让/解散/审批/改资料）走 HTTP，
+    //     在同一事务里维护 groups / group_members / conversation_members，
+    //     并通过返回 GroupOpResult（含操作后完整成员列表）供上层广播事件；
+    //   * 群消息“写扩散”也在这里完成：一个事务内分配 conversation_id+seq、
+    //     插入 messages、给除发送者外的每个成员写 offline_messages，
+    //     再把成员 userId 列表带回给 TCP 层，在线成员直接投递。
+    //   * 所有 SQL 仍在 worker 线程执行，回调 postToIo 回 io_context。
+    // ========================================================================
+
+    // 群操作回调：统一带回 GroupOpResult（group + 操作后 members）。
+    using GroupOpCb        = std::function<void(bool ok, const std::string& err,
+                                                const GroupOpResult& res)>;
+    using GroupListCb      = std::function<void(bool ok, const std::string& err,
+                                                std::vector<GroupInfo> groups)>;
+    using GroupReqCb       = std::function<void(bool ok, const std::string& err,
+                                                const GroupRequestInfo& req)>;
+    using GroupReqListCb   = std::function<void(bool ok, const std::string& err,
+                                                std::vector<GroupRequestInfo> reqs)>;
+    // 群消息写扩散回调：带回 StoredMessage + 全群成员 userId（供在线直推）。
+    using GroupSendCb      = std::function<void(bool ok, const std::string& err,
+                                                const StoredMessage& msg,
+                                                const std::vector<std::uint64_t>& memberIds)>;
+
+    // BE-GROUP-02：建群。要求发起人提供至少一个初始成员；发起人自动成为群主。
+    // 同一事务内：建 conversations(type=2) -> 建 groups -> 批量建群成员及会话成员。
+    void createGroup(std::uint64_t owner, const std::string& name,
+                     const std::vector<std::uint64_t>& memberIds, GroupOpCb cb);
+
+    // BE-GROUP-05：我的群列表（JOIN 出 member_count / my_role）。
+    void listMyGroups(std::uint64_t userId, GroupListCb cb);
+
+    // BE-GROUP-05：群详情 + 成员列表。必须是成员才能看。
+    void getGroupDetail(std::uint64_t groupId, std::uint64_t userId, GroupOpCb cb);
+
+    // BE-GROUP-05：改群名/公告/简介/头像（仅群主/管理员）。
+    void updateGroupInfo(std::uint64_t groupId, std::uint64_t actor,
+                         const std::string& name, const std::string& announcement,
+                         const std::string& intro, const std::string& avatarUrl,
+                         GroupOpCb cb);
+
+    // BE-GROUP-02：解散（仅群主）。软删 status=1，并把成员列表带回以便广播。
+    void dismissGroup(std::uint64_t groupId, std::uint64_t actor, GroupOpCb cb);
+
+    // BE-GROUP-02：退群（群主须先转让）。带回剩余成员列表用于广播 quit。
+    void quitGroup(std::uint64_t groupId, std::uint64_t actor, GroupOpCb cb);
+
+    // BE-GROUP-02/04：转让群主（仅群主）。旧群主降为管理员，新群主升为 role=1。
+    void transferGroup(std::uint64_t groupId, std::uint64_t actor,
+                       std::uint64_t newOwner, GroupOpCb cb);
+
+    // BE-GROUP-03：邀请成员（群主/管理员）。已存在的成员会被跳过，不报错。
+    void inviteMembers(std::uint64_t groupId, std::uint64_t actor,
+                       const std::vector<std::uint64_t>& memberIds, GroupOpCb cb);
+
+    // BE-GROUP-04：移出成员（群主/管理员移普通成员；不能移群主/同级）。
+    void removeMember(std::uint64_t groupId, std::uint64_t actor,
+                      std::uint64_t target, GroupOpCb cb);
+
+    // BE-GROUP-04：设置/取消管理员（仅群主）。admin=true 把 role=3 升为 2，
+    // admin=false 把 role=2 降为 3。
+    void setAdmin(std::uint64_t groupId, std::uint64_t actor,
+                  std::uint64_t target, bool admin, GroupOpCb cb);
+
+    // BE-GROUP-03：申请入群（任何用户）。若群开启需审批则生成 status=0 记录。
+    // MVP：申请写入后由群主/管理员审批；带回申请信息供推送。
+    void createGroupRequest(std::uint64_t groupId, std::uint64_t requester,
+                            const std::string& message, GroupReqCb cb);
+
+    // BE-GROUP-03：审批入群申请（群主/管理员）。accept 时同事务写入群成员。
+    // 一次回调同时带回 GroupRequestInfo（给申请人推结果事件）
+    // 和 GroupOpResult（操作后成员列表，给全群推 added 事件）。
+    using GroupReqOpCb = std::function<void(bool ok, const std::string& err,
+                                            const GroupRequestInfo& req,
+                                            const GroupOpResult& res)>;
+    void handleGroupRequest(std::uint64_t requestId, std::uint64_t actor,
+                            bool accept, GroupReqOpCb cb);
+
+    // BE-GROUP-03：入群申请列表。direction：
+    //   incoming=发给我审批的（我是群主/管理员的群），outgoing=我发出的，all=两者。
+    void listGroupRequests(std::uint64_t userId, const std::string& direction,
+                           GroupReqListCb cb);
+
+    // 群消息写扩散：校验发送者是成员、群未解散，然后一个事务内
+    // 分配 seq、插入 messages、给除发送者外所有成员写 offline_messages，
+    // 回调带回 StoredMessage + 成员 userId 列表（在线成员由 TCP 层直推）。
+    void sendGroupMessage(std::uint64_t sender, std::uint64_t groupId, int type,
+                          const std::string& content, std::uint64_t clientMsgId,
+                          GroupSendCb cb);
+
+    // 群历史分页：校验请求者仍是成员，再按 conversation_id + seq keyset 分页。
+    void fetchGroupHistory(std::uint64_t groupId, std::uint64_t userId,
+                           std::uint64_t beforeSeq, int limit, MsgListCb cb);
+
+    // BE-GROUP-06：登录补推——待我审批的入群申请（我是群主/管理员的群的 pending）。
+    void fetchPendingGroupRequestsForApprover(std::uint64_t userId, int limit,
+                                              GroupReqListCb cb);
+
+    // BE-GROUP-06：登录补推——我发出的、已处理但还没通知我的入群申请结果。
+    void fetchUnnotifiedGroupResults(std::uint64_t userId, int limit,
+                                     GroupReqListCb cb);
+    // 批量标记“我发出的入群申请结果”已通知（登录后补推）。
+    void markGroupResultsNotified(std::uint64_t userId, StatusCb cb);
+    // 精确标记某条入群申请结果已通知（申请人在线、已实时推送时）。
+    void markGroupRequestNotified(std::uint64_t requestId, StatusCb cb);
+    // /*************群聊功能：群 DAO***************/
+
 
     // BE-FRIEND-06：登录时补推“待处理申请”（离线补偿）。
     void fetchPendingIncoming(std::uint64_t userId, int limit, RequestListCb cb);

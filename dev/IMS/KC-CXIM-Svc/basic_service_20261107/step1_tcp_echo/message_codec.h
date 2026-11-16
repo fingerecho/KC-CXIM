@@ -106,6 +106,23 @@ inline bool parse_message(const std::vector<char>& body, Message& out, std::stri
         assign_json_string(doc["content"], out.content);
         break;
 
+    /*************群聊功能：群事件（下行）解析，供测试客户端/SDK 复用编解码***************/
+    case MsgType::GroupMemberChanged:
+    case MsgType::GroupDismissed:
+    case MsgType::GroupInfoChanged:
+    case MsgType::GroupRequest:
+    case MsgType::GroupRequestResult:
+        // 群事件同样是“服务端 -> 客户端”的下行消息，content 是 JSON 文本
+        // （字段见 group_types.h）。服务端本身不会接收这些类型，加解析分支
+        // 只是为了测试客户端能用同一套 codec 收事件。
+        if (!doc.HasMember("content") || !doc["content"].IsString()) {
+            err = "missing group event content";
+            return false;
+        }
+        assign_json_string(doc["content"], out.content);
+        break;
+    /*************群聊功能：群事件（下行）解析***************/
+
     default:
         // 未知类型直接拒绝，避免服务器处理不认识的协议。
         err = "unknown type"; return false;
@@ -118,6 +135,13 @@ inline bool parse_message(const std::vector<char>& body, Message& out, std::stri
         out.conversation_id = doc["conversation_id"].GetUint64();
     if (doc.HasMember("seq") && doc["seq"].IsUint64())
         out.seq = doc["seq"].GetUint64();
+    /*************群聊功能：可选 is_group 字段（缺省 false，兼容不带该字段的旧客户端）***************/
+    if (doc.HasMember("is_group")) {
+        const auto& g = doc["is_group"];
+        if (g.IsBool())      out.is_group = g.GetBool();
+        else if (g.IsInt())  out.is_group = (g.GetInt() != 0);
+    }
+    /*************群聊功能：可选 is_group 字段***************/
 
     return true;
 }
@@ -138,6 +162,9 @@ inline std::string serialize_message(const Message& m) {
     w.Key("conversation_id"); w.Uint64(m.conversation_id);
     w.Key("seq");    w.Uint64(m.seq);
     w.Key("content"); w.String(m.content.c_str(), m.content.size());
+    /*************群聊功能：始终写出 is_group（0/1），便于客户端区分单聊/群聊***************/
+    w.Key("is_group"); w.Bool(m.is_group);
+    /*************群聊功能：始终写出 is_group***************/
     w.EndObject();
 
     return std::string(sb.GetString(), sb.GetSize());
@@ -161,6 +188,9 @@ inline std::string serialize_history(const std::vector<StoredMessage>& msgs) {
         w.Key("type");            w.Int(static_cast<int>(m.type));
         w.Key("ts");              w.Uint64(m.ts);
         w.Key("content");         w.String(m.content.c_str(), m.content.size());
+        /*************群聊功能：历史项也带 is_group，离线/分页消息可识别群会话***************/
+        w.Key("is_group");        w.Bool(m.is_group);
+        /*************群聊功能：历史项也带 is_group***************/
         w.EndObject();
     }
     w.EndArray();

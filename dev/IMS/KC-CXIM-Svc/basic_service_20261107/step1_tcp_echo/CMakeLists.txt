@@ -6,7 +6,7 @@
 #   session_manager.cpp -> 在线用户表 userId -> session
 #   db_config.cpp       -> 解析 DBConfig.ini
 #   db.cpp              -> 连接池 + DB 工作线程池 + DAO
-add_executable(tcp_echo_server
+add_executable(cxim-server
     main.cpp
     server.cpp
     session.cpp
@@ -19,24 +19,24 @@ add_executable(tcp_echo_server
 )
 
 # 把当前目录加入 include 路径，便于 #include "frame.h" 这类同目录头文件。
-target_include_directories(tcp_echo_server PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(cxim-server PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 # 加入 MariaDB C++ Connector 头文件目录（由 build_step.sh 通过 -DMariaDB_include 传入）。
-target_include_directories(tcp_echo_server PRIVATE ${MariaDB_include})
+target_include_directories(cxim-server PRIVATE ${MariaDB_include})
 
 # 链接线程库。Boost.Asio 在多数平台上依赖线程相关符号。
-target_link_libraries(tcp_echo_server PRIVATE Threads::Threads)
+target_link_libraries(cxim-server PRIVATE Threads::Threads)
 
 # 链接 MariaDB 数据库（库目录由 build_step.sh 通过 -DMariaDB_lib 传入）。
-target_link_directories(tcp_echo_server PRIVATE ${MariaDB_lib})
-target_link_libraries(tcp_echo_server PRIVATE mariadbcpp)
+target_link_directories(cxim-server PRIVATE ${MariaDB_lib})
+target_link_libraries(cxim-server PRIVATE mariadbcpp)
 
 #链接libbcrypt库
-target_link_libraries(tcp_echo_server PRIVATE bcrypt)
+target_link_libraries(cxim-server PRIVATE bcrypt)
 
 #找到并链接OpenSSL库
 find_package(OpenSSL REQUIRED)
-target_link_libraries(tcp_echo_server PRIVATE
+target_link_libraries(cxim-server PRIVATE
     OpenSSL::Crypto
 )
 
@@ -46,19 +46,19 @@ target_link_libraries(tcp_echo_server PRIVATE
 # ---------------------------------------------------------------------------
 if(WIN32 AND MariaDB_lib)
     if(EXISTS "${MariaDB_lib}/mariadbcpp.dll")
-        add_custom_command(TARGET tcp_echo_server POST_BUILD
+        add_custom_command(TARGET cxim-server POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 "${MariaDB_lib}/mariadbcpp.dll"
-                "$<TARGET_FILE_DIR:tcp_echo_server>")
+                "$<TARGET_FILE_DIR:cxim-server>")
     endif()
     if(EXISTS "${MariaDB_lib}/plugin")
-        add_custom_command(TARGET tcp_echo_server POST_BUILD
+        add_custom_command(TARGET cxim-server POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_directory
                 "${MariaDB_lib}/plugin"
-                "$<TARGET_FILE_DIR:tcp_echo_server>/plugin")
+                "$<TARGET_FILE_DIR:cxim-server>/plugin")
     endif()
 elseif(MariaDB_lib)
-    set_target_properties(tcp_echo_server PROPERTIES
+    set_target_properties(cxim-server PROPERTIES
         BUILD_RPATH "${MariaDB_lib}"
         INSTALL_RPATH "${MariaDB_lib}")
 endif()

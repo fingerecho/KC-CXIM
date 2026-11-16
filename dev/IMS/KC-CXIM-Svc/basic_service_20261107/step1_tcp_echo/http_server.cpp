@@ -2,6 +2,7 @@
 
 #include "db.h"                                // Db：把重活投递到 worker 线程
 #include "friend_types.h"                      // 好友事件 JSON 序列化
+#include "group_types.h"                       // /*************群聊功能：群领域模型与事件序列化***************/
 #include "session.h"                           // SessionManager::find 返回的 session::deliver
 #include "session_manager.h"                   // 按 userId 查找在线 TCP 连接
 #include "token_service.h"                     // TokenService：HTTP 接口鉴权
@@ -15,6 +16,7 @@
 #include "rapidjson/writer.h"                  // 把 JSON 写进缓冲区
 
 #include <cctype>                              // isdigit / isxdigit
+#include <algorithm>                           // /*************群聊功能：std::sort/std::unique 事件扇出去重***************/
 #include <chrono>                              // 事件时间戳
 #include <iostream>                            // 打印监听/错误日志
 #include <memory>                              // std::shared_ptr 管理连接生命周期
@@ -181,6 +183,84 @@ std::string make_requests_ok(const std::vector<FriendRequestInfo>& reqs) {
     return std::string(sb.GetString(), sb.GetSize());
 }
 
+/*************群聊功能：群相关响应构造（沿用 {code,message,data} 统一结构）***************/
+std::string make_group_ok(const GroupInfo& g) {
+    rapidjson::StringBuffer sb;
+    rapidjson::Writer<rapidjson::StringBuffer> w(sb);
+    w.StartObject();
+    w.Key("code");    w.Int(0);
+    w.Key("message"); w.String("ok");
+    w.Key("data");    w.StartObject();
+    w.Key("group");
+    write_group_json(w, g);
+    w.EndObject();
+    w.EndObject();
+    return std::string(sb.GetString(), sb.GetSize());
+}
+
+std::string make_groups_ok(const std::vector<GroupInfo>& groups) {
+    rapidjson::StringBuffer sb;
+    rapidjson::Writer<rapidjson::StringBuffer> w(sb);
+    w.StartObject();
+    w.Key("code");    w.Int(0);
+    w.Key("message"); w.String("ok");
+    w.Key("data");    w.StartObject();
+    w.Key("groups");  w.StartArray();
+    for (const auto& g : groups) write_group_json(w, g);
+    w.EndArray();
+    w.EndObject();
+    w.EndObject();
+    return std::string(sb.GetString(), sb.GetSize());
+}
+
+std::string make_group_detail_ok(const GroupInfo& g,
+                                 const std::vector<GroupMemberInfo>& members) {
+    rapidjson::StringBuffer sb;
+    rapidjson::Writer<rapidjson::StringBuffer> w(sb);
+    w.StartObject();
+    w.Key("code");    w.Int(0);
+    w.Key("message"); w.String("ok");
+    w.Key("data");    w.StartObject();
+    w.Key("group");
+    write_group_json(w, g);
+    w.Key("members"); w.StartArray();
+    for (const auto& m : members) write_member_json(w, m);
+    w.EndArray();
+    w.EndObject();
+    w.EndObject();
+    return std::string(sb.GetString(), sb.GetSize());
+}
+
+std::string make_group_request_ok(const GroupRequestInfo& r) {
+    rapidjson::StringBuffer sb;
+    rapidjson::Writer<rapidjson::StringBuffer> w(sb);
+    w.StartObject();
+    w.Key("code");    w.Int(0);
+    w.Key("message"); w.String("ok");
+    w.Key("data");    w.StartObject();
+    w.Key("request");
+    write_request_json(w, r);
+    w.EndObject();
+    w.EndObject();
+    return std::string(sb.GetString(), sb.GetSize());
+}
+
+std::string make_group_requests_ok(const std::vector<GroupRequestInfo>& reqs) {
+    rapidjson::StringBuffer sb;
+    rapidjson::Writer<rapidjson::StringBuffer> w(sb);
+    w.StartObject();
+    w.Key("code");    w.Int(0);
+    w.Key("message"); w.String("ok");
+    w.Key("data");    w.StartObject();
+    w.Key("requests"); w.StartArray();
+    for (const auto& r : reqs) write_request_json(w, r);
+    w.EndArray();
+    w.EndObject();
+    w.EndObject();
+    return std::string(sb.GetString(), sb.GetSize());
+}
+/*************群聊功能：群相关响应构造结束***************/
+
 // 当前毫秒时间戳：只用于推送事件的展示时间，权威时间仍在数据库。
 std::uint64_t now_ms() {
     return static_cast<std::uint64_t>(
@@ -265,9 +345,37 @@ bool parse_id_between(const std::string& path,
     return out != 0;
 }
 
+// 解析形如 /api/groups/{groupId}/members/{userId} 的路径。
+// /*************群聊功能：双 ID 路径解析（移出成员用）***************/
+bool parse_two_ids(const std::string& path,
+                   const std::string& prefix,
+                   const std::string& middle,
+                   std::uint64_t& id1,
+                   std::uint64_t& id2) {
+    if (path.compare(0, prefix.size(), prefix) != 0) return false;
+    const std::size_t mid = path.find(middle, prefix.size());
+    if (mid == std::string::npos) return false;
+
+    const std::string s1 = path.substr(prefix.size(), mid - prefix.size());
+    const std::string s2 = path.substr(mid + middle.size());
+    if (s1.empty() || s2.empty()) return false;
+    auto all_digits = [](const std::string& s) {
+        for (char c : s) if (!std::isdigit(static_cast<unsigned char>(c))) return false;
+        return true;
+    };
+    if (!all_digits(s1) || !all_digits(s2)) return false;
+    try {
+        id1 = std::stoull(s1);
+        id2 = std::stoull(s2);
+    } catch (...) {
+        return false;
+    }
+    return id1 != 0 && id2 != 0;
+}
+/*************群聊功能：双 ID 路径解析***************/
+
 // RapidJSON 的数字可能是 Uint64，也可能是 Int64（取决于字面量），统一取值。
-bool json_uint64(const rapidjson::Value& v, std::uint64_t& out) {
-    if (v.IsUint64()) {
+bool json_uint64(const rapidjson::Value& v, std::uint64_t& out) {    if (v.IsUint64()) {
         out = v.GetUint64();
         return true;
     }
@@ -406,6 +514,79 @@ private:
             }
             return method_not_allowed();
         }
+
+        // ====================================================================
+        // /*************群聊功能：群聊路由（BE-GROUP-01~08）***************/
+        // ====================================================================
+        // 路由顺序很关键：/api/groups/requests 必须先于 /api/groups/{id} 匹配，
+        // 否则 "requests" 会被 parse_id_between 当作非法 id（它有数字校验，
+        // 其实不会误判，但把具体路径放前面更清晰，和好友模块保持一致）。
+        if (path == "/api/groups") {
+            if (method == http::verb::get)  { do_list_groups(uid);            return; }
+            if (method == http::verb::post) { do_create_group(uid);           return; }
+            return method_not_allowed();
+        }
+        if (path == "/api/groups/requests") {
+            if (method == http::verb::post) { do_create_group_request(uid);   return; }
+            if (method == http::verb::get)  { do_list_group_requests(uid, query); return; }
+            return method_not_allowed();
+        }
+        // 审批入群申请（通过 / 拒绝）
+        if (parse_id_between(path, "/api/groups/requests/", "/accept", id)) {
+            if (method != http::verb::post) return method_not_allowed();
+            do_handle_group_request(uid, id, true);
+            return;
+        }
+        if (parse_id_between(path, "/api/groups/requests/", "/reject", id)) {
+            if (method != http::verb::post) return method_not_allowed();
+            do_handle_group_request(uid, id, false);
+            return;
+        }
+        // 移出成员：DELETE /api/groups/{groupId}/members/{userId}
+        {
+            std::uint64_t gid = 0, member = 0;
+            if (parse_two_ids(path, "/api/groups/", "/members/", gid, member)) {
+                if (method == http::verb::delete_) { do_remove_member(uid, gid, member); return; }
+                return method_not_allowed();
+            }
+        }
+        // 邀请成员：POST /api/groups/{groupId}/members
+        if (parse_id_between(path, "/api/groups/", "/members", id)) {
+            if (method != http::verb::post) return method_not_allowed();
+            do_invite_members(uid, id);
+            return;
+        }
+        // 转让群主
+        if (parse_id_between(path, "/api/groups/", "/transfer", id)) {
+            if (method != http::verb::post) return method_not_allowed();
+            do_transfer_group(uid, id);
+            return;
+        }
+        // 设置/取消管理员：POST /api/groups/{groupId}/admins
+        if (parse_id_between(path, "/api/groups/", "/admins", id)) {
+            if (method != http::verb::post) return method_not_allowed();
+            do_set_admin(uid, id);
+            return;
+        }
+        // 解散群
+        if (parse_id_between(path, "/api/groups/", "/dismiss", id)) {
+            if (method != http::verb::post) return method_not_allowed();
+            do_dismiss_group(uid, id);
+            return;
+        }
+        // 退出群
+        if (parse_id_between(path, "/api/groups/", "/quit", id)) {
+            if (method != http::verb::post) return method_not_allowed();
+            do_quit_group(uid, id);
+            return;
+        }
+        // 群详情 / 修改群资料
+        if (parse_id_between(path, "/api/groups/", "", id)) {
+            if (method == http::verb::get)   { do_group_detail(uid, id);   return; }
+            if (method == http::verb::patch) { do_update_group(uid, id);   return; }
+            return method_not_allowed();
+        }
+        // /*************群聊功能：群聊路由结束***************/
 
         send_json(http::status::not_found, make_error("not found"));
     }
@@ -706,13 +887,358 @@ private:
             });
     }
 
+    // ====================================================================
+    // /*************群聊功能：HTTP 处理器（BE-GROUP-01~08）***************/
+    // ====================================================================
+    // 约定与好友模块一致：
+    //   * 所有“写事实”成功后，通过 SessionManager 把群事件实时推给在线成员；
+    //   * 离线成员不重推事件，登录后靠 GET /api/groups 对齐（成员/资料类），
+    //     入群申请与结果则由 session::push_group_events() 做数据库补偿推送；
+    //   * 参数错误/权限不足/业务拒绝统一返回 400，鉴权失败由 authenticate 返回 401。
+    // ====================================================================
+
+    // 从请求体解析成员 id 数组：{"memberIds":[1,2,3]}
+    bool parse_id_array(const rapidjson::Value& arr, std::vector<std::uint64_t>& out) {
+        if (!arr.IsArray()) return false;
+        for (const auto& v : arr.GetArray()) {
+            std::uint64_t id = 0;
+            if (!json_uint64(v, id) || id == 0) return false;
+            out.push_back(id);
+        }
+        return true;
+    }
+
+    // BE-GROUP-02：建群
+    void do_create_group(std::uint64_t uid) {
+        rapidjson::Document doc;
+        if (!read_json(doc)) return;
+        if (!doc.HasMember("name") || !doc["name"].IsString()) {
+            send_json(http::status::bad_request, make_error("missing name"));
+            return;
+        }
+        std::string name = doc["name"].GetString();
+        if (name.empty() || name.size() > 128) {
+            send_json(http::status::bad_request, make_error("invalid name"));
+            return;
+        }
+        std::vector<std::uint64_t> members;
+        if (!doc.HasMember("memberIds") || !parse_id_array(doc["memberIds"], members)
+            || members.empty()) {
+            send_json(http::status::bad_request, make_error("invalid memberIds"));
+            return;
+        }
+
+        auto self = shared_from_this();
+        db_.createGroup(uid, name, members,
+            [self, uid](bool ok, const std::string& err, GroupOpResult res) {
+                if (!ok) {
+                    self->send_json(http::status::bad_request, make_error(err));
+                    return;
+                }
+                // 给除创建者外的每个“加入者”广播一条 added 事件（全群可见）。
+                const std::uint64_t gid = res.group.id;
+                auto targets = member_ids(res.members, uid);
+                for (const auto& m : res.members) {
+                    if (m.user_id == uid) continue;   // 创建者自己不用收 added
+                    self->push_event_many(targets, MsgType::GroupMemberChanged, uid, 0,
+                        serialize_group_member_changed("added", gid, m.user_id, m.role, uid));
+                }
+                self->send_json(http::status::ok, make_group_ok(res.group));
+            });
+    }
+
+    // BE-GROUP-05：我的群列表
+    void do_list_groups(std::uint64_t uid) {
+        auto self = shared_from_this();
+        db_.listMyGroups(uid,
+            [self](bool ok, const std::string& err, std::vector<GroupInfo> groups) {
+                if (!ok) {
+                    self->send_json(http::status::bad_request, make_error(err));
+                    return;
+                }
+                self->send_json(http::status::ok, make_groups_ok(groups));
+            });
+    }
+
+    // BE-GROUP-05：群详情 + 成员
+    void do_group_detail(std::uint64_t uid, std::uint64_t groupId) {
+        auto self = shared_from_this();
+        db_.getGroupDetail(groupId, uid,
+            [self](bool ok, const std::string& err, GroupOpResult res) {
+                if (!ok) {
+                    self->send_json(http::status::bad_request, make_error(err));
+                    return;
+                }
+                self->send_json(http::status::ok, make_group_detail_ok(res.group, res.members));
+            });
+    }
+
+    // BE-GROUP-05：修改群资料（仅群主/管理员）
+    void do_update_group(std::uint64_t uid, std::uint64_t groupId) {
+        rapidjson::Document doc;
+        if (!read_json(doc)) return;
+        auto getStr = [&](const char* k) -> std::string {
+            if (doc.HasMember(k) && doc[k].IsString()) return doc[k].GetString();
+            return {};
+        };
+        std::string name         = getStr("name");
+        std::string announcement = getStr("announcement");
+        std::string intro        = getStr("intro");
+        std::string avatar       = getStr("avatarUrl");
+        if (name.empty() && announcement.empty() && intro.empty() && avatar.empty()) {
+            send_json(http::status::bad_request, make_error("no fields to update"));
+            return;
+        }
+
+        auto self = shared_from_this();
+        db_.updateGroupInfo(groupId, uid, name, announcement, intro, avatar,
+            [self, uid, groupId](bool ok, const std::string& err, GroupOpResult res) {
+                if (!ok) {
+                    self->send_json(http::status::bad_request, make_error(err));
+                    return;
+                }
+                // 全群广播资料变更（含操作者自己，方便多端刷新）。
+                self->push_event_many(member_ids(res.members), MsgType::GroupInfoChanged,
+                                      uid, 0,
+                                      serialize_group_info_changed(groupId, uid, res.group.name));
+                self->send_json(http::status::ok, make_group_ok(res.group));
+            });
+    }
+
+    // BE-GROUP-02：解散群（仅群主）
+    void do_dismiss_group(std::uint64_t uid, std::uint64_t groupId) {
+        auto self = shared_from_this();
+        db_.dismissGroup(groupId, uid,
+            [self, uid, groupId](bool ok, const std::string& err, GroupOpResult res) {
+                if (!ok) {
+                    self->send_json(http::status::bad_request, make_error(err));
+                    return;
+                }
+                // 解散前 res.members 就是全部接收者（此刻成员行已被清空，只能靠返回值）。
+                self->push_event_many(member_ids(res.members), MsgType::GroupDismissed,
+                                      uid, 0,
+                                      serialize_group_dismissed(groupId, uid, res.group.name));
+                self->send_json(http::status::ok, make_ok());
+            });
+    }
+
+    // BE-GROUP-02：退群
+    void do_quit_group(std::uint64_t uid, std::uint64_t groupId) {
+        auto self = shared_from_this();
+        db_.quitGroup(groupId, uid,
+            [self, uid, groupId](bool ok, const std::string& err, GroupOpResult res) {
+                if (!ok) {
+                    self->send_json(http::status::bad_request, make_error(err));
+                    return;
+                }
+                // res.members 是“退群后剩余成员”。
+                self->push_event_many(member_ids(res.members), MsgType::GroupMemberChanged,
+                                      uid, 0,
+                                      serialize_group_member_changed("quit", groupId, uid, 0, uid));
+                self->send_json(http::status::ok, make_ok());
+            });
+    }
+
+    // BE-GROUP-02：转让群主
+    void do_transfer_group(std::uint64_t uid, std::uint64_t groupId) {
+        rapidjson::Document doc;
+        if (!read_json(doc)) return;
+        if (!doc.HasMember("toUserId")) {
+            send_json(http::status::bad_request, make_error("missing toUserId"));
+            return;
+        }
+        std::uint64_t to = 0;
+        if (!json_uint64(doc["toUserId"], to) || to == 0) {
+            send_json(http::status::bad_request, make_error("invalid toUserId"));
+            return;
+        }
+
+        auto self = shared_from_this();
+        db_.transferGroup(groupId, uid, to,
+            [self, uid, groupId, to](bool ok, const std::string& err, GroupOpResult res) {
+                if (!ok) {
+                    self->send_json(http::status::bad_request, make_error(err));
+                    return;
+                }
+                // 转让：给全群推 transferred（user_id=新群主），再给旧群主本人补一条
+                // roleChanged（他的角色从 1 变成 2）。
+                self->push_event_many(member_ids(res.members), MsgType::GroupMemberChanged,
+                    uid, 0, serialize_group_member_changed("transferred", groupId, to, 1, uid));
+                self->push_event_many(member_ids(res.members), MsgType::GroupMemberChanged,
+                    uid, 0, serialize_group_member_changed("roleChanged", groupId, uid, 2, uid));
+                self->send_json(http::status::ok, make_group_ok(res.group));
+            });
+    }
+
+    // BE-GROUP-03：邀请成员（群主/管理员）
+    void do_invite_members(std::uint64_t uid, std::uint64_t groupId) {
+        rapidjson::Document doc;
+        if (!read_json(doc)) return;
+        std::vector<std::uint64_t> members;
+        if (!doc.HasMember("memberIds") || !parse_id_array(doc["memberIds"], members)
+            || members.empty()) {
+            send_json(http::status::bad_request, make_error("invalid memberIds"));
+            return;
+        }
+
+        auto self = shared_from_this();
+        db_.inviteMembers(groupId, uid, members,
+            [self, uid, groupId](bool ok, const std::string& err, GroupOpResult res) {
+                if (!ok) {
+                    self->send_json(http::status::bad_request, make_error(err));
+                    return;
+                }
+                // 给全群成员（含新成员）广播：每个新增一人一条 added 事件。
+                auto targets = member_ids(res.members);
+                for (std::uint64_t addedUid : res.affected_ids) {
+                    self->push_event_many(targets, MsgType::GroupMemberChanged, uid, 0,
+                        serialize_group_member_changed("added", groupId, addedUid, 3, uid));
+                }
+                self->send_json(http::status::ok, make_group_detail_ok(res.group, res.members));
+            });
+    }
+
+    // BE-GROUP-04：移出成员
+    void do_remove_member(std::uint64_t uid, std::uint64_t groupId, std::uint64_t target) {
+        auto self = shared_from_this();
+        db_.removeMember(groupId, uid, target,
+            [self, uid, groupId, target](bool ok, const std::string& err, GroupOpResult res) {
+                if (!ok) {
+                    self->send_json(http::status::bad_request, make_error(err));
+                    return;
+                }
+                // res.members 是移除后的剩余成员（不含 target）；单独给 target 也推一条，
+                // 让被移者立即刷新群列表。
+                self->push_event_many(member_ids(res.members), MsgType::GroupMemberChanged,
+                    uid, 0, serialize_group_member_changed("removed", groupId, target, 0, uid));
+                self->push_event(target, MsgType::GroupMemberChanged, uid, 0,
+                    serialize_group_member_changed("removed", groupId, target, 0, uid));
+                self->send_json(http::status::ok, make_ok());
+            });
+    }
+
+    // BE-GROUP-04：设置/取消管理员（仅群主）
+    void do_set_admin(std::uint64_t uid, std::uint64_t groupId) {
+        rapidjson::Document doc;
+        if (!read_json(doc)) return;
+        std::uint64_t target = 0;
+        if (!doc.HasMember("userId") || !json_uint64(doc["userId"], target) || target == 0) {
+            send_json(http::status::bad_request, make_error("invalid userId"));
+            return;
+        }
+        bool admin = true;
+        if (doc.HasMember("admin") && doc["admin"].IsBool()) admin = doc["admin"].GetBool();
+
+        auto self = shared_from_this();
+        db_.setAdmin(groupId, uid, target, admin,
+            [self, uid, groupId, target, admin](bool ok, const std::string& err,
+                                                GroupOpResult res) {
+                if (!ok) {
+                    self->send_json(http::status::bad_request, make_error(err));
+                    return;
+                }
+                self->push_event_many(member_ids(res.members), MsgType::GroupMemberChanged,
+                    uid, 0,
+                    serialize_group_member_changed("roleChanged", groupId, target,
+                                                   admin ? 2 : 3, uid));
+                self->send_json(http::status::ok, make_ok());
+            });
+    }
+
+    // BE-GROUP-03：申请入群
+    void do_create_group_request(std::uint64_t uid) {
+        rapidjson::Document doc;
+        if (!read_json(doc)) return;
+        if (!doc.HasMember("groupId")) {
+            send_json(http::status::bad_request, make_error("missing groupId"));
+            return;
+        }
+        std::uint64_t groupId = 0;
+        if (!json_uint64(doc["groupId"], groupId) || groupId == 0) {
+            send_json(http::status::bad_request, make_error("invalid groupId"));
+            return;
+        }
+        std::string message;
+        if (doc.HasMember("message") && doc["message"].IsString())
+            message = doc["message"].GetString();
+        if (message.size() > 255) {
+            send_json(http::status::bad_request, make_error("message too long"));
+            return;
+        }
+
+        auto self = shared_from_this();
+        db_.createGroupRequest(groupId, uid, message,
+            [self, uid](bool ok, const std::string& err, GroupRequestInfo r) {
+                if (!ok) {
+                    self->send_json(http::status::bad_request, make_error(err));
+                    return;
+                }
+                // 实时推给群主；管理员靠登录补推/GET 列表获取。群主离线则不丢，
+                // 因为申请已落库，status=0 会在他登录时被补推。
+                self->push_event(r.owner_id, MsgType::GroupRequest, uid, r.id,
+                                 serialize_group_request_event(r, "new"));
+                self->send_json(http::status::ok, make_group_request_ok(r));
+            });
+    }
+
+    // BE-GROUP-03：审批入群申请（通过/拒绝）
+    void do_handle_group_request(std::uint64_t uid, std::uint64_t requestId, bool accept) {
+        auto self = shared_from_this();
+        db_.handleGroupRequest(requestId, uid, accept,
+            [self, uid, accept](bool ok, const std::string& err,
+                                GroupRequestInfo r, GroupOpResult res) {
+                if (!ok) {
+                    self->send_json(http::status::bad_request, make_error(err));
+                    return;
+                }
+                // 结果推给申请人。
+                const bool delivered = self->push_event(
+                    r.requester_id, MsgType::GroupRequestResult, uid, r.id,
+                    serialize_group_request_result_event(r, accept ? "accepted" : "rejected"));
+                if (delivered) {
+                    self->db_.markGroupRequestNotified(r.id,
+                        [](bool ok2, const std::string& err2) {
+                            if (!ok2)
+                                std::cerr << "[group] mark notified failed: "
+                                          << err2 << std::endl;
+                        });
+                }
+                // 通过则申请人已成为成员：给全群补一条 added 事件。
+                if (accept) {
+                    self->push_event_many(member_ids(res.members), MsgType::GroupMemberChanged,
+                        uid, 0,
+                        serialize_group_member_changed("added", r.group_id, r.requester_id, 3, uid));
+                }
+                self->send_json(http::status::ok, make_group_request_ok(r));
+            });
+    }
+
+    // BE-GROUP-03：入群申请列表（direction=incoming|outgoing|all）
+    void do_list_group_requests(std::uint64_t uid, const std::string& query) {
+        std::string direction = query_value(query, "direction");
+        if (direction.empty()) direction = "incoming";
+        if (direction != "incoming" && direction != "outgoing" && direction != "all") {
+            send_json(http::status::bad_request, make_error("invalid direction"));
+            return;
+        }
+        auto self = shared_from_this();
+        db_.listGroupRequests(uid, direction,
+            [self](bool ok, const std::string& err, std::vector<GroupRequestInfo> reqs) {
+                if (!ok) {
+                    self->send_json(http::status::bad_request, make_error(err));
+                    return;
+                }
+                self->send_json(http::status::ok, make_group_requests_ok(reqs));
+            });
+    }
+    /*************群聊功能：HTTP 处理器结束***************/
+
     // -----------------------------------------------------------------------
     // 好友事件推送
     // -----------------------------------------------------------------------
     // 只在对方“已经 TCP 登录”时才能推送；对方离线时丢弃事件没关系，
     // 因为事实已经落库，登录时会有补偿（待处理申请 / 未通知结果）。
     // 返回值表示“对方是否在线且事件已入写队列”。
-    // 调用方可以据此决定是否把持久化状态标记为已通知。
     bool push_event(std::uint64_t to, MsgType type, std::uint64_t from,
                     std::uint64_t eventId, std::string content) {
         auto peer = sessions_.find(to);
@@ -728,6 +1254,29 @@ private:
         peer->deliver(m);
         return true;
     }
+
+    /*************群聊功能：向一批成员广播同一事件（去重后逐个投递）***************/
+    // 群事件（成员变化/资料变更/解散）通常需要推给全群。这里对 userId 去重，
+    // 离线成员自动跳过（sessions_.find 返回空），不影响事实一致性：
+    // 客户端登录后调用 GET /api/groups 拉全量对齐即可。
+    void push_event_many(const std::vector<std::uint64_t>& to, MsgType type,
+                         std::uint64_t from, std::uint64_t eventId,
+                         const std::string& content) {
+        std::vector<std::uint64_t> uniq = to;
+        std::sort(uniq.begin(), uniq.end());
+        uniq.erase(std::unique(uniq.begin(), uniq.end()), uniq.end());
+        for (std::uint64_t uid : uniq) push_event(uid, type, from, eventId, content);
+    }
+
+    // 便捷：从成员列表取 userId，可排除某个用户（如不给操作者自己重复推）。
+    static std::vector<std::uint64_t> member_ids(const std::vector<GroupMemberInfo>& ms,
+                                                 std::uint64_t exclude = 0) {
+        std::vector<std::uint64_t> ids;
+        ids.reserve(ms.size());
+        for (const auto& m : ms) if (m.user_id != exclude) ids.push_back(m.user_id);
+        return ids;
+    }
+    /*************群聊功能：批量事件推送辅助***************/
 
     // 发送 JSON 响应，随后关闭连接（短连接）。
     void send_json(http::status status, std::string body) {

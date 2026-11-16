@@ -36,11 +36,11 @@ SERVER_BIN=''
 CLIENT_BIN=''
 SEED_BIN=''
 if [[ "$(uname -s)" == Linux* ]]; then
-    SERVER_BIN="${BUILD_DIR}/bin/tcp_echo_server"
+    SERVER_BIN="${BUILD_DIR}/bin/cxim-server"
     CLIENT_BIN="${BUILD_DIR}/bin/test_friend_client"
     SEED_BIN="${BUILD_DIR}/bin/seed_db"
 elif [[ "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* || "$(uname -s)" == CYGWIN* ]]; then
-    SERVER_BIN="${BUILD_DIR}/bin/Debug/tcp_echo_server.exe"
+    SERVER_BIN="${BUILD_DIR}/bin/Debug/cxim-server.exe"
     CLIENT_BIN="${BUILD_DIR}/bin/Debug/test_friend_client.exe"
     SEED_BIN="${BUILD_DIR}/bin/Debug/seed_db.exe"
 fi
@@ -96,8 +96,10 @@ fi
 
 echo "[verify-friend] 运行好友模块验收客户端"
 set +e
+# test_friend_client 每个 check 会 sleep 5s，全流程约 30+ 个 check（>150s），
+# 原 120s 会在“再次申请”附近误杀客户端，这里放宽到 300s。
 if command -v timeout >/dev/null 2>&1; then
-    OUT="$(timeout 120 "$CLIENT_BIN" "$HTTP_PORT" "$TCP_PORT" 2>&1)"
+    OUT="$(timeout 300 "$CLIENT_BIN" "$HTTP_PORT" "$TCP_PORT" 2>&1)"
     RC=$?
 else
     OUT="$("$CLIENT_BIN" "$HTTP_PORT" "$TCP_PORT" 2>&1)"

@@ -2,6 +2,7 @@
 #include "session_manager.h"
 #include "db.h"
 #include "friend_types.h"    // 好友事件 JSON 序列化
+#include "group_types.h"     // /*************群聊功能：群事件 JSON 序列化***************/
 #include "message_codec.h"
 #include "token_service.h"   // JWT 校验：TCP 登录只验 token，不再查库比对密码
 
@@ -113,12 +114,16 @@ void session::handle_message(const Message& msg) {
 
     case MsgType::Text:
     case MsgType::Image:
-        do_send(msg);
+        /*************群聊功能：is_group=true 时 to 是 groupId，走群消息写扩散***************/
+        if (msg.is_group) do_send_group(msg);
+        else              do_send(msg);
         break;
 
     case MsgType::HistoryReq:
-        do_history(msg);
+        if (msg.is_group) do_history_group(msg);
+        else              do_history(msg);
         break;
+    /*************群聊功能：is_group 路由群消息/群历史***************/
 
     case MsgType::Ack:
         do_ack(msg);
@@ -181,6 +186,13 @@ void session::do_login(const Message& msg) {
     // 这两类事件不适合塞进 offline_messages（那是聊天消息表），
     // 因此直接用 friend_requests 的状态字段作为“持久化事件队列”。
     push_friend_events();
+
+    /*************群聊功能：登录补推入群事件（与好友事件同样的补偿思路）***************/
+    // 待我审批的入群申请 + 我发出但还没收到结果的申请，靠 group_requests
+    // 的 status/result_notified 字段做持久化队列。群资料/成员变更事件
+    // 不持久化，客户端登录后调用 GET /api/groups 拉全量列表对齐。
+    push_group_events();
+    /*************群聊功能：登录补推入群事件***************/
 }
 
 // ---------------------------------------------------------------------------
@@ -327,6 +339,201 @@ void session::do_history(const Message& msg) {
 }
 
 // ---------------------------------------------------------------------------
+// /*************群聊功能：发群消息（写扩散 + 在线成员直推）***************/
+// ---------------------------------------------------------------------------
+// 与单聊 do_send 的差异：
+//   1) 不做好友/拉黑校验——群发言资格 = “是该群成员且群未解散”，
+//      这个判断放在 sendGroupMessage 事务里（查 group_members），
+//      退群/解散即时生效，无需额外缓存；
+//   2) 一次落库会 fan-out 给全群成员：DB 层已给每个成员写 offline_messages，
+//      这里再把在线成员遍历 SessionManager 直接投递；
+//   3) SendAck 语义与单聊一致（msg_id/seq/ts 由服务端分配，duplicate 去重）。
+void session::do_send_group(const Message& msg) {
+    if (!logged_in_) {
+        send_error("login first", user_id_);
+        return;
+    }
+    if (msg.to == 0) {
+        send_error("bad group id", user_id_);
+        return;
+    }
+
+    const std::uint64_t sender   = user_id_;           // 只信登录身份
+    const std::uint64_t groupId  = msg.to;             // 群聊：to = groupId
+    const int           type     = static_cast<int>(msg.type);
+    const std::string   content  = msg.content;
+    const std::uint64_t clientMsgId = msg.msg_id;
+
+    auto self = shared_from_this();
+    db_.sendGroupMessage(sender, groupId, type, content, clientMsgId,
+        [this, self, sender, groupId, type, content]
+        (bool ok, const std::string& err, const StoredMessage& sm,
+         const std::vector<std::uint64_t>& memberIds) {
+            /*************并发登录/注册优化：DB 回调切回本连接 strand***************/
+            boost::asio::post(strand_,
+                [this, self, sender, groupId, type, content, ok, err, sm, memberIds]() {
+            if (closed_) return;
+            if (!ok) {
+                send_error(err.empty() ? "group send failed" : err, sender);
+                return;
+            }
+
+            // 发送方回执：带服务端分配的 conversation_id/seq/msg_id/ts。
+            Message ack;
+            ack.type            = MsgType::SendAck;
+            ack.to              = sender;
+            ack.msg_id          = sm.msg_id;
+            ack.conversation_id = sm.conversation_id;
+            ack.seq             = sm.seq;
+            ack.ts              = sm.ts;
+            ack.is_group        = true;
+            ack.content         = sm.duplicate ? "duplicate" : "sent";
+            send_message(ack);
+
+            if (sm.duplicate) return;   // 去重命中：不再向群成员重复投递
+
+            // 在线成员直推；离线的成员已写入 offline_messages，登录时补推。
+            for (std::uint64_t uid : memberIds) {
+                if (uid == sender) continue;      // 不给发送者自己投递
+                if (auto peer = manager_.find(uid)) {
+                    Message out;
+                    out.type            = static_cast<MsgType>(type);
+                    out.from            = sender;
+                    out.to              = groupId;
+                    out.msg_id          = sm.msg_id;
+                    out.conversation_id = sm.conversation_id;
+                    out.seq             = sm.seq;
+                    out.ts              = sm.ts;
+                    out.content         = content;
+                    out.is_group        = true;
+                    peer->deliver(out);
+                }
+            }
+            std::cout << "[group-route] " << sender << " -> group " << groupId
+                      << " members=" << memberIds.size() << std::endl;
+                });
+            /*************并发登录/注册优化：DB 回调切回本连接 strand***************/
+        });
+}
+
+// ---------------------------------------------------------------------------
+// /*************群聊功能：群历史分页（校验成员身份）***************/
+// ---------------------------------------------------------------------------
+void session::do_history_group(const Message& msg) {
+    if (!logged_in_) {
+        send_error("login first", user_id_);
+        return;
+    }
+    if (msg.to == 0) {
+        send_error("bad group id", user_id_);
+        return;
+    }
+
+    int limit = 20;
+    if (!msg.content.empty()) {
+        try { limit = std::stoi(msg.content); }
+        catch (...) { limit = 20; }
+    }
+
+    const std::uint64_t uid  = user_id_;
+    const std::uint64_t gid  = msg.to;      // 群聊：to = groupId
+    const std::uint64_t before = msg.seq;
+
+    auto self = shared_from_this();
+    db_.fetchGroupHistory(gid, uid, before, limit,
+        [this, self, uid](bool ok, const std::string& err,
+                          std::vector<StoredMessage> msgs) {
+            boost::asio::post(strand_,
+                [this, self, uid, ok, err, msgs = std::move(msgs)]() {
+            if (closed_) return;
+            if (!ok) {
+                send_error(err.empty() ? "history failed" : err, uid);
+                return;
+            }
+            Message resp;
+            resp.type    = MsgType::HistoryResp;
+            resp.to      = uid;
+            resp.is_group = true;
+            resp.content = serialize_history(msgs);
+            send_message(resp);
+                });
+        });
+}
+
+// ---------------------------------------------------------------------------
+// /*************群聊功能：登录补推入群事件（143/144）***************/
+// ---------------------------------------------------------------------------
+// 与 push_friend_events 同构，只是数据源换成 group_requests：
+//   1) 拉“我能审批的群的待处理申请” -> 推 GroupRequest(event=pending)；
+//   2) 拉“我发出的、已处理但没通知我的申请” -> 推 GroupRequestResult，并标记已通知。
+void session::push_group_events() {
+    const std::uint64_t uid = user_id_;
+    auto self = shared_from_this();
+
+    db_.fetchPendingGroupRequestsForApprover(uid, 100,
+        [this, self, uid](bool ok, const std::string& err,
+                          std::vector<GroupRequestInfo> reqs) {
+            boost::asio::post(strand_,
+                [this, self, uid, ok, err, reqs = std::move(reqs)]() {
+            if (closed_) return;
+            if (!ok) {
+                std::cerr << "[group] fetch pending requests failed: " << err << std::endl;
+            } else {
+                for (const auto& r : reqs) {
+                    Message m;
+                    m.type   = MsgType::GroupRequest;
+                    m.from   = r.requester_id;
+                    m.to     = uid;
+                    m.msg_id = r.id;         // 复用 msg_id 携带 request_id，便于客户端处理
+                    m.ts     = r.created_ts;
+                    m.content = serialize_group_request_event(r, "pending");
+                    send_message(m);
+                }
+                if (!reqs.empty()) {
+                    std::cout << "[group] pushed " << reqs.size()
+                              << " pending request(s) to approver " << uid << std::endl;
+                }
+            }
+
+            // 第 2 步：补推“我发出的申请的处理结果”。
+            db_.fetchUnnotifiedGroupResults(uid, 100,
+                [this, self, uid](bool ok2, const std::string& err2,
+                                  std::vector<GroupRequestInfo> results) {
+                    boost::asio::post(strand_,
+                        [this, self, uid, ok2, err2, results = std::move(results)]() {
+                    if (closed_) return;
+                    if (!ok2) {
+                        std::cerr << "[group] fetch results failed: " << err2 << std::endl;
+                        return;
+                    }
+                    for (const auto& r : results) {
+                        Message m;
+                        m.type    = MsgType::GroupRequestResult;
+                        m.from    = r.handler_id;
+                        m.to      = uid;
+                        m.msg_id  = r.id;
+                        m.ts      = r.created_ts;
+                        m.content = serialize_group_request_result_event(
+                                        r, r.status == 1 ? "accepted" : "rejected");
+                        send_message(m);
+                    }
+                    if (!results.empty()) {
+                        std::cout << "[group] pushed " << results.size()
+                                  << " request result(s) to user " << uid << std::endl;
+                        db_.markGroupResultsNotified(uid,
+                            [](bool ok3, const std::string& err3) {
+                                if (!ok3)
+                                    std::cerr << "[group] mark notified failed: "
+                                              << err3 << std::endl;
+                            });
+                    }
+                        });
+                });
+                });
+        });
+}
+
+// ---------------------------------------------------------------------------
 // 投递/已读回执
 // ---------------------------------------------------------------------------
 void session::do_ack(const Message& msg) {
@@ -369,7 +576,10 @@ void session::push_offline() {
                 Message m;
                 m.type            = sm.type;
                 m.from            = sm.from;
-                m.to              = uid;
+                /*************群聊功能：群消息 to 填 groupId，单聊维持 to=uid***************/
+                m.to              = sm.is_group ? sm.to : uid;
+                m.is_group        = sm.is_group;
+                /*************群聊功能：群消息 to 填 groupId***************/
                 m.msg_id          = sm.msg_id;
                 m.conversation_id = sm.conversation_id;
                 m.seq             = sm.seq;

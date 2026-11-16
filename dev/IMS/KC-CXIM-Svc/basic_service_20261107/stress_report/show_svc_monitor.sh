@@ -21,7 +21,7 @@
 #   ./show_svc_monitor.sh --once
 #   ./show_svc_monitor.sh --config ../DBConfig.ini
 #   ./show_svc_monitor.sh --svc-host 110.40.206.253 --http-port 8080 --tcp-port 8888
-#   ./show_svc_monitor.sh --proc-name tcp_echo_server --svc-pid 12345
+#   ./show_svc_monitor.sh --proc-name cxim-server --svc-pid 12345
 #   ./show_svc_monitor.sh --mysql-pass 'override'
 #   ./show_svc_monitor.sh --ascii        # 终端不支持 UTF-8 时使用 ASCII 边框
 #
@@ -45,7 +45,7 @@ MYSQL_USER="root"
 MYSQL_PASS=""
 MYSQL_DB=""
 PROC_HINT=""
-PROC_NAME="tcp_echo_server"
+PROC_NAME="cxim-server"
 INTERVAL=2
 ONCE=0
 NO_COLOR=0

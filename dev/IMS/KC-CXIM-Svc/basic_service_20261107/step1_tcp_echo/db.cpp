@@ -699,9 +699,13 @@ void Db::fetchOffline(std::uint64_t userId, int limit, MsgListCb cb) {
 
             const std::string sql =
                 "SELECT m.id,m.conversation_id,m.seq,m.sender_id,m.type,m.content,"
-                "CAST(UNIX_TIMESTAMP(m.created_at)*1000 AS UNSIGNED) "
+                "CAST(UNIX_TIMESTAMP(m.created_at)*1000 AS UNSIGNED), "
+                /*************群聊功能：第 8 列=是否群会话，第 9 列=群ID（单聊为 0）***************/
+                "(c.type=2), COALESCE(g.id,0) "
                 "FROM offline_messages om "
                 "JOIN messages m ON m.id=om.message_id "
+                "JOIN conversations c ON c.id=m.conversation_id "
+                "LEFT JOIN `groups` g ON g.conversation_id=m.conversation_id "
                 "WHERE om.user_id=? "
                 "ORDER BY om.conversation_id, om.seq "
                 "LIMIT " + std::to_string(limit);
@@ -710,7 +714,13 @@ void Db::fetchOffline(std::uint64_t userId, int limit, MsgListCb cb) {
             st->setUInt64(1, userId);
 
             std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
-            while (rs->next()) msgs.push_back(readStored(*rs));
+            while (rs->next()) {
+                StoredMessage m = readStored(*rs);
+                m.is_group = (rs->getInt(8) != 0);
+                if (m.is_group) m.to = rs->getUInt64(9);   // 群消息的 to 填 groupId
+                msgs.push_back(std::move(m));
+            }
+            /*************群聊功能：离线补推识别群消息***************/
             ok = true;
         } catch (const std::exception& e) {
             err = std::string("db error: ") + e.what();
@@ -1564,5 +1574,1498 @@ void Db::markResultsNotified(std::uint64_t userId, StatusCb cb) {
         postToIo([cb, ok, err]() { cb(ok, err); });
     });
 }
+
+// ============================================================================
+// /*************群聊功能：群 DAO 辅助函数与实现（BE-GROUP-01~08）***************/
+// ============================================================================
+namespace {
+
+// ---- 群资料的标准 SELECT ---------------------------------------------------
+// 列顺序（readGroupFull 依赖）：
+//   1 id, 2 conversation_id, 3 name, 4 announcement, 5 intro, 6 avatar_url,
+//   7 owner_id, 8 status, 9 member_limit, 10 member_count, 11 my_role, 12 created_ts
+// member_count 用相关子查询：MVP 群规模小（<=200），COUNT(*) 走
+// idx_group_members_group_role 前缀，代价可接受；上规模后可冗余计数列。
+// my_role 不在表里，由调用方按“查询者是否是成员”以字面量或 JOIN 提供。
+const char* kGroupSelectNoRole =
+    "SELECT g.id,g.conversation_id,g.name,g.announcement,g.intro,g.avatar_url,"
+    "g.owner_id,g.status,g.member_limit,"
+    " (SELECT COUNT(*) FROM group_members m2 WHERE m2.group_id=g.id),"
+    " 0,"
+    " CAST(UNIX_TIMESTAMP(g.created_at)*1000 AS UNSIGNED)"
+    " FROM `groups` g ";
+
+// my_role 不在表里：loadGroup 查询者无关（填 0），loadGroupAsMember 里 JOIN 出来。
+
+// 成员列表 SELECT 前缀。列顺序（readGroupMember 依赖）：
+//   1 user_id, 2 username, 3 nickname, 4 avatar_url, 5 group_nickname,
+//   6 role, 7 joined_ts
+const char* kGroupMemberSelect =
+    "SELECT gm.user_id,u.username,u.nickname,u.avatar_url,gm.group_nickname,gm.role,"
+    "CAST(UNIX_TIMESTAMP(gm.joined_at)*1000 AS UNSIGNED) "
+    "FROM group_members gm JOIN users u ON u.id=gm.user_id ";
+
+// 入群申请 SELECT 前缀。列顺序（readGroupRequest 依赖）：
+//   1 id, 2 group_id, 3 group_name, 4 requester_id, 5 requester_username,
+//   6 requester_nickname, 7 handler_id, 8 message, 9 status, 10 created_ts,
+//   11 owner_id（群主，新申请实时推送用）
+const char* kGroupRequestSelect =
+    "SELECT gr.id,gr.group_id,g.name,gr.requester_id,ru.username,ru.nickname,"
+    "gr.handler_id,gr.message,gr.status,"
+    "CAST(UNIX_TIMESTAMP(gr.created_at)*1000 AS UNSIGNED), g.owner_id "
+    "FROM group_requests gr JOIN `groups` g ON g.id=gr.group_id "
+    "LEFT JOIN users ru ON ru.id=gr.requester_id ";
+
+// groups.type=2 会话的固定值。
+constexpr int kConvTypeGroup = 2;
+
+// SQL 参数占位符拼接小工具：生成 IN (?,?) 的括号部分。
+std::string inPlaceholders(int n) {
+    std::string s = "(";
+    for (int i = 0; i < n; ++i) { if (i) s += ","; s += "?"; }
+    s += ")";
+    return s;
+}
+
+// 读取“群资料”行（列顺序见 kGroupSelectNoRole）。
+GroupInfo readGroupFull(sql::ResultSet& rs) {
+    GroupInfo g;
+    g.id              = rs.getUInt64(1);
+    g.conversation_id = rs.getUInt64(2);
+    g.name            = sstr(rs.getString(3));
+    g.announcement    = sstr(rs.getString(4));
+    g.intro           = sstr(rs.getString(5));
+    g.avatar_url      = sstr(rs.getString(6));
+    g.owner_id        = rs.getUInt64(7);
+    g.status          = rs.getInt(8);
+    g.member_limit    = rs.getInt(9);
+    g.member_count    = rs.getInt(10);
+    g.my_role         = rs.getInt(11);
+    g.created_ts      = rs.getUInt64(12);
+    return g;
+}
+
+GroupMemberInfo readGroupMember(sql::ResultSet& rs) {
+    GroupMemberInfo m;
+    m.user_id        = rs.getUInt64(1);
+    m.username       = sstr(rs.getString(2));
+    m.nickname       = sstr(rs.getString(3));
+    m.avatar_url     = sstr(rs.getString(4));
+    m.group_nickname = sstr(rs.getString(5));
+    m.role           = rs.getInt(6);
+    m.joined_ts      = rs.getUInt64(7);
+    return m;
+}
+
+GroupRequestInfo readGroupRequest(sql::ResultSet& rs) {
+    GroupRequestInfo r;
+    r.id                 = rs.getUInt64(1);
+    r.group_id           = rs.getUInt64(2);
+    r.group_name         = sstr(rs.getString(3));
+    r.requester_id       = rs.getUInt64(4);
+    r.requester_username = sstr(rs.getString(5));
+    r.requester_nickname = sstr(rs.getString(6));
+    r.handler_id         = rs.getUInt64(7);
+    r.message            = sstr(rs.getString(8));
+    r.status             = rs.getInt(9);
+    r.created_ts         = rs.getUInt64(10);
+    r.owner_id           = rs.getUInt64(11);   // /*************群聊功能：新申请实时推给群主***************/
+    return r;
+}
+
+// 查群资料（不校验查询者身份，my_role=0）。找不到抛 BizError。
+GroupInfo loadGroup(sql::Connection* conn, std::uint64_t groupId) {
+    std::string sql = std::string(kGroupSelectNoRole) + "WHERE g.id=?";
+    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(sql));
+    st->setUInt64(1, groupId);
+    std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
+    if (!rs->next()) throw BizError("group not found");
+    return readGroupFull(*rs);
+}
+
+// 查群资料（带查询者角色，同时完成“必须是成员”的校验）。
+// JOIN group_members gm 使“非成员”直接查不到行 -> 抛 BizError。
+GroupInfo loadGroupAsMember(sql::Connection* conn, std::uint64_t groupId,
+                            std::uint64_t userId) {
+    const std::string sql =
+        "SELECT g.id,g.conversation_id,g.name,g.announcement,g.intro,g.avatar_url,"
+        "g.owner_id,g.status,g.member_limit,"
+        " (SELECT COUNT(*) FROM group_members m2 WHERE m2.group_id=g.id),"
+        " gm.role,"
+        " CAST(UNIX_TIMESTAMP(g.created_at)*1000 AS UNSIGNED)"
+        " FROM `groups` g JOIN group_members gm ON gm.group_id=g.id AND gm.user_id=? "
+        "WHERE g.id=?";
+    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(sql));
+    st->setUInt64(1, userId);
+    st->setUInt64(2, groupId);
+    std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
+    if (!rs->next()) throw BizError("not a group member");
+    return readGroupFull(*rs);
+}
+
+// 查成员列表。
+std::vector<GroupMemberInfo> loadGroupMembers(sql::Connection* conn,
+                                              std::uint64_t groupId) {
+    std::string sql = std::string(kGroupMemberSelect) +
+        "WHERE gm.group_id=? ORDER BY gm.role ASC, gm.user_id ASC";
+    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(sql));
+    st->setUInt64(1, groupId);
+    std::vector<GroupMemberInfo> out;
+    std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
+    while (rs->next()) out.push_back(readGroupMember(*rs));
+    return out;
+}
+
+// 查单个成员的角色；不存在返回 0。
+int groupMemberRole(sql::Connection* conn, std::uint64_t groupId,
+                    std::uint64_t userId, bool forUpdate) {
+    std::string sql = "SELECT role FROM group_members WHERE group_id=? AND user_id=?";
+    if (forUpdate) sql += " FOR UPDATE";
+    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(sql));
+    st->setUInt64(1, groupId);
+    st->setUInt64(2, userId);
+    std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
+    if (!rs->next()) return 0;
+    return rs->getInt(1);
+}
+
+// 群新成员加入后：为“全部群成员”补建 conversation_members 游标行。
+// 游标初始化为当前 last_seq：新成员不把历史消息算成未读/离线。
+// INSERT IGNORE 保证重复调用幂等。
+void backfillGroupConvMembers(sql::Connection* conn, std::uint64_t groupId,
+                              std::uint64_t convId) {
+    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+        "INSERT IGNORE INTO conversation_members"
+        "(conversation_id,user_id,last_delivered_seq,last_read_seq) "
+        "SELECT c.id,gm.user_id,c.last_seq,c.last_seq "
+        "FROM conversations c JOIN group_members gm ON gm.group_id=? "
+        "WHERE c.id=?"));
+    st->setUInt64(1, groupId);
+    st->setUInt64(2, convId);
+    st->executeUpdate();
+}
+
+// 批量插入群成员。注意：group_members 有 3 列，但 role 对新邀请/新加入者
+// 固定为 3=普通成员，直接写进 SQL 字面量，每行只绑 2 个参数。
+void insertGroupMembers(sql::Connection* conn, std::uint64_t groupId,
+                        const std::vector<std::uint64_t>& userIds) {
+    if (userIds.empty()) return;
+    std::string sql = "INSERT IGNORE INTO group_members(group_id,user_id,role) VALUES";
+    for (std::size_t i = 0; i < userIds.size(); ++i) {
+        if (i) sql += ",";
+        sql += "(?,?,3)";
+    }
+    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(sql));
+    int idx = 1;
+    for (auto uid : userIds) {
+        st->setUInt64(idx++, groupId);
+        st->setUInt64(idx++, uid);
+    }
+    st->executeUpdate();
+}
+
+// 一条入群申请的完整信息读取（含群名/申请人资料）。
+GroupRequestInfo loadGroupRequest(sql::Connection* conn, std::uint64_t requestId) {
+    std::string sql = std::string(kGroupRequestSelect) + "WHERE gr.id=?";
+    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(sql));
+    st->setUInt64(1, requestId);
+    std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
+    if (!rs->next()) throw BizError("group request not found");
+    return readGroupRequest(*rs);
+}
+
+// 校验一批 userId 都是“正常状态的用户”。
+void ensureActiveUsers(sql::Connection* conn,
+                       const std::vector<std::uint64_t>& ids) {
+    if (ids.empty()) return;
+    std::string sql = "SELECT COUNT(*) FROM users WHERE status=1 AND id IN" +
+        inPlaceholders(static_cast<int>(ids.size()));
+    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(sql));
+    for (std::size_t i = 0; i < ids.size(); ++i)
+        st->setUInt64(static_cast<int>(i) + 1, ids[i]);
+    std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
+    rs->next();
+    if (static_cast<std::size_t>(rs->getUInt64(1)) != ids.size())
+        throw BizError("some member user not found");
+}
+
+// 群资料写操作成功后统一组装返回值：group（带 actor 视角角色）+ members。
+void fillGroupOpResult(sql::Connection* conn, std::uint64_t groupId,
+                       std::uint64_t actor, GroupOpResult& res) {
+    try {
+        res.group = loadGroupAsMember(conn, groupId, actor);
+    } catch (const BizError&) {
+        // actor 可能已不是成员（例如刚退群/解散）：退回“无视角”加载。
+        res.group = loadGroup(conn, groupId);
+    }
+    res.members = loadGroupMembers(conn, groupId);
+    res.group.member_count = static_cast<int>(res.members.size());
+}
+
+} // namespace
+
+// ============================================================================
+// 群 DAO 1：建群（BE-GROUP-02）
+// ----------------------------------------------------------------------------
+// 事务顺序（任何一步失败整体回滚，不会留下“有群没会话/有会话没群”的脏数据）：
+//   1) 参数与成员校验（初始成员必须是发起人双向好友、账号正常）；
+//   2) INSERT conversations(type=2)  -> 群会话（seq 生成器在这里）；
+//   3) INSERT `groups`               -> 群资料，回填 conversation_id；
+//   4) INSERT group_members          -> 发起人 role=1，初始成员 role=3；
+//   5) backfill conversation_members -> 全员游标行（初始化为 last_seq=0）。
+// /*************群聊功能：建群***************/
+void Db::createGroup(std::uint64_t owner, const std::string& name,
+                     const std::vector<std::uint64_t>& memberIds, GroupOpCb cb) {
+    submit([this, owner, name, memberIds, cb]() {
+        bool ok = false;
+        std::string err;
+        GroupOpResult res;
+
+        try {
+            PooledConn pc(*pool_);
+            if (!pc) throw std::runtime_error("db pool unavailable");
+            sql::Connection* conn = pc.get();
+
+            // ---- 参数校验（纯内存，先做，省一次 DB 往返） ------------------
+            if (name.empty() || name.size() > 128)
+                throw BizError("invalid group name");
+            std::vector<std::uint64_t> ms = memberIds;
+            ms.erase(std::remove(ms.begin(), ms.end(), owner), ms.end());
+            std::sort(ms.begin(), ms.end());
+            ms.erase(std::unique(ms.begin(), ms.end()), ms.end());
+            if (ms.empty())
+                throw BizError("at least one initial member required");
+            if (ms.size() + 1 > 200)
+                throw BizError("too many initial members");
+
+            /*************避免数据库死锁的解决方案********************/
+            // 群事务统一交给 runTransactionWithRetry 兜底（1213/1205 自动重试）。
+            runTransactionWithRetry(conn, [&]() {
+                // 初始成员必须是正常用户。
+                ensureActiveUsers(conn, ms);
+
+                // MVP 约束：初始成员必须是发起人的好友（BE-GROUP-02）。
+                {
+                    std::string sql =
+                        "SELECT COUNT(*) FROM friends f JOIN users u "
+                        "ON u.id=f.friend_id AND u.status=1 "
+                        "WHERE f.user_id=? AND f.status=1 AND f.friend_id IN" +
+                        inPlaceholders(static_cast<int>(ms.size()));
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(sql));
+                    st->setUInt64(1, owner);
+                    for (std::size_t i = 0; i < ms.size(); ++i)
+                        st->setUInt64(static_cast<int>(i) + 2, ms[i]);
+                    std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
+                    rs->next();
+                    if (static_cast<std::size_t>(rs->getUInt64(1)) != ms.size())
+                        throw BizError("initial members must be your friends");
+                }
+
+                // 2) 群会话：type=2、owner=发起人；dedup_key 保持 NULL（群聊不适用）。
+                {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "INSERT INTO conversations(type,title,owner_id) VALUES(?,?,?)"));
+                    st->setInt(1, kConvTypeGroup);
+                    st->setString(2, name);
+                    st->setUInt64(3, owner);
+                    st->executeUpdate();
+                }
+                const std::uint64_t conv = lastInsertId(conn);
+
+                // 3) 群资料。
+                {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "INSERT INTO `groups`(conversation_id,name,owner_id) VALUES(?,?,?)"));
+                    st->setUInt64(1, conv);
+                    st->setString(2, name);
+                    st->setUInt64(3, owner);
+                    st->executeUpdate();
+                }
+                const std::uint64_t groupId = lastInsertId(conn);
+
+                // 4) 发起人 role=1（群主），初始成员 role=3。
+                {
+                    std::string sql =
+                        "INSERT INTO group_members(group_id,user_id,role) VALUES(?,?,1)" +
+                        std::string(ms.empty() ? "" : "," +
+                            [&]{
+                                std::string s;
+                                for (std::size_t i = 0; i < ms.size(); ++i) {
+                                    if (i) s += ",";
+                                    s += "(?,?,3)";
+                                }
+                                return s;
+                            }());
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(sql));
+                    int idx = 1;
+                    st->setUInt64(idx++, groupId);
+                    st->setUInt64(idx++, owner);
+                    for (auto uid : ms) {
+                        st->setUInt64(idx++, groupId);
+                        st->setUInt64(idx++, uid);
+                    }
+                    st->executeUpdate();
+                }
+
+                // 5) 会话成员游标行。
+                backfillGroupConvMembers(conn, groupId, conv);
+
+                res.group.id = groupId;
+                res.group.conversation_id = conv;
+            });
+            /*************避免数据库死锁的解决方案********************/
+
+            // 事务提交后读回完整信息（成员数/角色/时间戳以数据库为准）。
+            fillGroupOpResult(conn, res.group.id, owner, res);
+            ok = true;
+        } catch (const BizError& e) {
+            err = e.what();
+        } catch (const std::exception& e) {
+            err = std::string("db error: ") + e.what();
+        }
+
+        postToIo([cb, ok, err, res]() { cb(ok, err, res); });
+    });
+}
+
+// ============================================================================
+// 群 DAO 2：我的群列表（BE-GROUP-05）
+// /*************群聊功能：我的群列表***************/
+void Db::listMyGroups(std::uint64_t userId, GroupListCb cb) {
+    submit([this, userId, cb]() {
+        bool ok = false;
+        std::string err;
+        std::vector<GroupInfo> groups;
+
+        try {
+            PooledConn pc(*pool_);
+            if (!pc) throw std::runtime_error("db pool unavailable");
+
+            const std::string sql =
+                "SELECT g.id,g.conversation_id,g.name,g.announcement,g.intro,g.avatar_url,"
+                "g.owner_id,g.status,g.member_limit,"
+                " (SELECT COUNT(*) FROM group_members m2 WHERE m2.group_id=g.id),"
+                " gm.role,"
+                " CAST(UNIX_TIMESTAMP(g.created_at)*1000 AS UNSIGNED)"
+                " FROM `groups` g JOIN group_members gm ON gm.group_id=g.id AND gm.user_id=? "
+                "WHERE g.status=0 ORDER BY g.id ASC";
+            std::unique_ptr<sql::PreparedStatement> st(pc->prepareStatement(sql));
+            st->setUInt64(1, userId);
+            std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
+            while (rs->next()) groups.push_back(readGroupFull(*rs));
+            ok = true;
+        } catch (const std::exception& e) {
+            err = std::string("db error: ") + e.what();
+        }
+
+        postToIo([cb, ok, err, groups = std::move(groups)]() mutable {
+            cb(ok, err, std::move(groups));
+        });
+    });
+}
+
+// ============================================================================
+// 群 DAO 3：群详情 + 成员列表（BE-GROUP-05）
+// /*************群聊功能：群详情***************/
+void Db::getGroupDetail(std::uint64_t groupId, std::uint64_t userId, GroupOpCb cb) {
+    submit([this, groupId, userId, cb]() {
+        bool ok = false;
+        std::string err;
+        GroupOpResult res;
+
+        try {
+            PooledConn pc(*pool_);
+            if (!pc) throw std::runtime_error("db pool unavailable");
+            sql::Connection* conn = pc.get();
+
+            res.group = loadGroupAsMember(conn, groupId, userId);
+            if (res.group.status != 0) throw BizError("group dismissed");
+            res.members = loadGroupMembers(conn, groupId);
+            res.group.member_count = static_cast<int>(res.members.size());
+            ok = true;
+        } catch (const BizError& e) {
+            err = e.what();
+        } catch (const std::exception& e) {
+            err = std::string("db error: ") + e.what();
+        }
+
+        postToIo([cb, ok, err, res]() { cb(ok, err, res); });
+    });
+}
+
+// ============================================================================
+// 群 DAO 4：修改群资料（BE-GROUP-05）
+// ----------------------------------------------------------------------------
+// 规则：空字符串=不修改该字段（MVP 约定；如需“清空公告”这类操作，
+// 可把协议改成显式字段存在性判断，代价是 JSON 解析复杂一点）。
+// 权限：群主/管理员（role<=2）。
+// /*************群聊功能：修改群资料***************/
+void Db::updateGroupInfo(std::uint64_t groupId, std::uint64_t actor,
+                         const std::string& name, const std::string& announcement,
+                         const std::string& intro, const std::string& avatarUrl,
+                         GroupOpCb cb) {
+    submit([this, groupId, actor, name, announcement, intro, avatarUrl, cb]() {
+        bool ok = false;
+        std::string err;
+        GroupOpResult res;
+
+        try {
+            PooledConn pc(*pool_);
+            if (!pc) throw std::runtime_error("db pool unavailable");
+            sql::Connection* conn = pc.get();
+
+            std::vector<std::pair<std::string, std::string>> sets;   // 列名->新值
+            if (!name.empty())        sets.emplace_back("name", name);
+            if (!announcement.empty()) sets.emplace_back("announcement", announcement);
+            if (!intro.empty())       sets.emplace_back("intro", intro);
+            if (!avatarUrl.empty())   sets.emplace_back("avatar_url", avatarUrl);
+            if (name.size() > 128 || announcement.size() > 512 ||
+                intro.size() > 255 || avatarUrl.size() > 255)
+                throw BizError("field too long");
+            if (sets.empty()) throw BizError("no fields to update");
+
+            runTransactionWithRetry(conn, [&]() {
+                // 锁群行 + 校验权限：FOR UPDATE 防“改资料”和“转让/解散”并发交错。
+                std::uint64_t conv = 0;
+                {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "SELECT g.conversation_id, gm.role FROM `groups` g "
+                        "JOIN group_members gm ON gm.group_id=g.id AND gm.user_id=? "
+                        "WHERE g.id=? AND g.status=0 FOR UPDATE"));
+                    st->setUInt64(1, actor);
+                    st->setUInt64(2, groupId);
+                    std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
+                    if (!rs->next()) throw BizError("not a group member or dismissed");
+                    if (rs->getInt(2) > 2) throw BizError("no permission");
+                    conv = rs->getUInt64(1);
+                }
+
+                // 动态拼 SET（列名来自白名单常量，值走占位符，不存在注入）。
+                std::string sql = "UPDATE `groups` SET ";
+                for (std::size_t i = 0; i < sets.size(); ++i) {
+                    if (i) sql += ",";
+                    sql += sets[i].first + "=?";
+                }
+                sql += " WHERE id=?";
+                std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(sql));
+                int idx = 1;
+                for (auto& kv : sets) st->setString(idx++, kv.second);
+                st->setUInt64(idx, groupId);
+                st->executeUpdate();
+
+                // 会话标题与群名保持同步（历史响应/单聊式 UI 会读 title）。
+                if (!name.empty()) {
+                    std::unique_ptr<sql::PreparedStatement> st2(conn->prepareStatement(
+                        "UPDATE conversations SET title=? WHERE id=?"));
+                    st2->setString(1, name);
+                    st2->setUInt64(2, conv);
+                    st2->executeUpdate();
+                }
+            });
+
+            fillGroupOpResult(conn, groupId, actor, res);
+            ok = true;
+        } catch (const BizError& e) {
+            err = e.what();
+        } catch (const std::exception& e) {
+            err = std::string("db error: ") + e.what();
+        }
+
+        postToIo([cb, ok, err, res]() { cb(ok, err, res); });
+    });
+}
+
+// ============================================================================
+// 群 DAO 5：解散群（BE-GROUP-02）
+// ----------------------------------------------------------------------------
+// 软删（status=1）+ 清成员，消息历史保留在 messages（解散后禁止再收发）。
+// 返回“解散前”的成员列表，HTTP 层据此向全群广播 GroupDismissed。
+// 同时清掉该群会话的离线消息，保证解散即时生效：
+//   被解散的群不应再有“上线补推”的残留消息。
+// /*************群聊功能：解散群***************/
+void Db::dismissGroup(std::uint64_t groupId, std::uint64_t actor, GroupOpCb cb) {
+    submit([this, groupId, actor, cb]() {
+        bool ok = false;
+        std::string err;
+        GroupOpResult res;
+
+        try {
+            PooledConn pc(*pool_);
+            if (!pc) throw std::runtime_error("db pool unavailable");
+            sql::Connection* conn = pc.get();
+
+            std::uint64_t conv = 0;
+            runTransactionWithRetry(conn, [&]() {
+                {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "SELECT g.conversation_id, gm.role FROM `groups` g "
+                        "JOIN group_members gm ON gm.group_id=g.id AND gm.user_id=? "
+                        "WHERE g.id=? AND g.status=0 FOR UPDATE"));
+                    st->setUInt64(1, actor);
+                    st->setUInt64(2, groupId);
+                    std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
+                    if (!rs->next()) throw BizError("group not found or dismissed");
+                    if (rs->getInt(2) != 1) throw BizError("only owner can dismiss");
+                    conv = rs->getUInt64(1);
+                }
+                // 解散前先取成员列表（事件广播用）。
+                res.members = loadGroupMembers(conn, groupId);
+
+                {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "UPDATE `groups` SET status=1 WHERE id=?"));
+                    st->setUInt64(1, groupId);
+                    st->executeUpdate();
+                }
+                {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "DELETE FROM group_members WHERE group_id=?"));
+                    st->setUInt64(1, groupId);
+                    st->executeUpdate();
+                }
+                {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "DELETE FROM conversation_members WHERE conversation_id=?"));
+                    st->setUInt64(1, conv);
+                    st->executeUpdate();
+                }
+                {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "DELETE FROM offline_messages WHERE conversation_id=?"));
+                    st->setUInt64(1, conv);
+                    st->executeUpdate();
+                }
+            });
+
+            res.group = loadGroup(conn, groupId);
+            res.group.my_role = 0;
+            res.group.member_count = 0;
+            ok = true;
+        } catch (const BizError& e) {
+            err = e.what();
+        } catch (const std::exception& e) {
+            err = std::string("db error: ") + e.what();
+        }
+
+        postToIo([cb, ok, err, res]() { cb(ok, err, res); });
+    });
+}
+
+// ============================================================================
+// 群 DAO 6：退群（BE-GROUP-02）
+// 群主必须先转让；退群即时生效：删群成员行 + 会话游标行 + 该用户在此群的离线消息。
+// /*************群聊功能：退群***************/
+void Db::quitGroup(std::uint64_t groupId, std::uint64_t actor, GroupOpCb cb) {
+    submit([this, groupId, actor, cb]() {
+        bool ok = false;
+        std::string err;
+        GroupOpResult res;
+
+        try {
+            PooledConn pc(*pool_);
+            if (!pc) throw std::runtime_error("db pool unavailable");
+            sql::Connection* conn = pc.get();
+
+            std::uint64_t conv = 0;
+            runTransactionWithRetry(conn, [&]() {
+                {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "SELECT g.conversation_id, gm.role FROM `groups` g "
+                        "JOIN group_members gm ON gm.group_id=g.id AND gm.user_id=? "
+                        "WHERE g.id=? AND g.status=0 FOR UPDATE"));
+                    st->setUInt64(1, actor);
+                    st->setUInt64(2, groupId);
+                    std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
+                    if (!rs->next()) throw BizError("not a group member");
+                    if (rs->getInt(2) == 1) throw BizError("owner must transfer first");
+                    conv = rs->getUInt64(1);
+                }
+                {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "DELETE FROM group_members WHERE group_id=? AND user_id=?"));
+                    st->setUInt64(1, groupId);
+                    st->setUInt64(2, actor);
+                    st->executeUpdate();
+                }
+                {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "DELETE FROM conversation_members WHERE conversation_id=? AND user_id=?"));
+                    st->setUInt64(1, conv);
+                    st->setUInt64(2, actor);
+                    st->executeUpdate();
+                }
+                {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "DELETE FROM offline_messages WHERE conversation_id=? AND user_id=?"));
+                    st->setUInt64(1, conv);
+                    st->setUInt64(2, actor);
+                    st->executeUpdate();
+                }
+            });
+
+            fillGroupOpResult(conn, groupId, actor, res);   // actor 已不在成员表 -> 走 loadGroup 分支
+            ok = true;
+        } catch (const BizError& e) {
+            err = e.what();
+        } catch (const std::exception& e) {
+            err = std::string("db error: ") + e.what();
+        }
+
+        postToIo([cb, ok, err, res]() { cb(ok, err, res); });
+    });
+}
+
+// ============================================================================
+// 群 DAO 7：转让群主（BE-GROUP-02/04）
+// 同一事务保证“旧群主降、新群主升、群资料改 owner_id”三件事原子生效；
+// 旧群主降为管理员（role=2），与主流 IM 行为一致。
+// /*************群聊功能：转让群主***************/
+void Db::transferGroup(std::uint64_t groupId, std::uint64_t actor,
+                       std::uint64_t newOwner, GroupOpCb cb) {
+    submit([this, groupId, actor, newOwner, cb]() {
+        bool ok = false;
+        std::string err;
+        GroupOpResult res;
+
+        try {
+            PooledConn pc(*pool_);
+            if (!pc) throw std::runtime_error("db pool unavailable");
+            sql::Connection* conn = pc.get();
+
+            runTransactionWithRetry(conn, [&]() {
+                {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "SELECT gm.role FROM `groups` g "
+                        "JOIN group_members gm ON gm.group_id=g.id AND gm.user_id=? "
+                        "WHERE g.id=? AND g.status=0 FOR UPDATE"));
+                    st->setUInt64(1, actor);
+                    st->setUInt64(2, groupId);
+                    std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
+                    if (!rs->next()) throw BizError("group not found or dismissed");
+                    if (rs->getInt(1) != 1) throw BizError("only owner can transfer");
+                }
+                if (newOwner == actor) throw BizError("cannot transfer to yourself");
+                const int targetRole = groupMemberRole(conn, groupId, newOwner, true);
+                if (targetRole == 0) throw BizError("target is not a group member");
+
+                {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "UPDATE group_members SET role=2 WHERE group_id=? AND user_id=?"));
+                    st->setUInt64(1, groupId);
+                    st->setUInt64(2, actor);
+                    st->executeUpdate();
+                }
+                {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "UPDATE group_members SET role=1 WHERE group_id=? AND user_id=?"));
+                    st->setUInt64(1, groupId);
+                    st->setUInt64(2, newOwner);
+                    st->executeUpdate();
+                }
+                {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "UPDATE `groups` SET owner_id=? WHERE id=?"));
+                    st->setUInt64(1, newOwner);
+                    st->setUInt64(2, groupId);
+                    st->executeUpdate();
+                }
+            });
+
+            fillGroupOpResult(conn, groupId, actor, res);
+            ok = true;
+        } catch (const BizError& e) {
+            err = e.what();
+        } catch (const std::exception& e) {
+            err = std::string("db error: ") + e.what();
+        }
+
+        postToIo([cb, ok, err, res]() { cb(ok, err, res); });
+    });
+}
+
+// ============================================================================
+// 群 DAO 8：邀请成员（BE-GROUP-03）
+// MVP 规则：群主/管理员可直接把“正常用户”拉入群（免确认，腾讯 Work 群行为）；
+// 已在群里的 id 静默跳过（幂等）；人数受 member_limit 约束。
+// 若被邀请人此前有“待处理申请”，审批通过后一并清理，防止重复通知。
+// /*************群聊功能：邀请成员***************/
+void Db::inviteMembers(std::uint64_t groupId, std::uint64_t actor,
+                       const std::vector<std::uint64_t>& memberIds, GroupOpCb cb) {
+    submit([this, groupId, actor, memberIds, cb]() {
+        bool ok = false;
+        std::string err;
+        GroupOpResult res;
+
+        try {
+            PooledConn pc(*pool_);
+            if (!pc) throw std::runtime_error("db pool unavailable");
+            sql::Connection* conn = pc.get();
+
+            std::vector<std::uint64_t> want = memberIds;
+            want.erase(std::remove(want.begin(), want.end(), actor), want.end());
+            std::sort(want.begin(), want.end());
+            want.erase(std::unique(want.begin(), want.end()), want.end());
+            if (want.empty()) throw BizError("no valid members to invite");
+
+            std::vector<std::uint64_t> added;
+            runTransactionWithRetry(conn, [&]() {
+                std::uint64_t conv = 0;
+                int limit = 0;
+                {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "SELECT g.conversation_id, g.member_limit, gm.role FROM `groups` g "
+                        "JOIN group_members gm ON gm.group_id=g.id AND gm.user_id=? "
+                        "WHERE g.id=? AND g.status=0 FOR UPDATE"));
+                    st->setUInt64(1, actor);
+                    st->setUInt64(2, groupId);
+                    std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
+                    if (!rs->next()) throw BizError("not a group owner/admin");
+                    if (rs->getInt(3) > 2) throw BizError("no permission to invite");
+                    conv = rs->getUInt64(1);
+                    limit = static_cast<int>(rs->getUInt64(2));
+                }
+
+                // 过滤掉已在群里的成员（幂等）。
+                {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "SELECT user_id FROM group_members WHERE group_id=?"));
+                    st->setUInt64(1, groupId);
+                    std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
+                    std::vector<std::uint64_t> exists;
+                    while (rs->next()) exists.push_back(rs->getUInt64(1));
+                    added.clear();
+                    for (auto uid : want)
+                        if (std::find(exists.begin(), exists.end(), uid) == exists.end())
+                            added.push_back(uid);
+                }
+                if (added.empty()) throw BizError("all invitees already in group");
+
+                ensureActiveUsers(conn, added);
+
+                // 人数上限校验（当前成员数在锁内统计，避免并发超限）。
+                {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "SELECT COUNT(*) FROM group_members WHERE group_id=?"));
+                    st->setUInt64(1, groupId);
+                    std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
+                    rs->next();
+                    if (static_cast<int>(rs->getUInt64(1)) +
+                        static_cast<int>(added.size()) > limit)
+                        throw BizError("member limit exceeded");
+                }
+
+                insertGroupMembers(conn, groupId, added);
+                backfillGroupConvMembers(conn, groupId, conv);
+
+                // 被邀请人如果之前申请过这个群，把其待处理申请置为“已通过”，
+                // 避免管理员之后又收到同一个人的重复申请通知。added 规模小，逐条更新。
+                for (auto uid : added) {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "UPDATE group_requests SET status=1, handler_id=? "
+                        "WHERE group_id=? AND requester_id=? AND status=0"));
+                    st->setUInt64(1, actor);
+                    st->setUInt64(2, groupId);
+                    st->setUInt64(3, uid);
+                    st->executeUpdate();
+                }
+            });
+
+            fillGroupOpResult(conn, groupId, actor, res);
+            res.group.my_role = groupMemberRole(conn, groupId, actor, false);
+            res.affected_ids  = added;      // 本次真正新增的成员，HTTP 层据此推 added 事件
+            ok = true;
+        } catch (const BizError& e) {
+            err = e.what();
+        } catch (const std::exception& e) {
+            err = std::string("db error: ") + e.what();
+        }
+
+        postToIo([cb, ok, err, res]() { cb(ok, err, res); });
+    });
+}
+
+// ============================================================================
+// 群 DAO 9：移出成员（BE-GROUP-04）
+// 规则：群主/管理员可移“普通成员”；不能移群主/管理员（管理员也不能移其他管理员）；
+// 本人被移时其在本群的离线消息一并删除，保证“即时收不到后续与积压消息”。
+// /*************群聊功能：移出成员***************/
+void Db::removeMember(std::uint64_t groupId, std::uint64_t actor,
+                      std::uint64_t target, GroupOpCb cb) {
+    submit([this, groupId, actor, target, cb]() {
+        bool ok = false;
+        std::string err;
+        GroupOpResult res;
+
+        try {
+            PooledConn pc(*pool_);
+            if (!pc) throw std::runtime_error("db pool unavailable");
+            sql::Connection* conn = pc.get();
+
+            runTransactionWithRetry(conn, [&]() {
+                std::uint64_t conv = 0;
+                int actorRole = 0;
+                {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "SELECT g.conversation_id, gm.role FROM `groups` g "
+                        "JOIN group_members gm ON gm.group_id=g.id AND gm.user_id=? "
+                        "WHERE g.id=? AND g.status=0 FOR UPDATE"));
+                    st->setUInt64(1, actor);
+                    st->setUInt64(2, groupId);
+                    std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
+                    if (!rs->next()) throw BizError("not a group owner/admin");
+                    actorRole = rs->getInt(2);
+                    conv = rs->getUInt64(1);
+                }
+                if (actorRole > 2) throw BizError("no permission");
+                if (target == actor) throw BizError("use quit to leave group");
+
+                const int targetRole = groupMemberRole(conn, groupId, target, true);
+                if (targetRole == 0) throw BizError("target is not a group member");
+                if (targetRole <= 2 && actorRole != 1)
+                    throw BizError("only owner can remove admin");
+                if (targetRole == 1) throw BizError("cannot remove group owner");
+
+                {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "DELETE FROM group_members WHERE group_id=? AND user_id=?"));
+                    st->setUInt64(1, groupId);
+                    st->setUInt64(2, target);
+                    st->executeUpdate();
+                }
+                {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "DELETE FROM conversation_members WHERE conversation_id=? AND user_id=?"));
+                    st->setUInt64(1, conv);
+                    st->setUInt64(2, target);
+                    st->executeUpdate();
+                }
+                {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "DELETE FROM offline_messages WHERE conversation_id=? AND user_id=?"));
+                    st->setUInt64(1, conv);
+                    st->setUInt64(2, target);
+                    st->executeUpdate();
+                }
+            });
+
+            fillGroupOpResult(conn, groupId, actor, res);
+            ok = true;
+        } catch (const BizError& e) {
+            err = e.what();
+        } catch (const std::exception& e) {
+            err = std::string("db error: ") + e.what();
+        }
+
+        postToIo([cb, ok, err, res, target]() {
+            (void)target;
+            cb(ok, err, res);
+        });
+    });
+}
+
+// ============================================================================
+// 群 DAO 10：设置/取消管理员（BE-GROUP-04，仅群主）
+// /*************群聊功能：任命管理员***************/
+void Db::setAdmin(std::uint64_t groupId, std::uint64_t actor,
+                  std::uint64_t target, bool admin, GroupOpCb cb) {
+    submit([this, groupId, actor, target, admin, cb]() {
+        bool ok = false;
+        std::string err;
+        GroupOpResult res;
+
+        try {
+            PooledConn pc(*pool_);
+            if (!pc) throw std::runtime_error("db pool unavailable");
+            sql::Connection* conn = pc.get();
+
+            runTransactionWithRetry(conn, [&]() {
+                {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "SELECT gm.role FROM `groups` g "
+                        "JOIN group_members gm ON gm.group_id=g.id AND gm.user_id=? "
+                        "WHERE g.id=? AND g.status=0 FOR UPDATE"));
+                    st->setUInt64(1, actor);
+                    st->setUInt64(2, groupId);
+                    std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
+                    if (!rs->next()) throw BizError("group not found or dismissed");
+                    if (rs->getInt(1) != 1) throw BizError("only owner can set admin");
+                }
+                if (target == actor) throw BizError("cannot change your own role");
+                const int targetRole = groupMemberRole(conn, groupId, target, true);
+                if (targetRole == 0) throw BizError("target is not a group member");
+                if (targetRole == 1) throw BizError("cannot change owner role");
+                if (admin && targetRole != 3) throw BizError("target already admin");
+                if (!admin && targetRole != 2) throw BizError("target is not admin");
+
+                {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "UPDATE group_members SET role=? WHERE group_id=? AND user_id=?"));
+                    st->setInt(1, admin ? 2 : 3);
+                    st->setUInt64(2, groupId);
+                    st->setUInt64(3, target);
+                    st->executeUpdate();
+                }
+            });
+
+            fillGroupOpResult(conn, groupId, actor, res);
+            ok = true;
+        } catch (const BizError& e) {
+            err = e.what();
+        } catch (const std::exception& e) {
+            err = std::string("db error: ") + e.what();
+        }
+
+        postToIo([cb, ok, err, res]() { cb(ok, err, res); });
+    });
+}
+
+// ============================================================================
+// 群 DAO 11：申请入群（BE-GROUP-03）
+// MVP：任何人都能按 groupId 申请；申请后等群主/管理员审批。
+// 已在群里 / 已有待处理申请的人会被拒绝（幂等提示）。
+// /*************群聊功能：申请入群***************/
+void Db::createGroupRequest(std::uint64_t groupId, std::uint64_t requester,
+                            const std::string& message, GroupReqCb cb) {
+    submit([this, groupId, requester, message, cb]() {
+        bool ok = false;
+        std::string err;
+        GroupRequestInfo out;
+
+        try {
+            PooledConn pc(*pool_);
+            if (!pc) throw std::runtime_error("db pool unavailable");
+            sql::Connection* conn = pc.get();
+
+            if (message.size() > 255) throw BizError("message too long");
+
+            std::uint64_t reqId = 0;
+            runTransactionWithRetry(conn, [&]() {
+                {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "SELECT 1 FROM `groups` WHERE id=? AND status=0"));
+                    st->setUInt64(1, groupId);
+                    std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
+                    if (!rs->next()) throw BizError("group not found or dismissed");
+                }
+                if (groupMemberRole(conn, groupId, requester, false) != 0)
+                    throw BizError("already in group");
+                {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "SELECT id FROM group_requests "
+                        "WHERE group_id=? AND requester_id=? AND status=0"));
+                    st->setUInt64(1, groupId);
+                    st->setUInt64(2, requester);
+                    std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
+                    if (rs->next()) throw BizError("request already pending");
+                }
+                {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "INSERT INTO group_requests(group_id,requester_id,message) "
+                        "VALUES(?,?,?)"));
+                    st->setUInt64(1, groupId);
+                    st->setUInt64(2, requester);
+                    st->setString(3, message);
+                    st->executeUpdate();
+                }
+                reqId = lastInsertId(conn);
+            });
+
+            out = loadGroupRequest(conn, reqId);
+            ok = true;
+        } catch (const BizError& e) {
+            err = e.what();
+        } catch (const std::exception& e) {
+            err = std::string("db error: ") + e.what();
+        }
+
+        postToIo([cb, ok, err, out]() { cb(ok, err, out); });
+    });
+}
+
+// ============================================================================
+// 群 DAO 12：审批入群申请（BE-GROUP-03/04）
+// ----------------------------------------------------------------------------
+// 关键点：
+//   * SELECT ... FOR UPDATE 锁申请行，防同一申请被并发审批两次；
+//   * 审批人必须属于该群且 role<=2（群主/管理员）；
+//   * 通过时同事务写 group_members + 游标行（复用邀请的 backfill）；
+//   * result_notified 置 0：申请人离线时由登录补偿推送（与好友一致）。
+// /*************群聊功能：审批入群申请***************/
+void Db::handleGroupRequest(std::uint64_t requestId, std::uint64_t actor,
+                            bool accept, GroupReqOpCb cb) {
+    submit([this, requestId, actor, accept, cb]() {
+        bool ok = false;
+        std::string err;
+        GroupRequestInfo req;
+        GroupOpResult res;
+
+        try {
+            PooledConn pc(*pool_);
+            if (!pc) throw std::runtime_error("db pool unavailable");
+            sql::Connection* conn = pc.get();
+
+            std::uint64_t groupId = 0, conv = 0, requester = 0;
+            runTransactionWithRetry(conn, [&]() {
+                {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "SELECT gr.group_id, gr.requester_id, g.conversation_id, gm.role "
+                        "FROM group_requests gr "
+                        "JOIN `groups` g ON g.id=gr.group_id "
+                        "JOIN group_members gm ON gm.group_id=gr.group_id AND gm.user_id=? "
+                        "WHERE gr.id=? AND gr.status=0 AND g.status=0 FOR UPDATE"));
+                    st->setUInt64(1, actor);
+                    st->setUInt64(2, requestId);
+                    std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
+                    if (!rs->next()) throw BizError("request not found or already handled");
+                    if (rs->getInt(4) > 2) throw BizError("no permission to handle");
+                    groupId    = rs->getUInt64(1);
+                    requester  = rs->getUInt64(2);
+                    conv       = rs->getUInt64(3);
+                }
+
+                if (accept) {
+                    // 人数上限校验（锁内统计）。
+                    int limit = 0;
+                    {
+                        std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                            "SELECT member_limit, "
+                            " (SELECT COUNT(*) FROM group_members WHERE group_id=?) "
+                            "FROM `groups` WHERE id=?"));
+                        st->setUInt64(1, groupId);
+                        st->setUInt64(2, groupId);
+                        std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
+                        rs->next();
+                        limit = static_cast<int>(rs->getUInt64(1));
+                        if (static_cast<int>(rs->getUInt64(2)) + 1 > limit)
+                            throw BizError("member limit exceeded");
+                    }
+                    insertGroupMembers(conn, groupId, {requester});
+                    backfillGroupConvMembers(conn, groupId, conv);
+                }
+
+                {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "UPDATE group_requests SET status=?, handler_id=?, result_notified=0 "
+                        "WHERE id=?"));
+                    st->setInt(1, accept ? 1 : 2);
+                    st->setUInt64(2, actor);
+                    st->setUInt64(3, requestId);
+                    st->executeUpdate();
+                }
+            });
+
+            req = loadGroupRequest(conn, requestId);
+            fillGroupOpResult(conn, groupId, actor, res);
+            ok = true;
+        } catch (const BizError& e) {
+            err = e.what();
+        } catch (const std::exception& e) {
+            err = std::string("db error: ") + e.what();
+        }
+
+        postToIo([cb, ok, err, req, res]() { cb(ok, err, req, res); });
+    });
+}
+
+// ============================================================================
+// 群 DAO 13：入群申请列表（BE-GROUP-03）
+// incoming：发给我审批的（我是群主/管理员的群，只看待处理）；
+// outgoing：我发出的；all：两者。
+// /*************群聊功能：入群申请列表***************/
+void Db::listGroupRequests(std::uint64_t userId, const std::string& direction,
+                           GroupReqListCb cb) {
+    submit([this, userId, direction, cb]() {
+        bool ok = false;
+        std::string err;
+        std::vector<GroupRequestInfo> reqs;
+
+        try {
+            PooledConn pc(*pool_);
+            if (!pc) throw std::runtime_error("db pool unavailable");
+
+            std::string sql = kGroupRequestSelect;
+            if (direction == "outgoing") {
+                sql += "WHERE gr.requester_id=? ORDER BY gr.created_at DESC LIMIT 200";
+            } else if (direction == "all") {
+                sql += "LEFT JOIN group_members gm2 "
+                       "ON gm2.group_id=gr.group_id AND gm2.user_id=? AND gm2.role<=2 "
+                       "WHERE (gr.requester_id=? OR (gm2.user_id IS NOT NULL AND gr.status=0)) "
+                       "ORDER BY gr.created_at DESC LIMIT 200";
+            } else {
+                // incoming（默认）：我管理的群里的待处理申请。
+                sql += "JOIN group_members gm ON gm.group_id=gr.group_id "
+                       "AND gm.user_id=? AND gm.role<=2 "
+                       "WHERE gr.status=0 ORDER BY gr.created_at DESC LIMIT 200";
+            }
+
+            std::unique_ptr<sql::PreparedStatement> st(pc->prepareStatement(sql));
+            if (direction == "outgoing") {
+                st->setUInt64(1, userId);
+            } else if (direction == "all") {
+                st->setUInt64(1, userId);
+                st->setUInt64(2, userId);
+            } else {
+                st->setUInt64(1, userId);
+            }
+
+            std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
+            while (rs->next()) reqs.push_back(readGroupRequest(*rs));
+            ok = true;
+        } catch (const std::exception& e) {
+            err = std::string("db error: ") + e.what();
+        }
+
+        postToIo([cb, ok, err, reqs = std::move(reqs)]() mutable {
+            cb(ok, err, std::move(reqs));
+        });
+    });
+}
+
+// ============================================================================
+// 群 DAO 14：群消息写扩散（BE-GROUP-07）
+// ----------------------------------------------------------------------------
+// 与单聊 sendMessage 同构，差别在：
+//   1) conversation_id 由 groupId 查 groups 得到（不建会话、不做 dedup_key）；
+//   2) 发送资格 = “是群成员且群未解散”（成员行解散/退群时被删，天然即时生效）；
+//   3) 离线队列 INSERT ... SELECT 一条 SQL 写给除发送者外的全部成员；
+//   4) 回调带回成员 userId 列表，io 层遍历 SessionManager 直推在线成员。
+// 写扩散 vs 读扩散：本期群小（<=200），写扩散实现最简单、读路径零成本；
+// 将来上万成员时，可只存消息本体不写 offline_messages，改为按
+// conversation_members.last_delivered_seq 补拉（读扩散），DAO 接口不变。
+// /*************群聊功能：群消息写扩散***************/
+void Db::sendGroupMessage(std::uint64_t sender, std::uint64_t groupId, int type,
+                          const std::string& content, std::uint64_t clientMsgId,
+                          GroupSendCb cb) {
+    submit([this, sender, groupId, type, content, clientMsgId, cb]() {
+        bool ok = false;
+        std::string err;
+        StoredMessage out;
+        std::vector<std::uint64_t> memberIds;
+
+        try {
+            PooledConn pc(*pool_);
+            if (!pc) throw std::runtime_error("db pool unavailable");
+            sql::Connection* conn = pc.get();
+
+            std::uint64_t msgId = 0;
+            runTransactionWithRetry(conn, [&]() {
+                ok = false;
+                msgId = 0;
+
+                // 0) 发送资格：成员 + 群未解散；顺带拿到群会话 id。
+                std::uint64_t conv = 0;
+                {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "SELECT g.conversation_id FROM `groups` g "
+                        "JOIN group_members gm ON gm.group_id=g.id AND gm.user_id=? "
+                        "WHERE g.id=? AND g.status=0"));
+                    st->setUInt64(1, sender);
+                    st->setUInt64(2, groupId);
+                    std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
+                    if (!rs->next()) throw BizError("not a group member or group dismissed");
+                    conv = rs->getUInt64(1);
+                }
+
+                // 1) 去重：同一会话 + 发送者 + client_msg_id 已存在则返回旧消息。
+                if (clientMsgId != 0) {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "SELECT id,conversation_id,seq,sender_id,type,content,"
+                        "CAST(UNIX_TIMESTAMP(created_at)*1000 AS UNSIGNED) "
+                        "FROM messages "
+                        "WHERE conversation_id=? AND sender_id=? AND client_msg_id=?"));
+                    st->setUInt64(1, conv);
+                    st->setUInt64(2, sender);
+                    st->setString(3, std::to_string(clientMsgId));
+                    std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
+                    if (rs->next()) {
+                        out = readStored(*rs);
+                        out.to = groupId;
+                        out.is_group = true;
+                        out.duplicate = true;
+                        ok = true;
+                        return;
+                    }
+                }
+
+                // 2) 原子分配会话内单调 seq（LAST_INSERT_ID(expr) 技巧，同单聊）。
+                {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "UPDATE conversations SET last_seq=LAST_INSERT_ID(last_seq+1) WHERE id=?"));
+                    st->setUInt64(1, conv);
+                    st->executeUpdate();
+                }
+                const std::uint64_t seq = lastInsertId(conn);
+
+                // 3) 插入消息本体（msg_id/ts 由数据库生成）。
+                {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "INSERT INTO messages(conversation_id,seq,sender_id,type,content,client_msg_id) "
+                        "VALUES(?,?,?,?,?,?)"));
+                    st->setUInt64(1, conv);
+                    st->setUInt64(2, seq);
+                    st->setUInt64(3, sender);
+                    st->setInt(4, type);
+                    st->setString(5, content);
+                    if (clientMsgId != 0) st->setString(6, std::to_string(clientMsgId));
+                    else                  st->setNull(6, sql::SQLNULL);
+                    st->executeUpdate();
+                }
+                msgId = lastInsertId(conn);
+
+                // 4) 写扩散（离线部分）：一条 INSERT ... SELECT 给除发送者外
+                //    全体成员写 offline_messages；在线成员收到 ACK 后同样删除。
+                {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "INSERT IGNORE INTO offline_messages(user_id,message_id,conversation_id,seq) "
+                        "SELECT gm.user_id,?,?,? FROM group_members gm "
+                        "WHERE gm.group_id=? AND gm.user_id<>?"));
+                    st->setUInt64(1, msgId);
+                    st->setUInt64(2, conv);
+                    st->setUInt64(3, seq);
+                    st->setUInt64(4, groupId);
+                    st->setUInt64(5, sender);
+                    st->executeUpdate();
+                }
+
+                // 5) 发送者自己游标推进，避免把自己的消息算未读。
+                {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "UPDATE conversation_members "
+                        "SET last_delivered_seq=GREATEST(last_delivered_seq,?), "
+                        "    last_read_seq=GREATEST(last_read_seq,?) "
+                        "WHERE conversation_id=? AND user_id=?"));
+                    st->setUInt64(1, seq);
+                    st->setUInt64(2, seq);
+                    st->setUInt64(3, conv);
+                    st->setUInt64(4, sender);
+                    st->executeUpdate();
+                }
+
+                // 6) 成员列表（在线直推用）。
+                {
+                    std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                        "SELECT user_id FROM group_members WHERE group_id=?"));
+                    st->setUInt64(1, groupId);
+                    std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
+                    memberIds.clear();
+                    while (rs->next()) memberIds.push_back(rs->getUInt64(1));
+                }
+            });
+
+            // 7) 事务提交成功后读回服务端生成的 ts/msg_id（与单聊一致）：
+            //    正常发送路径事务体不置 ok，用 !ok 判定“需要读回”；
+            //    去重命中时事务体已置 ok=true 且 out.duplicate=true，跳过读回。
+            if (!ok) {
+                std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                    "SELECT id,conversation_id,seq,sender_id,type,content,"
+                    "CAST(UNIX_TIMESTAMP(created_at)*1000 AS UNSIGNED) "
+                    "FROM messages WHERE id=?"));
+                st->setUInt64(1, msgId);
+                std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
+                if (rs->next()) {
+                    out = readStored(*rs);
+                    out.to = groupId;
+                    out.is_group = true;
+                    ok = true;
+                } else {
+                    err = "message inserted but not found";
+                }
+            }
+        } catch (const BizError& e) {
+            err = e.what();
+        } catch (const std::exception& e) {
+            err = std::string("db error: ") + e.what();
+        }
+
+        postToIo([cb, ok, err, out, memberIds]() { cb(ok, err, out, memberIds); });
+    });
+}
+
+// ============================================================================
+// 群 DAO 15：群历史分页（BE-GROUP-08 之外的分页能力）
+// ----------------------------------------------------------------------------
+// 已退群/被移出/解散后的处理策略：
+//   fetchGroupHistory 先校验“当前仍是成员且群未解散”，不满足直接拒绝。
+//   理由：群历史属于群内数据，成员资格消失后服务端不再授权；
+//   客户端本地缓存不受影响（如需“解散后只读历史”，可放宽为
+//   “groups.status IN (0,1) + 历史成员表”，本期不做）。
+// /*************群聊功能：群历史分页***************/
+void Db::fetchGroupHistory(std::uint64_t groupId, std::uint64_t userId,
+                           std::uint64_t beforeSeq, int limit, MsgListCb cb) {
+    submit([this, groupId, userId, beforeSeq, limit, cb]() mutable {
+        bool ok = false;
+        std::string err;
+        std::vector<StoredMessage> msgs;
+
+        try {
+            PooledConn pc(*pool_);
+            if (!pc) throw std::runtime_error("db pool unavailable");
+            sql::Connection* conn = pc.get();
+
+            // 1) 成员资格 + 会话 id。
+            std::uint64_t conv = 0;
+            {
+                std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(
+                    "SELECT g.conversation_id FROM `groups` g "
+                    "JOIN group_members gm ON gm.group_id=g.id AND gm.user_id=? "
+                    "WHERE g.id=? AND g.status=0"));
+                st->setUInt64(1, userId);
+                st->setUInt64(2, groupId);
+                std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
+                if (!rs->next()) throw BizError("not a group member or group dismissed");
+                conv = rs->getUInt64(1);
+            }
+
+            // 2) keyset 分页（与单聊一致：倒序取 N 条再翻转成升序）。
+            if (limit <= 0)  limit = 20;
+            if (limit > 100) limit = 100;
+            {
+                const std::string sql =
+                    "SELECT m.id,m.conversation_id,m.seq,m.sender_id,m.type,m.content,"
+                    "CAST(UNIX_TIMESTAMP(m.created_at)*1000 AS UNSIGNED) "
+                    "FROM messages m "
+                    "WHERE m.conversation_id=? AND (?=0 OR m.seq<?) "
+                    "ORDER BY m.seq DESC "
+                    "LIMIT " + std::to_string(limit);
+                std::unique_ptr<sql::PreparedStatement> st(conn->prepareStatement(sql));
+                st->setUInt64(1, conv);
+                st->setUInt64(2, beforeSeq);
+                st->setUInt64(3, beforeSeq);
+                std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
+                while (rs->next()) {
+                    StoredMessage m = readStored(*rs);
+                    m.to = groupId;
+                    m.is_group = true;
+                    msgs.push_back(std::move(m));
+                }
+                std::reverse(msgs.begin(), msgs.end());
+            }
+            ok = true;
+        } catch (const BizError& e) {
+            err = e.what();
+        } catch (const std::exception& e) {
+            err = std::string("db error: ") + e.what();
+        }
+
+        postToIo([cb, ok, err, msgs = std::move(msgs)]() mutable {
+            cb(ok, err, std::move(msgs));
+        });
+    });
+}
+
+// ============================================================================
+// 群 DAO 16：登录补推——待我审批的入群申请（BE-GROUP-06）
+// /*************群聊功能：审批人登录补推***************/
+void Db::fetchPendingGroupRequestsForApprover(std::uint64_t userId, int limit,
+                                              GroupReqListCb cb) {
+    submit([this, userId, limit, cb]() mutable {
+        bool ok = false;
+        std::string err;
+        std::vector<GroupRequestInfo> reqs;
+
+        try {
+            PooledConn pc(*pool_);
+            if (!pc) throw std::runtime_error("db pool unavailable");
+            if (limit <= 0)  limit = 100;
+            if (limit > 200) limit = 200;
+
+            std::string sql = std::string(kGroupRequestSelect) +
+                "JOIN group_members gm ON gm.group_id=gr.group_id "
+                "AND gm.user_id=? AND gm.role<=2 "
+                "WHERE gr.status=0 AND g.status=0 "
+                "ORDER BY gr.created_at ASC LIMIT " + std::to_string(limit);
+            std::unique_ptr<sql::PreparedStatement> st(pc->prepareStatement(sql));
+            st->setUInt64(1, userId);
+            std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
+            while (rs->next()) reqs.push_back(readGroupRequest(*rs));
+            ok = true;
+        } catch (const std::exception& e) {
+            err = std::string("db error: ") + e.what();
+        }
+
+        postToIo([cb, ok, err, reqs = std::move(reqs)]() mutable {
+            cb(ok, err, std::move(reqs));
+        });
+    });
+}
+
+// ============================================================================
+// 群 DAO 17：登录补推——未通知的入群申请结果（BE-GROUP-06）
+// /*************群聊功能：申请人登录补推***************/
+void Db::fetchUnnotifiedGroupResults(std::uint64_t userId, int limit,
+                                     GroupReqListCb cb) {
+    submit([this, userId, limit, cb]() mutable {
+        bool ok = false;
+        std::string err;
+        std::vector<GroupRequestInfo> reqs;
+
+        try {
+            PooledConn pc(*pool_);
+            if (!pc) throw std::runtime_error("db pool unavailable");
+            if (limit <= 0)  limit = 100;
+            if (limit > 200) limit = 200;
+
+            std::string sql = std::string(kGroupRequestSelect) +
+                "WHERE gr.requester_id=? AND gr.status IN (1,2) "
+                "AND gr.result_notified=0 "
+                "ORDER BY gr.updated_at ASC LIMIT " + std::to_string(limit);
+            std::unique_ptr<sql::PreparedStatement> st(pc->prepareStatement(sql));
+            st->setUInt64(1, userId);
+            std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
+            while (rs->next()) reqs.push_back(readGroupRequest(*rs));
+            ok = true;
+        } catch (const std::exception& e) {
+            err = std::string("db error: ") + e.what();
+        }
+
+        postToIo([cb, ok, err, reqs = std::move(reqs)]() mutable {
+            cb(ok, err, std::move(reqs));
+        });
+    });
+}
+
+// ============================================================================
+// 群 DAO 18：标记入群申请结果已通知（BE-GROUP-06，批量/单条）
+// /*************群聊功能：申请结果通知标记***************/
+void Db::markGroupResultsNotified(std::uint64_t userId, StatusCb cb) {
+    submit([this, userId, cb]() {
+        bool ok = false;
+        std::string err;
+        try {
+            PooledConn pc(*pool_);
+            if (!pc) throw std::runtime_error("db pool unavailable");
+            std::unique_ptr<sql::PreparedStatement> st(pc->prepareStatement(
+                "UPDATE group_requests SET result_notified=1 "
+                "WHERE requester_id=? AND status IN (1,2) AND result_notified=0"));
+            st->setUInt64(1, userId);
+            st->executeUpdate();
+            ok = true;
+        } catch (const std::exception& e) {
+            err = std::string("db error: ") + e.what();
+        }
+        postToIo([cb, ok, err]() { cb(ok, err); });
+    });
+}
+
+void Db::markGroupRequestNotified(std::uint64_t requestId, StatusCb cb) {
+    submit([this, requestId, cb]() {
+        bool ok = false;
+        std::string err;
+        try {
+            PooledConn pc(*pool_);
+            if (!pc) throw std::runtime_error("db pool unavailable");
+            std::unique_ptr<sql::PreparedStatement> st(pc->prepareStatement(
+                "UPDATE group_requests SET result_notified=1 "
+                "WHERE id=? AND status IN (1,2)"));
+            st->setUInt64(1, requestId);
+            st->executeUpdate();
+            ok = true;
+        } catch (const std::exception& e) {
+            err = std::string("db error: ") + e.what();
+        }
+        postToIo([cb, ok, err]() { cb(ok, err); });
+    });
+}
+/*************群聊功能：群 DAO 实现结束***************/
 
 } // namespace kc

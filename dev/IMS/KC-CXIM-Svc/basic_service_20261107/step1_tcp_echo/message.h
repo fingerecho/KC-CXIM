@@ -43,6 +43,17 @@ enum class MsgType : std::uint16_t {
     FriendRequest       = 130,   // 收到好友申请
     FriendRequestResult = 131,   // 好友申请处理结果
     FriendListChanged   = 132,   // 好友列表变化通知
+
+    /*************群聊功能：TCP 事件类型（140~144，避开 130~132）***************/
+    // 群操作（建群/邀请/移除/转让/解散/改资料/审批）走 HTTP，下面几种类型
+    // 只用于服务端 -> 客户端的事件推送；content 是 JSON 文本，
+    // 具体字段见 group_types.h 里的序列化函数。
+    GroupMemberChanged  = 140,   // 群成员变化：added/removed/quit/roleChanged/transferred
+    GroupDismissed      = 141,   // 群被解散
+    GroupInfoChanged    = 142,   // 群资料变化（群名/公告/简介/头像）
+    GroupRequest        = 143,   // 收到入群申请（推给群主/管理员；登录补推 event=pending）
+    GroupRequestResult  = 144,   // 入群申请处理结果（推给申请人，支持离线补推）
+    /*************群聊功能：TCP 事件类型（140~144，避开 130~132）***************/
 };
 
 // 一条消息的完整描述。所有字段都有默认值，避免未初始化读取。
@@ -57,6 +68,15 @@ struct Message {
     // ---- 数据库接入后新增字段（用于排序、分页、回执） -------------------
     std::uint64_t conversation_id = 0;        // 会话ID（服务端下发 / 回执时使用）
     std::uint64_t seq             = 0;        // 会话内单调序号；历史请求时表示 before_seq
+
+    /*************群聊功能：is_group 标记位（新增字段，默认 false 兼容旧客户端）***************/
+    // 客户端发 Text/Image/HistoryReq/Ack 时：
+    //   is_group=false（缺省）-> to 按“对方 userId”处理，走单聊逻辑（行为完全不变）；
+    //   is_group=true          -> to 按“群 groupId”处理，走群聊逻辑（成员校验 + 写扩散）。
+    // 服务端下行群消息时也带 is_group=true，to 填 groupId。
+    // 该字段是 JSON 可选键：旧客户端不带 = 单聊，因此不会破坏现有协议与测试。
+    bool          is_group        = false;
+    /*************群聊功能：is_group 标记位***************/
 };
 
 // 从数据库读出来的一条消息（比 Message 多出 conversation_id/seq，便于回执）。
@@ -65,11 +85,14 @@ struct StoredMessage {
     std::uint64_t conversation_id = 0;        // 会话ID
     std::uint64_t seq             = 0;        // 会话内单调序号
     std::uint64_t from            = 0;        // 发送者 userId
-    std::uint64_t to              = 0;        // 接收者（单聊时由业务层填写，便于投递）
+    std::uint64_t to              = 0;        // 接收者（单聊）/ 群ID（群聊，配合 is_group）
     MsgType       type            = MsgType::Text;
     std::uint64_t ts              = 0;        // 毫秒时间戳
     std::string   content;
     bool          duplicate       = false;    // true 表示命中去重（未真正插入新消息）
+    /*************群聊功能：离线补推/历史需要告知客户端这是群消息***************/
+    bool          is_group        = false;    // true=来自 conversations.type=2 的群会话消息
+    /*************群聊功能：离线补推/历史需要告知客户端这是群消息***************/
 };
 
 } // namespace kc

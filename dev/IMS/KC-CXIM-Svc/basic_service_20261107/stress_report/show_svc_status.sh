@@ -21,7 +21,7 @@
 #
 # 服务端 PID 获取顺序：
 #   1) --svc-pid 显式指定
-#   2) pidof $PROC_NAME（默认 tcp_echo_server，可用 --proc-name 改）
+#   2) pidof $PROC_NAME（默认 cxim-server，可用 --proc-name 改）
 #   3) pgrep -f $PROC_HINT（--proc 指定）
 #   4) ss -lntp 从 TCP 端口反查（需要权限）
 #
@@ -30,7 +30,7 @@
 #   ./show_svc_status.sh --interval 2
 #   ./show_svc_status.sh --once
 #   ./show_svc_status.sh --config /path/DBConfig.ini
-#   ./show_svc_status.sh --proc-name tcp_echo_server
+#   ./show_svc_status.sh --proc-name cxim-server
 #   ./show_svc_status.sh --svc-pid 12345 --tcp-port 8888
 #   ./show_svc_status.sh --mysql-pass 'override'
 #
@@ -49,7 +49,7 @@ MYSQL_PASS=""
 MYSQL_DB=""
 TOP_SECONDS=1
 PROC_HINT=""
-PROC_NAME="tcp_echo_server"
+PROC_NAME="cxim-server"
 INTERVAL=3
 ONCE=0
 

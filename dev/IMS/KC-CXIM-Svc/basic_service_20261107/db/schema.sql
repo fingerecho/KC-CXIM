@@ -5,7 +5,7 @@
 -- 目标：用尽可能少的表，支撑「用户 / 好友 / 会话 / 消息历史 / 离线消息 /
 --       投递与已读回执 / 消息去重」这些功能。
 --
--- 表一览（共 7 张）：
+-- 表一览（共 10 张）：
 --   1)   users                 用户账号
 --   2)   friends               好友关系（双向各一行）
 --   2.1) friend_requests       好友申请（单向，带待处理/通过/拒绝状态机）
@@ -13,6 +13,9 @@
 --   4)   conversation_members  会话成员 + 投递/已读游标（回执）
 --   5)   messages              消息历史（服务端 msg_id / seq / ts 都在这里生成）
 --   6)   offline_messages      离线消息队列（上线后补推，推送完删除）
+--   7)   groups                群资料（群名/公告/群主/状态），关联一个 type=2 会话
+--   8)   group_members         群成员与角色（群主/管理员/普通成员）
+--   9)   group_requests        入群申请（带待处理/通过/拒绝状态机）
 --
 -- 重要约定：
 --   * 本文件以 DBConfig.ini 里的 dbname=CXIMDB 为例，下面直接
@@ -309,6 +312,112 @@ CREATE TABLE IF NOT EXISTS offline_messages (
         REFERENCES messages(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   COMMENT='离线消息队列（上线补推）';
+
+
+-- ============================================================================
+-- 7) groups：群资料（BE-GROUP-01）
+-- ----------------------------------------------------------------------------
+-- 设计要点：
+--   * 一个群对应一个 conversations 里的 type=2 会话；conversation_id 就是
+--     群消息读写、seq 分配、成员游标所在的会话。建群时在同一个事务里
+--     先 INSERT conversations(type=2,dedup_key=NULL) 再回填到这里。
+--   * 为什么群要单独一张表、而不是只用 conversations？
+--       conversations 是“会话”这种通用结构，只放 seq 生成器和 owner；
+--       群特有的公告/简介/头像/状态/人数上限属于“群业务”，放进
+--       conversations 会让单聊行也拖着一堆空字段，拆表更清晰。
+--   * owner_id 冗余存一份群主：转让/解散/权限校验高频用到群主，避免每次
+--     都 JOIN group_members 按 role=1 反查。真正的成员角色仍以 group_members 为准。
+--   * status 用软删除：0=正常，1=已解散。解散不物理删行，保留历史消息与审计，
+--     解散后禁止再收发该群消息（应用层校验）。
+--   * member_limit：成员上限，邀请/申请入群时校验，防刷群。
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS groups (
+    id              BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT       COMMENT '群ID（group_id，对外协议中的 to 即填此值）',
+    name            VARCHAR(128)     NOT NULL DEFAULT ''           COMMENT '群名称',
+    announcement    VARCHAR(512)     NOT NULL DEFAULT ''           COMMENT '群公告',
+    intro           VARCHAR(255)     NOT NULL DEFAULT ''           COMMENT '群简介',
+    avatar_url      VARCHAR(255)     NOT NULL DEFAULT ''           COMMENT '群头像 URL',
+    owner_id        BIGINT UNSIGNED  NOT NULL DEFAULT 0            COMMENT '群主 userId（转让时更新）',
+    conversation_id BIGINT UNSIGNED  NOT NULL DEFAULT 0            COMMENT '对应的会话ID（conversations.id，type=2）',
+    status          TINYINT UNSIGNED NOT NULL DEFAULT 0            COMMENT '0=正常，1=已解散',
+    member_limit    INT UNSIGNED     NOT NULL DEFAULT 200          COMMENT '成员数量上限，邀请/申请时校验',
+    created_at      DATETIME(3)      NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '建群时间（毫秒精度）',
+    updated_at      DATETIME(3)      NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+                                     ON UPDATE CURRENT_TIMESTAMP(3)         COMMENT '资料最后变更时间',
+    PRIMARY KEY (id),
+    KEY idx_groups_conversation (conversation_id),
+    KEY idx_groups_owner (owner_id),
+    CONSTRAINT fk_groups_owner FOREIGN KEY (owner_id) REFERENCES users(id),
+    CONSTRAINT fk_groups_conversation FOREIGN KEY (conversation_id) REFERENCES conversations(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  COMMENT='群资料（BE-GROUP-01）';
+
+
+-- ============================================================================
+-- 8) group_members：群成员与角色（BE-GROUP-04）
+-- ----------------------------------------------------------------------------
+-- 设计要点：
+--   * (group_id,user_id) 主键天然保证“一人一群只有一行”，重复邀请幂等。
+--   * role 表达群内权限：1=群主，2=管理员，3=普通成员。权限矩阵在应用层
+--     （db.cpp 群 DAO）集中校验：
+--       群主   ：全部操作（解散/转让/任命管理员/邀请/移除/改资料/发言）
+--       管理员 ：邀请、移除普通成员、改资料、发言
+--       普通成员：发言、退群
+--   * 群主的“唯一性”由应用层保证：转让时在同一事务里把旧群主降为管理员/成员、
+--     新群主升为 role=1，避免出现两个群主。
+--   * group_nickname 是每个成员在本群的群内昵称（BE-GROUP-05），只影响本行。
+--   * 退群/被移出/解散：应用层删除对应 group_members 行（解散可整群删除），
+--     即时生效——发群消息、拉群历史都会先 JOIN 本表校验成员身份。
+--   * 同时会在 conversation_members 维护该成员在群会话里的投递/已读游标；
+--     group_members 管“是不是成员/什么角色”，conversation_members 管“读到哪”。
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS group_members (
+    group_id       BIGINT UNSIGNED  NOT NULL                    COMMENT '群ID',
+    user_id        BIGINT UNSIGNED  NOT NULL                    COMMENT '成员 userId',
+    role           TINYINT UNSIGNED NOT NULL DEFAULT 3          COMMENT '1=群主，2=管理员，3=普通成员',
+    group_nickname VARCHAR(64)      NOT NULL DEFAULT ''         COMMENT '本群群内昵称',
+    joined_at      DATETIME(3)      NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '入群时间',
+    PRIMARY KEY (group_id, user_id),
+    KEY idx_group_members_user (user_id),
+    KEY idx_group_members_group_role (group_id, role),
+    CONSTRAINT fk_gm_group FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
+    CONSTRAINT fk_gm_user  FOREIGN KEY (user_id)  REFERENCES users(id)  ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  COMMENT='群成员与角色（BE-GROUP-04）';
+
+
+-- ============================================================================
+-- 9) group_requests：入群申请（BE-GROUP-03）
+-- ----------------------------------------------------------------------------
+-- 设计要点：
+--   * 参照 friend_requests 的状态机与 result_notified 离线补偿思路：
+--       0=待处理，1=已通过，2=已拒绝，3=已取消；
+--       通过时在同一事务里 INSERT group_members + conversation_members；
+--       result_notified 用于“申请人离线时，登录后补推处理结果”。
+--   * handler_id：审批人（群主/管理员）userId，便于审计与事件展示。
+--   * 同一个 (group_id,requester_id) 允许多条历史记录，不做唯一键：
+--       被拒后允许再次申请（与好友申请“复用同一行”不同，这里直接插新行，
+--       群申请量小、保留完整申请历史更直观）。待处理重复由应用层查
+--       status=0 拦截。
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS group_requests (
+    id              BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT     COMMENT '入群申请ID',
+    group_id        BIGINT UNSIGNED  NOT NULL                    COMMENT '目标群ID',
+    requester_id    BIGINT UNSIGNED  NOT NULL                    COMMENT '申请人 userId',
+    handler_id      BIGINT UNSIGNED  NOT NULL DEFAULT 0          COMMENT '审批人 userId（0=未处理）',
+    message         VARCHAR(255)     NOT NULL DEFAULT ''         COMMENT '申请附言',
+    status          TINYINT UNSIGNED NOT NULL DEFAULT 0          COMMENT '0=待处理，1=已通过，2=已拒绝，3=已取消',
+    result_notified TINYINT UNSIGNED NOT NULL DEFAULT 0          COMMENT '结果是否已推送给申请人：0=否，1=是',
+    created_at      DATETIME(3)      NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '申请时间',
+    updated_at      DATETIME(3)      NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+                                     ON UPDATE CURRENT_TIMESTAMP(3)          COMMENT '状态最后变更时间',
+    PRIMARY KEY (id),
+    KEY idx_group_requests_group_status (group_id, status),
+    KEY idx_group_requests_requester (requester_id, status, result_notified),
+    CONSTRAINT fk_gr_group     FOREIGN KEY (group_id)     REFERENCES groups(id)        ON DELETE CASCADE,
+    CONSTRAINT fk_gr_requester FOREIGN KEY (requester_id) REFERENCES users(id)          ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  COMMENT='入群申请（BE-GROUP-03）';
 
 
 -- ============================================================================

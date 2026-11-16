@@ -112,11 +112,11 @@ seed_db() {
 # ---------------------------------------------------------------------------
 SEED_BIN=''
 if [[ "$(uname -s)" == Linux* ]]; then
-    SERVER_BIN="${BUILD_DIR}/bin/tcp_echo_server"
+    SERVER_BIN="${BUILD_DIR}/bin/cxim-server"
     CLIENT_BIN="${BUILD_DIR}/bin/test_client"
     SEED_BIN="${BUILD_DIR}/bin/seed_db"
 elif [[ "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* || "$(uname -s)" == CYGWIN* ]]; then
-    SERVER_BIN="${BUILD_DIR}/bin/Debug/tcp_echo_server.exe"
+    SERVER_BIN="${BUILD_DIR}/bin/Debug/cxim-server.exe"
     CLIENT_BIN="${BUILD_DIR}/bin/Debug/test_client.exe"
     SEED_BIN="${BUILD_DIR}/bin/Debug/seed_db.exe"
 fi
