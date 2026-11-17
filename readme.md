@@ -8,7 +8,45 @@
 
 ## 一句话定位
 
-KC-CXIM《铖信》是一个全栈即时通讯项目：自带 **C++17 自研 IM 服务端**（HTTP 鉴权 + TCP 长连接 + MariaDB）、**Windows 桌面客户端**、**微信小程序**(私有TCP版)与**Web管理后台**(Drogon 后端 + Vue3 前端)，同时保留腾讯云 IM SDK 的接入示例。
+**KC-CXIM《铖信》** 是一个为低配服务器优化的全栈即时通讯项目，目标是在 **2 核 CPU**、**2GB 内存**、**3Mbps 带宽** 的入门级云服务器上跑通“注册/登录 → 好友关系 → 单聊消息 → 群聊消息 → 在线推送”的完整链路，同时提供 Windows 桌面端(Duilib) 、微信小程序（私有 TCP 版） 和 Web 管理后台（Drogon + Vue3）。
+
+### 适用场景
+
+- **个人开发者**学习 IM 服务端架构
+- **小型团队**内部通信
+- **教学演示**
+- **边缘节点**或预算极低的部署环境
+
+### 不适用场景
+- **大规模公网 IM**（数万在线、每秒数千消息、超大群广播）
+- 需要**多机房容灾**或**强一致消息队列**的场景
+
+| 上述场景应选择 **OpenIM**、**腾讯云 IM** 等经过大规模验证的方案。
+
+### 技术架构
+
+服务端采用 **C++17 + Boost.Asio 单 io_context 多线程模型**，**HTTP 鉴权**与 **TCP 长连接**共享同一事件循环；数据库层使用 **MariaDB + 按需扩容连接池**，避免启动时连接风暴；协议层为**轻量私有 TCP 帧**，不引入 **Kafka**、**Redis 集群**等重型中间件。
+
+群聊功能同样按低配约束设计：
+
+- **群成员关系**与**消息落库**走 **MariaDB**
+- **群消息推送**复用与单聊相同的 **SessionManager 在线表**
+- 按**“在线成员才推送、离线成员走拉取”**的策略减少广播放大
+- **群规模**与**同时在线群数**在文档中给出建议上限，避免在 **2 核 2GB** 下出现消息风暴
+
+这些选择都是为了把有限的 **CPU**、**内存**和**带宽**留给业务本身。
+
+### 功能链路
+
+- **注册/登录**（HTTP + JWT）
+- **好友申请与通过**
+- **单聊消息**（TCP 长连接，带 ACK 与离线补投）
+- **群创建/加群/退群**
+- **群消息收发**（在线推送 + 离线拉取）
+- **好友/群列表查询**
+- **删除好友/退群/群解散**
+
+**Windows 桌面端**、**微信小程序**共享同一套服务端接口。
 
 ## 功能特性
 
@@ -47,7 +85,7 @@ KC-CXIM《铖信》是一个全栈即时通讯项目：自带 **C++17 自研 IM 
 | 历史消息 | 已支持 | 按 `(conversation_id, seq)` keyset 分页 |
 | 心跳保活 | 已支持 | 应用层 `Heartbeat` + 60 秒空闲超时 |
 | 消息去重 | 已支持 | `(conversation_id, sender_id, client_msg_id)` 唯一键 |
-| 断线重连 | 客户端规划中 | 服务端支持重新登录并补推离线消息 |
+| 断线重连 | 已支持 | 服务端支持重新登录并补推离线消息 |
 
 ### 音视频能力
 
@@ -77,10 +115,10 @@ KC-CXIM《铖信》是一个全栈即时通讯项目：自带 **C++17 自研 IM 
 | 网络与 HTTP | Boost.Asio（TCP 长连接）、Boost.Beast（HTTP 短连接） |
 | 序列化 | RapidJSON（消息体 JSON）、自定义 4 字节长度分帧 |
 | 鉴权与安全 | JWT HS256（jwt-cpp）、bcrypt（libbcrypt）、OpenSSL |
-| 数据库 | MariaDB 10.x / MySQL 8.x + MariaDB Connector/C++ |
+| 数据库 | MariaDB 11.8.6 + MariaDB Connector/C++ |
 | 构建与依赖 | CMake、MSVC / GCC、vcpkg（OpenSSL） |
 | 桌面客户端 | duilib、C++17、spdlog、腾讯云 IM Windows SDK 8.9.7511 |
-| 存储与中间件 | MariaDB 6 张核心表；进程内在线表；Redis / Kafka / 对象存储为规划项 |
+| 存储与中间件 | MariaDB 10 张核心表；进程内在线表；Redis / Kafka / 对象存储为规划项 |
 
 ### 架构图
 
@@ -204,7 +242,7 @@ Windows（Git Bash）：
 cd dev/IMS/KC-CXIM-Svc/basic_service_20261107
 export BOOST_ROOT="D:/FKC/KC-CXIM/sdk/boost_1_92_0-bin-msvc-all-32-64/boost_1_92_0"
 bash prepare_dev_env.sh
-bash build_step.sh
+bash build.sh
 ```
 
 也可以手动指定依赖路径：
@@ -225,35 +263,34 @@ Linux：
 ```bash
 cd dev/IMS/KC-CXIM-Svc/basic_service_20261107
 sudo bash prepare_dev_env.sh
-bash build_step.sh
+bash build.sh
 ```
 
 编译产物：
 
-- Windows：`build/bin/Debug/tcp_echo_server.exe`
-- Linux：`build/bin/tcp_echo_server`
+- Windows：`build/bin/Debug/cxim-server.exe`
+- Linux：`build/bin/cxim-server`
 
 ### 5. 启动服务端
 
 ```bash
-# 用法：tcp_echo_server [TCP 端口] [DBConfig.ini 路径] [HTTP 端口]
-./build/bin/Debug/tcp_echo_server.exe 8888 DBConfig.ini 8080
+# 用法：DB_CONFIG=./DBConfig.ini JWT_CONFIG=./JWTConfig.json \
+#      HTTP_PORT=8080 TCP_PORT=8888 \
+#      DB_POOL_SIZE=100 DB_WORKER_COUNT=16 \
+#      QUIET_LOG=0 cxim-server
+./build/bin/Debug/cxim-server.exe 
 ```
 
 Linux：
 
 ```bash
-./build/bin/tcp_echo_server 8888 DBConfig.ini 8080
+DB_CONFIG=./DBConfig.ini JWT_CONFIG=./JWTConfig.json \
+HTTP_PORT=8080 TCP_PORT=8888 \
+DB_POOL_SIZE=100 DB_WORKER_COUNT=16 \
+QUIET_LOG=0 ./build/bin/cxim-server
 ```
 
-也可以使用环境变量：
-
-```bash
-DB_CONFIG=./DBConfig.ini JWT_CONFIG=./JWTConfig.json HTTP_PORT=8080 \
-  ./build/bin/tcp_echo_server 8888
-```
-
-启动成功后应看到类似输出：
+QUIET_LOG=0 时，启动成功后应看到类似输出(QUIET_LOG=1时没有任何输出)：
 
 ```text
 [db] connecting to 127.0.0.1:3306/CXIMDB as devuser
@@ -351,31 +388,44 @@ TCP 是字节流，项目采用固定长度头解决粘包/半包：
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `from` | uint64 | 发送者 `userId`；客户端发送时服务端不信任该字段，以 JWT 身份为准 |
-| `to` | uint64 | 接收者 `userId`；登录/心跳时可为 `0` |
+| `from` | uint64 | 发送者 userId；服务端下行时以会话身份为准 |
+| `to` | uint64 | 接收者 userId |
 | `type` | int | 消息类型，见下表 |
-| `msg_id` | uint64 | 发送时为客户端临时消息号，服务端下发时为服务端消息 ID |
-| `ts` | uint64 | 毫秒时间戳，服务端生成 |
-| `conversation_id` | uint64 | 会话 ID，服务端下发或回执时使用 |
-| `seq` | uint64 | 会话内单调递增序号；历史请求时表示 `before_seq` |
-| `content` | string | 文本、图片 URL、JWT、历史 JSON 数组等 |
+| `msg_id` | uint64 | 客户端发送时是临时消息号，服务端下行时是服务端消息 ID |
+| `ts` | uint64 | 毫秒时间戳，服务端消息由服务端生成 |
+| `conversation_id` | uint64 | 会话 ID |
+| `seq` | uint64 | 会话内单调序号；历史请求时表示 `before_seq` |
+| `content` | string | 文本、URL、token 或 JSON 字符串 |
+| `is_group` | bool | /*************群聊功能***************/：`true` 表示 `to` 为 groupId、走群聊逻辑；缺省/`false`=单聊（旧客户端不发送该字段即按单聊处理，向后兼容）|
 
 ### 消息类型
 
-| 值 | 类型 | 方向 | content 含义 |
+| 值 | 类型 | 方向 | 说明 |
 | --- | --- | --- | --- |
-| 1 | `Text` | 双向 | 文本正文 |
-| 2 | `Image` | 双向 | 图片 URL，不建议传 base64 原始二进制 |
-| 3 | `Heartbeat` | 客户端 → 服务端 | 心跳保活，可为空 |
-| 100 | `Login` | 客户端 → 服务端 | HTTP 登录后签发的 JWT |
-| 101 | `LoginAck` | 服务端 → 客户端 | 登录成功回执 |
-| 102 | `Error` | 服务端 → 客户端 | 错误提示 |
-| 110 | `HistoryReq` | 客户端 → 服务端 | 历史条数（如 `"20"`），`seq` 为 `before_seq` |
-| 111 | `HistoryResp` | 服务端 → 客户端 | JSON 数组字符串，见 `serialize_history` |
-| 112 | `Ack` | 客户端 → 服务端 | 回执；`"delivered"` 只确认投递，否则推进已读 |
-| 113 | `SendAck` | 服务端 → 客户端 | 发送成功确认，携带服务端分配的 `msg_id/seq/ts` |
+| 1 | Text | 双向 | 文本消息 |
+| 2 | Image | 双向 | 图片消息，`content` 建议放 URL |
+| 3 | Heartbeat | 客户端 -> 服务端 | 心跳，刷新空闲计时 |
+| 100 | Login | 客户端 -> 服务端 | 登录，`content` 放 JWT |
+| 101 | LoginAck | 服务端 -> 客户端 | 登录成功 |
+| 102 | Error | 服务端 -> 客户端 | 错误通知 |
+| 110 | HistoryReq | 客户端 -> 服务端 | 历史消息请求 |
+| 111 | HistoryResp | 服务端 -> 客户端 | 历史消息响应 |
+| 112 | Ack | 客户端 -> 服务端 | 投递/已读回执 |
+| 113 | SendAck | 服务端 -> 客户端 | 发送成功确认 |
+| 130 | FriendRequest | 服务端 -> 客户端 | 收到好友申请 / 登录补推 |
+| 131 | FriendRequestResult | 服务端 -> 客户端 | 申请通过或拒绝 |
+| 132 | FriendListChanged | 服务端 -> 客户端 | 好友列表变化 |
+| 140 | GroupMemberChanged | 服务端 -> 客户端 | 群成员变化：added/removed/quit/roleChanged/transferred |
+| 141 | GroupDismissed | 服务端 -> 客户端 | 群被解散 |
+| 142 | GroupInfoChanged | 服务端 -> 客户端 | 群资料变化 |
+| 143 | GroupRequest | 服务端 -> 客户端 | 收到入群申请（发群主）/ 登录补推 |
+| 144 | GroupRequestResult | 服务端 -> 客户端 | 入群申请处理结果 |
+
+
 
 ### 交互示例
+
+关于服务端的详细交互示例请参考： [`dev/IMS/KC-CXIM-Svc/basic_service_20261107/readme.md`](dev/IMS/KC-CXIM-Svc/basic_service_20261107/readme.md)
 
 HTTP 登录拿到 JWT 后，建立 TCP 连接并发送登录消息：
 
@@ -435,7 +485,7 @@ Issue 地址：<https://github.com/fingerecho/KC-CXIM/issues>
 2. 保持提交聚焦，一个 PR 只做一件事，提交信息使用清晰的祈使句。
 3. 提交前至少完成：
    ```bash
-   bash build_step.sh
+   bash build.sh
    bash step3_verify/verify_tcp_http.sh 8888 "$(pwd)/build" 8080
    ```
 4. 不要提交 `DBConfig.ini`、`JWTConfig.json`、构建产物或任何密钥。

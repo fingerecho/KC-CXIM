@@ -13,6 +13,8 @@
 #include "db.h"                            // 数据库层（连接池 + worker 线程池）
 #include "db_config.h"                     // 数据库配置
 
+#include "quiet_log.h"                     // 防止运行期打印std::cout的日志
+
 // ============================================================================
 // 程序入口
 // ----------------------------------------------------------------------------
@@ -23,11 +25,15 @@
 //   4) 用多个线程同时 run() 这个 io_context，充分利用多核处理高并发连接。
 //
 // 用法：
-//   cxim-server [tcp_port] [DBConfig.ini] [http_port]
-//   环境变量：DB_CONFIG=... JWT_CONFIG=... HTTP_PORT=...
+//   cxim-server
+//   环境变量：DB_CONFIG=... JWT_CONFIG=...
+//            HTTP_PORT=... TCP_PORT=...
+//            DB_POOL_SIZE=... DB_WORKER_COUNT=...
+//            QUIET_LOG=0
 // ============================================================================
 
 int main(int argc, char* argv[]) {
+    setupLogQuiet();    // 设置std::cout打印日志的开关
     unsigned short tcpPort = 8888;                                  // TCP 默认端口
     if (const char* env = std::getenv("TCP_PORT")) {            // 环境变量优先
         try { tcpPort = static_cast<unsigned short>(std::stoi(env)); } catch (...) {}

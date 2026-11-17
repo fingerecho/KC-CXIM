@@ -10,6 +10,7 @@ DB_POOL_SIZE=50
 DB_WORKER_COUNT=8
 TCP_PORT=10001
 HTTP_PORT=10002
+QUIET_LOG=1
 # 生成 systemd 用户级服务文件到项目当前目录。
 # 安装后 CXIM.service 位于 /opt/CXIM/CXIM.service，由 postinst 拷贝到
 # 目标用户的 ~/.config/systemd/user/ 下。
@@ -30,6 +31,7 @@ Environment=TCP_PORT=${TCP_PORT}
 Environment=HTTP_PORT=${HTTP_PORT}
 Environment=DB_POOL_SIZE=${DB_POOL_SIZE}
 Environment=DB_WORKER_COUNT=${DB_WORKER_COUNT}
+Environment=QUIET_LOG=${QUIET_LOG}
 Restart=on-failure
 RestartSec=3
 StandardOutput=journal

@@ -1,0 +1,636 @@
+./build/bin/Debug/test_stress_03.exe --host 110.40.206.253 --http-port 10002 --tcp-port 10001 --friends 100 --timeout
+240
+[stress03] host=110.40.206.253 http=10002 tcp=10001 friends=100 runId=898575263 hb=5s timeout=240s
+[stress03] main userId=3676, starting 100 friend workers...
+[stress03] all friends registered + TCP logged in; creating requests...
+[stress03] friend requests created; waiting accepts...
+[stress03] friends accepted; exchanging messages...
+[stress03] replies acked=100/100, send retries=0
+[stress03] messages exchanged; querying friend lists...
+[stress03] lists queried; deleting friends...
+[stress03] all deletes acknowledged; verifying main friend list...
+[stress03] verify done, remaining=0; joining friends...
+[stress03] friends joined; stopping main session...
+
+===== Stress03 Report =====
+elapsed                  : 50.40 s
+friends                  : 100
+friends ready            : 100
+friend requests created  : 100
+accepted                 : 100
+messages sent+acked      : 100
+friend lists queried     : 100
+friends deleted          : 100
+full lifecycle ok        : 100/100
+failed                   : 0
+send retries             : 0
+main friends after delete: 0
+
+latency (ms)        p50 / p95 / p99 / avg / max
+register           : 7447.29 / 13122.18 / 13826.76 / 7204.16 / 13968.00 ms  (n=101)
+login              : 13259.66 / 14050.99 / 14344.31 / 13266.37 / 14384.00 ms  (n=101)
+create request     : 1043.24 / 1584.82 / 1671.05 / 1045.86 / 3099.00 ms  (n=100)
+accept             : 260.56 / 1094.92 / 3108.41 / 388.18 / 3109.00 ms  (n=100)
+tcp send           : 500.28 / 805.88 / 830.09 / 488.22 / 831.00 ms  (n=100)
+tcp reply          : 5120.13 / 8871.75 / 9213.44 / 5088.61 / 9306.00 ms  (n=100)
+list friends       : 477.28 / 1081.86 / 3072.28 / 584.05 / 3074.00 ms  (n=101)
+delete friend      : 210.94 / 1108.70 / 1119.49 / 343.60 / 3088.00 ms  (n=100)
+===========================
+
+
+./build/bin/Debug/test_stress_03.exe --host 110.40.206.253 --http-port 10002 --tcp-port 10001 --friends 20 --timeout 2
+40
+[stress03] host=110.40.206.253 http=10002 tcp=10001 friends=20 runId=899132837 hb=5s timeout=240s
+[stress03] main userId=3777, starting 20 friend workers...
+[stress03] all friends registered + TCP logged in; creating requests...
+[stress03] friend requests created; waiting accepts...
+[stress03] friends accepted; exchanging messages...
+[stress03] replies acked=20/20, send retries=0
+[stress03] messages exchanged; querying friend lists...
+[stress03] lists queried; deleting friends...
+[stress03] all deletes acknowledged; verifying main friend list...
+[stress03] verify done, remaining=0; joining friends...
+[stress03] friends joined; stopping main session...
+
+===== Stress03 Report =====
+elapsed                  : 10.97 s
+friends                  : 20
+friends ready            : 20
+friend requests created  : 20
+accepted                 : 20
+messages sent+acked      : 20
+friend lists queried     : 20
+friends deleted          : 20
+full lifecycle ok        : 20/20
+failed                   : 0
+send retries             : 0
+main friends after delete: 0
+
+latency (ms)        p50 / p95 / p99 / avg / max
+register           : 2190.07 / 3227.48 / 3278.48 / 1888.13 / 3278.00 ms  (n=21)
+login              : 2283.51 / 3364.08 / 3384.18 / 2482.93 / 3384.00 ms  (n=21)
+create request     : 125.99 / 165.41 / 169.49 / 118.72 / 169.00 ms  (n=20)
+accept             : 104.26 / 1098.42 / 1099.99 / 248.05 / 1099.00 ms  (n=20)
+tcp send           : 145.56 / 187.77 / 191.91 / 134.60 / 191.00 ms  (n=20)
+tcp reply          : 1122.13 / 1790.25 / 1877.31 / 1086.48 / 1877.00 ms  (n=20)
+list friends       : 102.81 / 118.69 / 1074.17 / 148.47 / 1074.00 ms  (n=21)
+delete friend      : 91.06 / 115.87 / 115.96 / 89.66 / 115.00 ms  (n=20)
+===========================
+
+
+./build/bin/Debug/test_stress_03.exe --host 110.40.206.253 --http-port 10002 --tcp-port 10001 --friends 500 --timeout
+240
+[stress03] host=110.40.206.253 http=10002 tcp=10001 friends=500 runId=900513425 hb=5s timeout=240s
+[stress03] main userId=4101, starting 500 friend workers...
+[stress03] all friends registered + TCP logged in; creating requests...
+[stress03] friend requests created; waiting accepts...
+[stress03] fatal: accept timeout: 499/500
+[stress03] friend 0 error: aborted before messaging
+[stress03] friend 1 error: aborted before messaging
+[stress03] friend 2 error: aborted before messaging
+[stress03] friend 3 error: aborted before messaging
+[stress03] friend 4 error: aborted before messaging
+[stress03] friend 5 error: aborted before messaging
+[stress03] friend 6 error: aborted before messaging
+[stress03] friend 7 error: aborted before messaging
+[stress03] friend 8 error: aborted before messaging
+[stress03] friend 9 error: aborted before messaging
+[stress03] friend 10 error: aborted before messaging
+[stress03] friend 11 error: aborted before messaging
+[stress03] friend 12 error: aborted before messaging
+[stress03] friend 13 error: aborted before messaging
+[stress03] friend 14 error: aborted before messaging
+[stress03] friend 15 error: aborted before messaging
+[stress03] friend 16 error: aborted before messaging
+[stress03] friend 17 error: aborted before messaging
+[stress03] friend 18 error: aborted before messaging
+[stress03] friend 19 error: aborted before messaging
+[stress03] friend 20 error: aborted before messaging
+[stress03] friend 21 error: aborted before messaging
+[stress03] friend 22 error: aborted before messaging
+[stress03] friend 23 error: aborted before messaging
+[stress03] friend 24 error: aborted before messaging
+[stress03] friend 25 error: aborted before messaging
+[stress03] friend 26 error: aborted before messaging
+[stress03] friend 27 error: aborted before messaging
+[stress03] friend 28 error: aborted before messaging
+[stress03] friend 29 error: aborted before messaging
+[stress03] friend 30 error: aborted before messaging
+[stress03] friend 31 error: aborted before messaging
+[stress03] friend 32 error: aborted before messaging
+[stress03] friend 33 error: aborted before messaging
+[stress03] friend 34 error: aborted before messaging
+[stress03] friend 35 error: aborted before messaging
+[stress03] friend 36 error: aborted before messaging
+[stress03] friend 37 error: aborted before messaging
+[stress03] friend 38 error: aborted before messaging
+[stress03] friend 39 error: aborted before messaging
+[stress03] friend 40 error: aborted before messaging
+[stress03] friend 41 error: aborted before messaging
+[stress03] friend 42 error: aborted before messaging
+[stress03] friend 43 error: aborted before messaging
+[stress03] friend 44 error: aborted before messaging
+[stress03] friend 45 error: aborted before messaging
+[stress03] friend 46 error: aborted before messaging
+[stress03] friend 47 error: aborted before messaging
+[stress03] friend 48 error: aborted before messaging
+[stress03] friend 49 error: aborted before messaging
+[stress03] friend 50 error: aborted before messaging
+[stress03] friend 51 error: aborted before messaging
+[stress03] friend 52 error: aborted before messaging
+[stress03] friend 53 error: aborted before messaging
+[stress03] friend 54 error: aborted before messaging
+[stress03] friend 55 error: aborted before messaging
+[stress03] friend 56 error: aborted before messaging
+[stress03] friend 57 error: aborted before messaging
+[stress03] friend 58 error: aborted before messaging
+[stress03] friend 59 error: aborted before messaging
+[stress03] friend 60 error: aborted before messaging
+[stress03] friend 61 error: aborted before messaging
+[stress03] friend 62 error: aborted before messaging
+[stress03] friend 63 error: aborted before messaging
+[stress03] friend 64 error: aborted before messaging
+[stress03] friend 65 error: aborted before messaging
+[stress03] friend 66 error: aborted before messaging
+[stress03] friend 67 error: aborted before messaging
+[stress03] friend 68 error: aborted before messaging
+[stress03] friend 69 error: aborted before messaging
+[stress03] friend 70 error: aborted before messaging
+[stress03] friend 71 error: aborted before messaging
+[stress03] friend 72 error: aborted before messaging
+[stress03] friend 73 error: aborted before messaging
+[stress03] friend 74 error: aborted before messaging
+[stress03] friend 75 error: aborted before messaging
+[stress03] friend 76 error: aborted before messaging
+[stress03] friend 77 error: aborted before messaging
+[stress03] friend 78 error: aborted before messaging
+[stress03] friend 79 error: aborted before messaging
+[stress03] friend 80 error: aborted before messaging
+[stress03] friend 81 error: aborted before messaging
+[stress03] friend 82 error: aborted before messaging
+[stress03] friend 83 error: aborted before messaging
+[stress03] friend 84 error: aborted before messaging
+[stress03] friend 85 error: aborted before messaging
+[stress03] friend 86 error: aborted before messaging
+[stress03] friend 87 error: aborted before messaging
+[stress03] friend 88 error: aborted before messaging
+[stress03] friend 89 error: aborted before messaging
+[stress03] friend 90 error: aborted before messaging
+[stress03] friend 91 error: aborted before messaging
+[stress03] friend 92 error: aborted before messaging
+[stress03] friend 93 error: aborted before messaging
+[stress03] friend 94 error: aborted before messaging
+[stress03] friend 95 error: aborted before messaging
+[stress03] friend 96 error: aborted before messaging
+[stress03] friend 97 error: aborted before messaging
+[stress03] friend 98 error: aborted before messaging
+[stress03] friend 99 error: aborted before messaging
+[stress03] friend 100 error: aborted before messaging
+[stress03] friend 101 error: aborted before messaging
+[stress03] friend 102 error: aborted before messaging
+[stress03] friend 103 error: aborted before messaging
+[stress03] friend 104 error: aborted before messaging
+[stress03] friend 105 error: aborted before messaging
+[stress03] friend 106 error: aborted before messaging
+[stress03] friend 107 error: aborted before messaging
+[stress03] friend 108 error: aborted before messaging
+[stress03] friend 109 error: aborted before messaging
+[stress03] friend 110 error: aborted before messaging
+[stress03] friend 111 error: aborted before messaging
+[stress03] friend 112 error: aborted before messaging
+[stress03] friend 113 error: aborted before messaging
+[stress03] friend 114 error: aborted before messaging
+[stress03] friend 115 error: aborted before messaging
+[stress03] friend 116 error: aborted before messaging
+[stress03] friend 117 error: aborted before messaging
+[stress03] friend 118 error: aborted before messaging
+[stress03] friend 119 error: aborted before messaging
+[stress03] friend 120 error: aborted before messaging
+[stress03] friend 121 error: aborted before messaging
+[stress03] friend 122 error: aborted before messaging
+[stress03] friend 123 error: aborted before messaging
+[stress03] friend 124 error: aborted before messaging
+[stress03] friend 125 error: aborted before messaging
+[stress03] friend 126 error: aborted before messaging
+[stress03] friend 127 error: aborted before messaging
+[stress03] friend 128 error: aborted before messaging
+[stress03] friend 129 error: aborted before messaging
+[stress03] friend 130 error: aborted before messaging
+[stress03] friend 131 error: aborted before messaging
+[stress03] friend 132 error: aborted before messaging
+[stress03] friend 133 error: aborted before messaging
+[stress03] friend 134 error: aborted before messaging
+[stress03] friend 135 error: aborted before messaging
+[stress03] friend 136 error: aborted before messaging
+[stress03] friend 137 error: aborted before messaging
+[stress03] friend 138 error: aborted before messaging
+[stress03] friend 139 error: aborted before messaging
+[stress03] friend 140 error: aborted before messaging
+[stress03] friend 141 error: aborted before messaging
+[stress03] friend 142 error: aborted before messaging
+[stress03] friend 143 error: aborted before messaging
+[stress03] friend 144 error: aborted before messaging
+[stress03] friend 145 error: aborted before messaging
+[stress03] friend 146 error: aborted before messaging
+[stress03] friend 147 error: aborted before messaging
+[stress03] friend 148 error: aborted before messaging
+[stress03] friend 149 error: aborted before messaging
+[stress03] friend 150 error: aborted before messaging
+[stress03] friend 151 error: connect: �������ӷ���һ��ʱ���û����ȷ�𸴻����ӵ�����û�з�Ӧ�����ӳ���ʧ�ܡ� [system:10060 at D:\FKC\KC-CXIM\sdk\boost_1_92_0-bin-msvc-all-32-64\boost_1_92_0\boost/asio/detail/win_iocp_socket_service.hpp:630:5 in function 'class boost::system::error_code __cdecl boost::asio::detail::win_iocp_socket_service<class boost::asio::ip::tcp>::connect(struct boost::asio::detail::win_iocp_socket_service<class boost::asio::ip::tcp>::implementation_type &,const class boost::asio::ip::basic_endpoint<class boost::asio::ip::tcp> &,class boost::system::error_code &)']
+[stress03] friend 152 error: aborted before messaging
+[stress03] friend 153 error: aborted before messaging
+[stress03] friend 154 error: aborted before messaging
+[stress03] friend 155 error: aborted before messaging
+[stress03] friend 156 error: aborted before messaging
+[stress03] friend 157 error: aborted before messaging
+[stress03] friend 158 error: aborted before messaging
+[stress03] friend 159 error: aborted before messaging
+[stress03] friend 160 error: aborted before messaging
+[stress03] friend 161 error: aborted before messaging
+[stress03] friend 162 error: aborted before messaging
+[stress03] friend 163 error: aborted before messaging
+[stress03] friend 164 error: aborted before messaging
+[stress03] friend 165 error: aborted before messaging
+[stress03] friend 166 error: aborted before messaging
+[stress03] friend 167 error: aborted before messaging
+[stress03] friend 168 error: aborted before messaging
+[stress03] friend 169 error: aborted before messaging
+[stress03] friend 170 error: aborted before messaging
+[stress03] friend 171 error: aborted before messaging
+[stress03] friend 172 error: aborted before messaging
+[stress03] friend 173 error: aborted before messaging
+[stress03] friend 174 error: aborted before messaging
+[stress03] friend 175 error: aborted before messaging
+[stress03] friend 176 error: aborted before messaging
+[stress03] friend 177 error: aborted before messaging
+[stress03] friend 178 error: aborted before messaging
+[stress03] friend 179 error: aborted before messaging
+[stress03] friend 180 error: aborted before messaging
+[stress03] friend 181 error: aborted before messaging
+[stress03] friend 182 error: aborted before messaging
+[stress03] friend 183 error: aborted before messaging
+[stress03] friend 184 error: aborted before messaging
+[stress03] friend 185 error: aborted before messaging
+[stress03] friend 186 error: aborted before messaging
+[stress03] friend 187 error: aborted before messaging
+[stress03] friend 188 error: aborted before messaging
+[stress03] friend 189 error: aborted before messaging
+[stress03] friend 190 error: aborted before messaging
+[stress03] friend 191 error: aborted before messaging
+[stress03] friend 192 error: aborted before messaging
+[stress03] friend 193 error: aborted before messaging
+[stress03] friend 194 error: aborted before messaging
+[stress03] friend 195 error: aborted before messaging
+[stress03] friend 196 error: aborted before messaging
+[stress03] friend 197 error: aborted before messaging
+[stress03] friend 198 error: aborted before messaging
+[stress03] friend 199 error: aborted before messaging
+[stress03] friend 200 error: aborted before messaging
+[stress03] friend 201 error: aborted before messaging
+[stress03] friend 202 error: aborted before messaging
+[stress03] friend 203 error: aborted before messaging
+[stress03] friend 204 error: aborted before messaging
+[stress03] friend 205 error: aborted before messaging
+[stress03] friend 206 error: aborted before messaging
+[stress03] friend 207 error: aborted before messaging
+[stress03] friend 208 error: aborted before messaging
+[stress03] friend 209 error: aborted before messaging
+[stress03] friend 210 error: aborted before messaging
+[stress03] friend 211 error: aborted before messaging
+[stress03] friend 212 error: aborted before messaging
+[stress03] friend 213 error: aborted before messaging
+[stress03] friend 214 error: aborted before messaging
+[stress03] friend 215 error: aborted before messaging
+[stress03] friend 216 error: aborted before messaging
+[stress03] friend 217 error: aborted before messaging
+[stress03] friend 218 error: aborted before messaging
+[stress03] friend 219 error: aborted before messaging
+[stress03] friend 220 error: aborted before messaging
+[stress03] friend 221 error: aborted before messaging
+[stress03] friend 222 error: aborted before messaging
+[stress03] friend 223 error: aborted before messaging
+[stress03] friend 224 error: aborted before messaging
+[stress03] friend 225 error: aborted before messaging
+[stress03] friend 226 error: aborted before messaging
+[stress03] friend 227 error: aborted before messaging
+[stress03] friend 228 error: aborted before messaging
+[stress03] friend 229 error: aborted before messaging
+[stress03] friend 230 error: aborted before messaging
+[stress03] friend 231 error: aborted before messaging
+[stress03] friend 232 error: aborted before messaging
+[stress03] friend 233 error: aborted before messaging
+[stress03] friend 234 error: aborted before messaging
+[stress03] friend 235 error: aborted before messaging
+[stress03] friend 236 error: aborted before messaging
+[stress03] friend 237 error: aborted before messaging
+[stress03] friend 238 error: aborted before messaging
+[stress03] friend 239 error: aborted before messaging
+[stress03] friend 240 error: aborted before messaging
+[stress03] friend 241 error: aborted before messaging
+[stress03] friend 242 error: aborted before messaging
+[stress03] friend 243 error: aborted before messaging
+[stress03] friend 244 error: aborted before messaging
+[stress03] friend 245 error: aborted before messaging
+[stress03] friend 246 error: aborted before messaging
+[stress03] friend 247 error: aborted before messaging
+[stress03] friend 248 error: aborted before messaging
+[stress03] friend 249 error: aborted before messaging
+[stress03] friend 250 error: aborted before messaging
+[stress03] friend 251 error: aborted before messaging
+[stress03] friend 252 error: aborted before messaging
+[stress03] friend 253 error: aborted before messaging
+[stress03] friend 254 error: aborted before messaging
+[stress03] friend 255 error: aborted before messaging
+[stress03] friend 256 error: aborted before messaging
+[stress03] friend 257 error: aborted before messaging
+[stress03] friend 258 error: aborted before messaging
+[stress03] friend 259 error: aborted before messaging
+[stress03] friend 260 error: aborted before messaging
+[stress03] friend 261 error: aborted before messaging
+[stress03] friend 262 error: aborted before messaging
+[stress03] friend 263 error: aborted before messaging
+[stress03] friend 264 error: aborted before messaging
+[stress03] friend 265 error: aborted before messaging
+[stress03] friend 266 error: aborted before messaging
+[stress03] friend 267 error: aborted before messaging
+[stress03] friend 268 error: aborted before messaging
+[stress03] friend 269 error: aborted before messaging
+[stress03] friend 270 error: aborted before messaging
+[stress03] friend 271 error: aborted before messaging
+[stress03] friend 272 error: aborted before messaging
+[stress03] friend 273 error: aborted before messaging
+[stress03] friend 274 error: aborted before messaging
+[stress03] friend 275 error: aborted before messaging
+[stress03] friend 276 error: aborted before messaging
+[stress03] friend 277 error: aborted before messaging
+[stress03] friend 278 error: aborted before messaging
+[stress03] friend 279 error: aborted before messaging
+[stress03] friend 280 error: aborted before messaging
+[stress03] friend 281 error: aborted before messaging
+[stress03] friend 282 error: aborted before messaging
+[stress03] friend 283 error: aborted before messaging
+[stress03] friend 284 error: aborted before messaging
+[stress03] friend 285 error: aborted before messaging
+[stress03] friend 286 error: aborted before messaging
+[stress03] friend 287 error: aborted before messaging
+[stress03] friend 288 error: aborted before messaging
+[stress03] friend 289 error: aborted before messaging
+[stress03] friend 290 error: aborted before messaging
+[stress03] friend 291 error: aborted before messaging
+[stress03] friend 292 error: aborted before messaging
+[stress03] friend 293 error: aborted before messaging
+[stress03] friend 294 error: aborted before messaging
+[stress03] friend 295 error: aborted before messaging
+[stress03] friend 296 error: aborted before messaging
+[stress03] friend 297 error: aborted before messaging
+[stress03] friend 298 error: aborted before messaging
+[stress03] friend 299 error: aborted before messaging
+[stress03] friend 300 error: aborted before messaging
+[stress03] friend 301 error: aborted before messaging
+[stress03] friend 302 error: aborted before messaging
+[stress03] friend 303 error: aborted before messaging
+[stress03] friend 304 error: aborted before messaging
+[stress03] friend 305 error: aborted before messaging
+[stress03] friend 306 error: aborted before messaging
+[stress03] friend 307 error: aborted before messaging
+[stress03] friend 308 error: aborted before messaging
+[stress03] friend 309 error: aborted before messaging
+[stress03] friend 310 error: aborted before messaging
+[stress03] friend 311 error: aborted before messaging
+[stress03] friend 312 error: aborted before messaging
+[stress03] friend 313 error: aborted before messaging
+[stress03] friend 314 error: aborted before messaging
+[stress03] friend 315 error: aborted before messaging
+[stress03] friend 316 error: aborted before messaging
+[stress03] friend 317 error: aborted before messaging
+[stress03] friend 318 error: aborted before messaging
+[stress03] friend 319 error: aborted before messaging
+[stress03] friend 320 error: aborted before messaging
+[stress03] friend 321 error: aborted before messaging
+[stress03] friend 322 error: aborted before messaging
+[stress03] friend 323 error: aborted before messaging
+[stress03] friend 324 error: aborted before messaging
+[stress03] friend 325 error: aborted before messaging
+[stress03] friend 326 error: aborted before messaging
+[stress03] friend 327 error: aborted before messaging
+[stress03] friend 328 error: aborted before messaging
+[stress03] friend 329 error: aborted before messaging
+[stress03] friend 330 error: aborted before messaging
+[stress03] friend 331 error: aborted before messaging
+[stress03] friend 332 error: aborted before messaging
+[stress03] friend 333 error: aborted before messaging
+[stress03] friend 334 error: aborted before messaging
+[stress03] friend 335 error: aborted before messaging
+[stress03] friend 336 error: aborted before messaging
+[stress03] friend 337 error: aborted before messaging
+[stress03] friend 338 error: aborted before messaging
+[stress03] friend 339 error: aborted before messaging
+[stress03] friend 340 error: aborted before messaging
+[stress03] friend 341 error: aborted before messaging
+[stress03] friend 342 error: aborted before messaging
+[stress03] friend 343 error: aborted before messaging
+[stress03] friend 344 error: aborted before messaging
+[stress03] friend 345 error: aborted before messaging
+[stress03] friend 346 error: aborted before messaging
+[stress03] friend 347 error: aborted before messaging
+[stress03] friend 348 error: aborted before messaging
+[stress03] friend 349 error: aborted before messaging
+[stress03] friend 350 error: aborted before messaging
+[stress03] friend 351 error: aborted before messaging
+[stress03] friend 352 error: aborted before messaging
+[stress03] friend 353 error: aborted before messaging
+[stress03] friend 354 error: aborted before messaging
+[stress03] friend 355 error: aborted before messaging
+[stress03] friend 356 error: aborted before messaging
+[stress03] friend 357 error: aborted before messaging
+[stress03] friend 358 error: aborted before messaging
+[stress03] friend 359 error: aborted before messaging
+[stress03] friend 360 error: aborted before messaging
+[stress03] friend 361 error: aborted before messaging
+[stress03] friend 362 error: aborted before messaging
+[stress03] friend 363 error: aborted before messaging
+[stress03] friend 364 error: aborted before messaging
+[stress03] friend 365 error: aborted before messaging
+[stress03] friend 366 error: aborted before messaging
+[stress03] friend 367 error: aborted before messaging
+[stress03] friend 368 error: aborted before messaging
+[stress03] friend 369 error: aborted before messaging
+[stress03] friend 370 error: aborted before messaging
+[stress03] friend 371 error: aborted before messaging
+[stress03] friend 372 error: aborted before messaging
+[stress03] friend 373 error: aborted before messaging
+[stress03] friend 374 error: aborted before messaging
+[stress03] friend 375 error: aborted before messaging
+[stress03] friend 376 error: aborted before messaging
+[stress03] friend 377 error: aborted before messaging
+[stress03] friend 378 error: aborted before messaging
+[stress03] friend 379 error: aborted before messaging
+[stress03] friend 380 error: aborted before messaging
+[stress03] friend 381 error: aborted before messaging
+[stress03] friend 382 error: aborted before messaging
+[stress03] friend 383 error: aborted before messaging
+[stress03] friend 384 error: aborted before messaging
+[stress03] friend 385 error: aborted before messaging
+[stress03] friend 386 error: aborted before messaging
+[stress03] friend 387 error: aborted before messaging
+[stress03] friend 388 error: aborted before messaging
+[stress03] friend 389 error: aborted before messaging
+[stress03] friend 390 error: aborted before messaging
+[stress03] friend 391 error: aborted before messaging
+[stress03] friend 392 error: aborted before messaging
+[stress03] friend 393 error: aborted before messaging
+[stress03] friend 394 error: aborted before messaging
+[stress03] friend 395 error: aborted before messaging
+[stress03] friend 396 error: aborted before messaging
+[stress03] friend 397 error: aborted before messaging
+[stress03] friend 398 error: aborted before messaging
+[stress03] friend 399 error: aborted before messaging
+[stress03] friend 400 error: aborted before messaging
+[stress03] friend 401 error: aborted before messaging
+[stress03] friend 402 error: aborted before messaging
+[stress03] friend 403 error: aborted before messaging
+[stress03] friend 404 error: aborted before messaging
+[stress03] friend 405 error: aborted before messaging
+[stress03] friend 406 error: aborted before messaging
+[stress03] friend 407 error: aborted before messaging
+[stress03] friend 408 error: aborted before messaging
+[stress03] friend 409 error: aborted before messaging
+[stress03] friend 410 error: aborted before messaging
+[stress03] friend 411 error: aborted before messaging
+[stress03] friend 412 error: aborted before messaging
+[stress03] friend 413 error: aborted before messaging
+[stress03] friend 414 error: aborted before messaging
+[stress03] friend 415 error: aborted before messaging
+[stress03] friend 416 error: aborted before messaging
+[stress03] friend 417 error: aborted before messaging
+[stress03] friend 418 error: aborted before messaging
+[stress03] friend 419 error: aborted before messaging
+[stress03] friend 420 error: aborted before messaging
+[stress03] friend 421 error: aborted before messaging
+[stress03] friend 422 error: aborted before messaging
+[stress03] friend 423 error: aborted before messaging
+[stress03] friend 424 error: aborted before messaging
+[stress03] friend 425 error: aborted before messaging
+[stress03] friend 426 error: aborted before messaging
+[stress03] friend 427 error: aborted before messaging
+[stress03] friend 428 error: aborted before messaging
+[stress03] friend 429 error: aborted before messaging
+[stress03] friend 430 error: aborted before messaging
+[stress03] friend 431 error: aborted before messaging
+[stress03] friend 432 error: aborted before messaging
+[stress03] friend 433 error: aborted before messaging
+[stress03] friend 434 error: aborted before messaging
+[stress03] friend 435 error: aborted before messaging
+[stress03] friend 436 error: aborted before messaging
+[stress03] friend 437 error: aborted before messaging
+[stress03] friend 438 error: aborted before messaging
+[stress03] friend 439 error: aborted before messaging
+[stress03] friend 440 error: aborted before messaging
+[stress03] friend 441 error: aborted before messaging
+[stress03] friend 442 error: aborted before messaging
+[stress03] friend 443 error: aborted before messaging
+[stress03] friend 444 error: aborted before messaging
+[stress03] friend 445 error: aborted before messaging
+[stress03] friend 446 error: aborted before messaging
+[stress03] friend 447 error: aborted before messaging
+[stress03] friend 448 error: aborted before messaging
+[stress03] friend 449 error: aborted before messaging
+[stress03] friend 450 error: aborted before messaging
+[stress03] friend 451 error: aborted before messaging
+[stress03] friend 452 error: aborted before messaging
+[stress03] friend 453 error: aborted before messaging
+[stress03] friend 454 error: aborted before messaging
+[stress03] friend 455 error: aborted before messaging
+[stress03] friend 456 error: aborted before messaging
+[stress03] friend 457 error: aborted before messaging
+[stress03] friend 458 error: aborted before messaging
+[stress03] friend 459 error: aborted before messaging
+[stress03] friend 460 error: aborted before messaging
+[stress03] friend 461 error: aborted before messaging
+[stress03] friend 462 error: aborted before messaging
+[stress03] friend 463 error: aborted before messaging
+[stress03] friend 464 error: aborted before messaging
+[stress03] friend 465 error: aborted before messaging
+[stress03] friend 466 error: aborted before messaging
+[stress03] friend 467 error: aborted before messaging
+[stress03] friend 468 error: aborted before messaging
+[stress03] friend 469 error: aborted before messaging
+[stress03] friend 470 error: aborted before messaging
+[stress03] friend 471 error: aborted before messaging
+[stress03] friend 472 error: aborted before messaging
+[stress03] friend 473 error: aborted before messaging
+[stress03] friend 474 error: aborted before messaging
+[stress03] friend 475 error: aborted before messaging
+[stress03] friend 476 error: aborted before messaging
+[stress03] friend 477 error: aborted before messaging
+[stress03] friend 478 error: aborted before messaging
+[stress03] friend 479 error: aborted before messaging
+[stress03] friend 480 error: aborted before messaging
+[stress03] friend 481 error: aborted before messaging
+[stress03] friend 482 error: aborted before messaging
+[stress03] friend 483 error: aborted before messaging
+[stress03] friend 484 error: aborted before messaging
+[stress03] friend 485 error: aborted before messaging
+[stress03] friend 486 error: aborted before messaging
+[stress03] friend 487 error: aborted before messaging
+[stress03] friend 488 error: aborted before messaging
+[stress03] friend 489 error: aborted before messaging
+[stress03] friend 490 error: aborted before messaging
+[stress03] friend 491 error: aborted before messaging
+[stress03] friend 492 error: aborted before messaging
+[stress03] friend 493 error: aborted before messaging
+[stress03] friend 494 error: aborted before messaging
+[stress03] friend 495 error: aborted before messaging
+[stress03] friend 496 error: aborted before messaging
+[stress03] friend 497 error: aborted before messaging
+[stress03] friend 498 error: aborted before messaging
+[stress03] friend 499 error: aborted before messaging
+
+===== Stress03 Aborted =====
+friends ready   : 500/500
+accepted        : 499/500
+messages        : 0/500
+listed          : 0/500
+deleted         : 0/500
+failed          : 501
+============================
+
+
+ ./build/bin/Debug/test_stress_03.exe --host 110.40.206.253 --http-port 10002 --tcp-port 10001 --friends 200 --timeout
+240
+[stress03] host=110.40.206.253 http=10002 tcp=10001 friends=200 runId=900753732 hb=5s timeout=240s
+[stress03] main userId=4602, starting 200 friend workers...
+[stress03] all friends registered + TCP logged in; creating requests...
+[stress03] friend requests created; waiting accepts...
+[stress03] friends accepted; exchanging messages...
+[stress03] replies acked=200/200, send retries=0
+[stress03] messages exchanged; querying friend lists...
+[stress03] lists queried; deleting friends...
+[stress03] all deletes acknowledged; verifying main friend list...
+[stress03] verify done, remaining=0; joining friends...
+[stress03] friends joined; stopping main session...
+
+===== Stress03 Report =====
+elapsed                  : 104.14 s
+friends                  : 200
+friends ready            : 200
+friend requests created  : 200
+accepted                 : 200
+messages sent+acked      : 200
+friend lists queried     : 200
+friends deleted          : 200
+full lifecycle ok        : 200/200
+failed                   : 0
+send retries             : 0
+main friends after delete: 0
+
+latency (ms)        p50 / p95 / p99 / avg / max
+register           : 14060.10 / 25963.42 / 27089.07 / 13994.20 / 28111.00 ms  (n=201)
+login              : 26919.51 / 27187.46 / 27733.77 / 26756.73 / 28198.00 ms  (n=201)
+create request     : 2493.72 / 3837.92 / 4347.24 / 2548.51 / 7121.00 ms  (n=200)
+accept             : 660.02 / 1536.61 / 3113.04 / 761.92 / 7114.00 ms  (n=200)
+tcp send           : 968.12 / 1879.56 / 1933.51 / 1047.80 / 1941.00 ms  (n=200)
+tcp reply          : 10778.59 / 17964.66 / 18630.58 / 10654.46 / 18806.00 ms  (n=200)
+list friends       : 888.20 / 1076.86 / 3082.56 / 994.67 / 7098.00 ms  (n=201)
+delete friend      : 365.90 / 1142.47 / 3089.99 / 549.91 / 7099.00 ms  (n=200)
+===========================

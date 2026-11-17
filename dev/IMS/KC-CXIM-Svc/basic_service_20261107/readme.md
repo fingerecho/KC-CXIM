@@ -54,7 +54,7 @@ Windows（MSYS/MinGW）或 Linux：
 
 ```bash
 cd dev/IMS/KC-CXIM-Svc/basic_service_20261107
-bash build_step.sh
+bash build.sh
 ```
 
 构建产物：
@@ -68,7 +68,9 @@ build/bin/cxim-server             # Linux
 
 ```bash
 DB_CONFIG=./DBConfig.ini JWT_CONFIG=./JWTConfig.json \
-HTTP_PORT=8080 TCP_PORT=8888 ./build/bin/Debug/cxim-server.exe 
+HTTP_PORT=8080 TCP_PORT=8888 \
+DB_POOL_SIZE=100 DB_WORKER_COUNT=16 \
+QUIET_LOG=0 ./build/bin/Debug/cxim-server.exe 
 ```
 
 启动成功后会看到类似输出：
