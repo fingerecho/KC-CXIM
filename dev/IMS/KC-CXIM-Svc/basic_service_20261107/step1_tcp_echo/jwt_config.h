@@ -11,9 +11,10 @@
 //   3) issuer 参与校验，可避免别的系统用同一密钥签发的 token 混进来。
 //
 // JSON 字段（与根目录已有的 JWTConfig.json 保持一致）：
-//   jwt_secret      : HS256 的共享密钥（必填，建议 64 位十六进制随机串）
-//   jwt_issuer      : 签发者标识（必填）
-//   expire_seconds  : token 有效期秒数（可选，缺省 86400 = 24 小时）
+//   jwt_secret            : HS256 的共享密钥（必填，建议 64 位十六进制随机串）
+//   jwt_issuer            : 签发者标识（必填）
+//   expire_seconds        : access token 有效期秒数（可选，缺省 86400 = 24 小时）
+//   refresh_expire_seconds: refresh token 有效期秒数（可选，缺省 2592000 = 30 天）
 // ============================================================================
 
 namespace kc {
@@ -21,7 +22,11 @@ namespace kc {
 struct JwtConfig {
     std::string secret;                      // HS256 共享密钥；签发与验签都只用它
     std::string issuer;                      // 签发者；验签时用 with_issuer 校验
-    long long   expire_seconds = 86400;      // token 有效期（秒），默认 24 小时
+    long long   expire_seconds = 86400;      // access token 有效期（秒），默认 24 小时
+    /*************P0-3：refresh token 有效期***************/
+    // 重连时客户端用 refresh token 换新的 access token，服务端只做 HMAC 验签，
+    // 不再走 bcrypt 校验密码 —— 这是"重连风暴把登录拖到十几秒"的根治手段。
+    long long   refresh_expire_seconds = 2592000;   // 默认 30 天
 
     // 读取并校验配置文件；失败抛 std::runtime_error（main 统一捕获）。
     // 注意：这是一个"启动时一次性加载"的操作，不属于请求热路径，可以同步读文件。

@@ -1,0 +1,75 @@
+./build/bin/Release/test_stress_03.exe --host 110.40.206.253 --http-port 10002 --tcp-port 10001 --friends 100 --timeout 240
+[stress03] host=110.40.206.253 http=10002 tcp=10001 friends=100 runId=988395793 hb=30s timeout=240s
+[stress03] main userId=5857, starting 100 friend workers...
+[stress03] all friends registered + TCP logged in; creating requests...
+[stress03] friend requests created; waiting accepts...
+[stress03] friends accepted; exchanging messages...
+[stress03] replies acked=100/100, send retries=0
+[stress03] messages exchanged; querying friend lists...
+[stress03] lists queried; deleting friends...
+[stress03] all deletes acknowledged; verifying main friend list...
+[stress03] verify done, remaining=0; joining friends...
+[stress03] friends joined; stopping main session...
+
+===== Stress03 Report =====
+elapsed                  : 37.86 s
+friends                  : 100
+friends ready            : 100
+friend requests created  : 100
+accepted                 : 100
+messages sent+acked      : 100
+friend lists queried     : 100
+friends deleted          : 100
+full lifecycle ok        : 100/100
+failed                   : 0
+send retries             : 0
+main friends after delete: 0
+
+latency (ms)        p50 / p95 / p99 / avg / max
+register           : 1646.20 / 3097.79 / 3230.98 / 1660.83 / 3235.00 ms  (n=101)
+login              : 3161.20 / 3226.94 / 3241.60 / 3139.65 / 4190.00 ms  (n=101)
+create request     : 472.56 / 1121.34 / 1141.34 / 516.25 / 3097.00 ms  (n=100)
+accept             : 381.54 / 1102.50 / 1124.86 / 432.87 / 1128.00 ms  (n=100)
+tcp send           : 650.86 / 1167.68 / 1217.23 / 643.66 / 1227.00 ms  (n=100)
+tcp reply          : 4221.30 / 6794.33 / 7025.32 / 4193.63 / 7078.00 ms  (n=100)
+list friends       : 554.05 / 1072.94 / 3078.76 / 642.14 / 3096.00 ms  (n=101)
+delete friend      : 372.90 / 1120.20 / 3115.64 / 670.69 / 15123.00 ms  (n=100)
+===========================
+
+./build/bin/Release/test_stress_03.exe --host 110.40.206.253 --http-port 10002 --tcp-port 10001 --friends 200 --timeout 240
+[stress03] host=110.40.206.253 http=10002 tcp=10001 friends=200 runId=988545146 hb=30s timeout=240s
+[stress03] main userId=5958, starting 200 friend workers...
+[stress03] all friends registered + TCP logged in; creating requests...
+[stress03] friend requests created; waiting accepts...
+[stress03] friends accepted; exchanging messages...
+[stress03] replies acked=200/200, send retries=0
+[stress03] messages exchanged; querying friend lists...
+[stress03] lists queried; deleting friends...
+[stress03] all deletes acknowledged; verifying main friend list...
+[stress03] verify done, remaining=0; joining friends...
+[stress03] friends joined; stopping main session...
+
+===== Stress03 Report =====
+elapsed                  : 61.02 s
+friends                  : 200
+friends ready            : 200
+friend requests created  : 200
+accepted                 : 200
+messages sent+acked      : 200
+friend lists queried     : 200
+friends deleted          : 200
+full lifecycle ok        : 200/200
+failed                   : 0
+send retries             : 0
+main friends after delete: 0
+
+latency (ms)        p50 / p95 / p99 / avg / max
+register           : 3428.97 / 6461.51 / 6764.04 / 3450.12 / 6835.00 ms  (n=201)
+login              : 6890.77 / 7012.79 / 7839.84 / 6868.20 / 7916.00 ms  (n=201)
+create request     : 853.75 / 1576.71 / 1659.98 / 874.35 / 3107.00 ms  (n=200)
+accept             : 706.79 / 1542.21 / 3104.12 / 787.49 / 7097.00 ms  (n=200)
+tcp send           : 1264.76 / 2362.32 / 2451.68 / 1260.73 / 2474.00 ms  (n=200)
+tcp reply          : 8477.58 / 13999.83 / 14495.95 / 8494.72 / 14626.00 ms  (n=200)
+list friends       : 1072.56 / 1145.82 / 3084.15 / 1162.22 / 3102.00 ms  (n=201)
+delete friend      : 678.58 / 1257.19 / 7110.25 / 874.57 / 15120.00 ms  (n=200)
+===========================

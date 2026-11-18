@@ -45,6 +45,17 @@ JwtConfig JwtConfig::load(const std::string& path) {
         if (v > 0) cfg.expire_seconds = v;                                      // 非法/非正数保持默认
     }
 
+    /*************P0-3：读取 refresh token 有效期（可选）***************/
+    if (doc.HasMember("refresh_expire_seconds") && doc["refresh_expire_seconds"].IsInt64()) {
+        const long long v = doc["refresh_expire_seconds"].GetInt64();
+        if (v > 0) cfg.refresh_expire_seconds = v;
+    }
+    // refresh 必须严格长于 access，否则"刷新"比直接登录还容易过期，逻辑上没意义。
+    if (cfg.refresh_expire_seconds <= cfg.expire_seconds) {
+        cfg.refresh_expire_seconds = cfg.expire_seconds * 30;
+    }
+    /*************P0-3：读取 refresh token 有效期（可选）***************/
+
     return cfg;   // 返回加载完成的配置
 }
 

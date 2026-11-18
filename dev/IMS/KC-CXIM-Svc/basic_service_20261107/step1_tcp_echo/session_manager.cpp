@@ -24,11 +24,26 @@ SessionManager::add(UserId uid, const SessionPtr& s) {
 }
 
 // ---------------------------------------------------------------------------
-// remove：用户下线时删除登记项。
+// remove：用户下线时删除登记项，**但要删的是自己**。
 // ---------------------------------------------------------------------------
-void SessionManager::remove(UserId uid) {
+// 为什么必须比对身份（core-dump 修复 ③ 的另一半）：
+// 重复登录的顺序是「新连接 add 覆盖这一格 → 再 close 旧连接」，
+// 所以旧连接最终一定会走到 remove，而此时表里那一格属于**新连接**。
+// 无条件 erase(uid) 会把新连接的登记抹掉：它的 socket 完全正常、事件循环也还在跑，
+// 但 SessionManager 已经找不到它 —— 之后所有发给这个用户的路由都判成
+// "对方离线"（session.cpp 走 offline 落库分支），实时消息永久失联，
+// 只有下次重连才恢复。压测里同账号快速重登、以及"被踢的一方延迟关闭"都会命中。
+// owner==nullptr 保留"无条件删"的语义（调用方明确知道自己要做清理时才用）。
+void SessionManager::remove(UserId uid, const session* owner) {
     std::lock_guard<std::mutex> lk(mutex_);
-    sessions_.erase(uid);
+    auto it = sessions_.find(uid);
+    if (it == sessions_.end()) return;
+    if (owner) {
+        // 只有这一格仍然是我们时才删；已被新连接覆盖则什么都不做。
+        auto live = it->second.lock();
+        if (live && live.get() != owner) return;
+    }
+    sessions_.erase(it);
 }
 
 // ---------------------------------------------------------------------------

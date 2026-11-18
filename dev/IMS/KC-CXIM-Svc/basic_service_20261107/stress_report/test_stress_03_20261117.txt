@@ -1,5 +1,4 @@
-./build/bin/Debug/test_stress_03.exe --host 110.40.206.253 --http-port 10002 --tcp-port 10001 --friends 100 --timeout
-240
+./build/bin/Debug/test_stress_03.exe --host 110.40.206.253 --http-port 10002 --tcp-port 10001 --friends 100 --timeout 240
 [stress03] host=110.40.206.253 http=10002 tcp=10001 friends=100 runId=898575263 hb=5s timeout=240s
 [stress03] main userId=3676, starting 100 friend workers...
 [stress03] all friends registered + TCP logged in; creating requests...

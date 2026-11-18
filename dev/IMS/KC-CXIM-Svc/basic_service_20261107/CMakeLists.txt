@@ -10,6 +10,20 @@
 cmake_minimum_required(VERSION 3.16)
 project(KC_CXIM_Server LANGUAGES CXX)
 
+# ---------------------------------------------------------------------------
+# 构建类型兜底（性能优化 P0-5）
+# ---------------------------------------------------------------------------
+# 这里以前完全不设 CMAKE_BUILD_TYPE：单配置生成器（Unix Makefiles / Ninja）会
+# 得到空的 CXX_FLAGS，也就是 **-O0 跑在生产机上**；多配置生成器（Visual Studio /
+# Xcode）则取决于是否传 --config，`cmake --build build` 默认编 Debug。
+# 现在：单配置生成器默认 Release；多配置生成器保持"由 --config 决定"，
+# 但 build.sh 会显式加 --config Release，Windows 侧也不会再误测 Debug 产物。
+# 需要调试时照常传 -DCMAKE_BUILD_TYPE=Debug（或 --config Debug）即可覆盖。
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type (Release/Debug/RelWithDebInfo)" FORCE)
+    message(STATUS "CMAKE_BUILD_TYPE not set, defaulting to Release")
+endif()
+
 # 统一使用 C++17（用到了 std::string::data() 返回 char*、结构化绑定等特性）。
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)   # 编译器不支持 C++17 就直接报错

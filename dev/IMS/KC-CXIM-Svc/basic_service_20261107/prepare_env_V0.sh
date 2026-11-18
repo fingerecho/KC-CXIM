@@ -311,6 +311,13 @@ max_connections = 100
 performance_schema = OFF
 skip_name_resolve = ON
 
+# ---- 锁等待上限（默认 50s 太久）----
+# 应用侧的 DB worker 只有 DB_WORKER_COUNT 个线程。一条 SQL 卡在等锁上 50 秒，
+# 等于把这一路并发额度一起锁死 50 秒：压测阶段4（N 个用户同时删同一个目标）
+# 就是这个形状 —— 锁冲突本身由 db.cpp 的事务重试处理，但**前提是等锁要快**。
+# 8~10 秒足够正常竞争完成，超了就快速失败交给上层重试，而不是让整条流水线僵住。
+innodb_lock_wait_timeout = 10
+
 # ---- 可靠性：IM 消息优先不丢，保持 1 ----
 innodb_flush_log_at_trx_commit = 1
 

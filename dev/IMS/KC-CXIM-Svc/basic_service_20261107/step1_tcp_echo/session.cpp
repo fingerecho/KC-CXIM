@@ -5,11 +5,58 @@
 #include "group_types.h"     // /*************群聊功能：群事件 JSON 序列化***************/
 #include "message_codec.h"
 #include "token_service.h"   // JWT 校验：TCP 登录只验 token，不再查库比对密码
+#include "quiet_log.h"       // logFatal：踢连接/预算越线这类事件不能被 QUIET_LOG 吞掉
 
+#include <atomic>
+#include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <string>
+#include <vector>
 
 namespace kc {
+
+namespace {
+
+// P0-4：全局存活连接计数。构造 +1、析构 -1，天然平衡（不依赖 close 路径）。
+std::atomic<long> g_liveSessions{0};
+
+// P0-4：所有 session 待写帧的总字节数（进程级内存预算）。
+// 只在"入队 / 写完成出队 / 连接销毁清队"三处变动，前两处见 send_message 与 do_write，
+// 第三处必须存在：否则连接 churn 之后预算会单向漂到"永远满载"，把好连接也踢掉。
+std::atomic<std::size_t> g_writeQueueTotalBytes{0};
+
+// 单连接在途 DB 任务上限（TCP_MAX_OUTSTANDING，默认 64）。
+int maxOutstandingJobs() {
+    static const int n = [] {
+        const char* v = std::getenv("TCP_MAX_OUTSTANDING");
+        if (!v || !*v) return session::kMaxOutstandingDefault;
+        try {
+            int x = std::stoi(v);
+            return x > 0 ? x : session::kMaxOutstandingDefault;
+        } catch (...) { return session::kMaxOutstandingDefault; }
+    }();
+    return n;
+}
+
+// 空闲踢人秒数（IDLE_TIMEOUT_SEC，默认 60，钳制到 [15, 3600]）。
+int idleTimeoutSec() {
+    static const int n = [] {
+        const char* v = std::getenv("IDLE_TIMEOUT_SEC");
+        if (!v || !*v) return static_cast<int>(session::IDLE_TIMEOUT.count());
+        try {
+            int x = std::stoi(v);
+            if (x < 15) x = 15;
+            if (x > 3600) x = 3600;
+            return x;
+        } catch (...) { return static_cast<int>(session::IDLE_TIMEOUT.count()); }
+    }();
+    return n;
+}
+
+} // namespace
+
+long session::liveCount() { return g_liveSessions.load(std::memory_order_relaxed); }
 
 // ---------------------------------------------------------------------------
 // 构造：接管 socket，保存在线表 / 数据库层引用。
@@ -22,9 +69,27 @@ session::session(boost::asio::ip::tcp::socket socket, SessionManager& manager,
       strand_(boost::asio::make_strand(socket_.get_executor())),
       manager_(manager),
       db_(db),
-      tokens_(tokens) {}
+      tokens_(tokens),
+      idle_timeout_(idleTimeoutSec()) {
+    g_liveSessions.fetch_add(1, std::memory_order_relaxed);
+}
+
+session::~session() {
+    g_liveSessions.fetch_sub(1, std::memory_order_relaxed);
+}
 
 void session::start() {
+    /*************P1-5：关闭 Nagle***************/
+    // IM 的报文都是"几十字节请求 -> 几十字节回执"，Nagle 与对端延迟 ACK 叠加
+    // 会造出 40~200ms 的台阶式停顿（压测数据里那一簇 ~3.1s 的长尾，
+    // 至少有一部分就是这种停顿撞上重传造成的）。
+    boost::system::error_code ec;
+    socket_.set_option(boost::asio::ip::tcp::no_delay(true), ec);
+    // 应用层已有心跳 + 空闲踢人，SO_KEEPALIVE 只是兜住"半开连接"这种
+    // 心跳也发不出来的情况，失败不影响主流程。
+    socket_.set_option(boost::asio::socket_base::keep_alive(true), ec);
+    /*************P1-5：关闭 Nagle***************/
+
     /*************并发登录/注册优化：start 也 post 到 strand***************/
     auto self = shared_from_this();
     boost::asio::post(strand_, [self] {
@@ -33,6 +98,24 @@ void session::start() {
         self->reset_idle_timer();
     });
     /*************并发登录/注册优化：start 也 post 到 strand***************/
+}
+
+// ============================================================================
+// P0-4：单连接在途 DB 任务配额
+// ----------------------------------------------------------------------------
+// 客户端可以在一条连接上连续狂发消息，每条消息都会变成一个 DB 任务。
+// 没有上限时，一条"话痨"连接就能把整条 SQL 队列占满，殃及所有在线用户。
+// 配额按连接分配、回调释放，超限时直接回 Error，让客户端自己降速/重试。
+// ============================================================================
+bool session::reserveJob() {
+    if (closed_) return false;
+    if (outstanding_ >= maxOutstandingJobs()) return false;
+    ++outstanding_;
+    return true;
+}
+
+void session::releaseJob() {
+    if (outstanding_ > 0) --outstanding_;
 }
 
 // ---------------------------------------------------------------------------
@@ -86,7 +169,9 @@ void session::do_read_body(std::uint32_t body_len) {
 void session::reset_idle_timer() {
     if (closed_) return;
 
-    idle_timer_.expires_after(IDLE_TIMEOUT);
+    // idle_timeout_ 来自 IDLE_TIMEOUT_SEC；客户端心跳间隔必须显著小于它
+    // （压测/桌面端默认已调成 30s，见 readme.md）。
+    idle_timer_.expires_after(idle_timeout_);
 
     auto self = shared_from_this();
     idle_timer_.async_wait(boost::asio::bind_executor(strand_,
@@ -94,7 +179,7 @@ void session::reset_idle_timer() {
             if (ec) return;
 
             std::cout << "[timeout] user " << user_id_ << " idle > "
-                      << IDLE_TIMEOUT.count() << "s, kick" << std::endl;
+                      << idle_timeout_.count() << "s, kick" << std::endl;
             close();
         }));
 }
@@ -179,25 +264,29 @@ void session::do_login(const Message& msg) {
     ack.content = "welcome";                            // 欢迎语
     send_message(ack);                                  // 发送回执
 
-    // 登录成功后补推离线消息。
-    push_offline();                                     // 复用原有离线补推逻辑
-
-    // 好友事件的离线补偿：待处理申请 + 申请人还没收到的处理结果。
-    // 这两类事件不适合塞进 offline_messages（那是聊天消息表），
-    // 因此直接用 friend_requests 的状态字段作为“持久化事件队列”。
-    push_friend_events();
-
-    /*************群聊功能：登录补推入群事件（与好友事件同样的补偿思路）***************/
-    // 待我审批的入群申请 + 我发出但还没收到结果的申请，靠 group_requests
-    // 的 status/result_notified 字段做持久化队列。群资料/成员变更事件
-    // 不持久化，客户端登录后调用 GET /api/groups 拉全量列表对齐。
-    push_group_events();
-    /*************群聊功能：登录补推入群事件***************/
+    /*************P1-3：一次取回全部登录补偿数据***************/
+    // 原来这里连着调 push_offline() / push_friend_events() / push_group_events()，
+    // 每个函数各 1~2 个 DB 任务，合计最多 7 个：
+    //   * 在 SQL 队列里要排 7 次队，重连风暴时把队列长度直接乘 7；
+    //   * 每次借还连接都要过一遍连接池锁；
+    //   * 补推 200 条离线消息 × N 个用户还会瞬间打满 3Mbps 带宽。
+    // 现在合并成 1 个任务（内部一条连接顺序跑完所有 SELECT），
+    // 离线消息单次上限也从 200 降到 50，剩余用 has_more 让客户端继续拉。
+    push_login_sync();
+    /*************P1-3：一次取回全部登录补偿数据***************/
 }
 
 // ---------------------------------------------------------------------------
-// 发消息：落库 + 在线投递
+// 发消息：关系校验 + 落库 + 在线投递
 // ---------------------------------------------------------------------------
+// /*************P1-2：从"两段串行回调"改成"一次调用"***************/
+// 原来 do_send 是 areFriends(cb -> sendMessage(cb -> ...))：
+//   * 一个消息要排两次 SQL 队列、借还两次连接、切两次 strand；
+//   * content / StoredMessage 在两层 lambda 里各拷贝一次；
+//   * 校验与落库之间还有 TOCTOU 窗口（对方在这瞬间删了你或拉黑你）。
+// 现在 Db::sendChecked 在一个任务（必要时同一个事务）里做完，
+// 关系命中 P1-1 缓存时连那条 SELECT 都省掉。
+// /*************P1-2：从"两段串行回调"改成"一次调用"***************/
 void session::do_send(const Message& msg) {
     if (!logged_in_) {
         send_error("login first", user_id_);
@@ -208,6 +297,13 @@ void session::do_send(const Message& msg) {
         return;
     }
 
+    /*************P0-4：在途任务配额***************/
+    if (!reserveJob()) {
+        send_error(Db::kBusyError, user_id_);   // 让客户端按自己的重试策略降速
+        return;
+    }
+    /*************P0-4：在途任务配额***************/
+
     // 以会话身份为准，不信任客户端传来的 from。
     const std::uint64_t sender     = user_id_;
     const std::uint64_t to         = msg.to;
@@ -216,79 +312,63 @@ void session::do_send(const Message& msg) {
     const std::uint64_t clientMsgId = msg.msg_id;   // 客户端临时消息号，用于去重
 
     auto self = shared_from_this();
-
-    /****************发送前先校验好友/拉黑关系：陌生人或被对方拉黑一律拒绝，不落库、不进离线队列****************/
-    db_.areFriends(sender, to,
-        [this, self, sender, to, type, content, clientMsgId]
-        (bool ok, const std::string& err, bool areFriends, bool blocked) {
-            /*************并发登录/注册优化：关系校验回调切回本连接 strand***************/
+    db_.sendChecked(sender, to, type, content, clientMsgId,
+        [this, self, sender, to, type, content](bool ok, const std::string& err,
+                                                const StoredMessage& sm,
+                                                bool notFriends, bool blocked) {
+            /*************并发登录/注册优化：DB 回调切回本连接 strand***************/
             boost::asio::post(strand_,
-                [this, self, sender, to, type, content, clientMsgId,
-                 ok, err, areFriends, blocked]() {
+                [this, self, sender, to, type, content, ok, err, sm,
+                 notFriends, blocked]() {
+            // P0-4：配额在 strand 内归还。outstanding_ 只允许本连接的 strand 碰，
+            // 在 DB 回调线程里直接改会构成数据竞争。
+            releaseJob();
             if (closed_) return;
 
             if (!ok) {
-                send_error(err.empty() ? "relation check failed" : err, sender);
+                if (notFriends) {
+                    /****************文案区分：被对方拉黑 vs 非好友（陌生人）****************/
+                    send_error(blocked ? "blocked by recipient" : "not friends", sender);
+                } else {
+                    send_error(err.empty() ? "send failed" : err, sender);
+                }
                 return;
             }
-            if (!areFriends) {
-                /****************文案区分：被对方拉黑 vs 非好友（陌生人）****************/
-                send_error(blocked ? "blocked by recipient" : "not friends", sender);
-                return;
+
+            // 告诉发送方服务端分配的 msg_id / seq / ts
+            Message ack;
+            ack.type            = MsgType::SendAck;
+            ack.to              = sender;
+            ack.msg_id          = sm.msg_id;
+            ack.conversation_id = sm.conversation_id;
+            ack.seq             = sm.seq;
+            ack.ts              = sm.ts;
+            ack.content         = sm.duplicate ? "duplicate" : "sent";
+            send_message(ack);
+
+            // 接收者在线则直接投递；离线的部分由 DB 层落库，
+            // 对方登录时通过 push_login_sync() 的游标/离线队列补推。
+            if (auto peer = manager_.find(to)) {
+                Message out;
+                out.type            = static_cast<MsgType>(type);
+                out.from            = sender;
+                out.to              = to;
+                out.msg_id          = sm.msg_id;
+                out.conversation_id = sm.conversation_id;
+                out.seq             = sm.seq;
+                out.ts              = sm.ts;
+                out.content         = content;
+                peer->deliver(out);
+
+                std::cout << "[route] " << sender << " -> " << to
+                          << " : " << content << std::endl;
+            } else {
+                std::cout << "[route] user " << to
+                          << " offline, stored for push" << std::endl;
             }
-
-            // 关系校验通过，执行原有“落库 + 在线投递”。
-            // 内层回调参数改名 sok/serr，避免与外层 areFriends 的 ok/err 混淆。
-            db_.sendMessage(sender, to, type, content, clientMsgId,
-                [this, self, sender, to, type, content]
-                (bool sok, const std::string& serr, const StoredMessage& sm) {
-                    /*************并发登录/注册优化：DB 回调切回本连接 strand***************/
-                    boost::asio::post(strand_,
-                        [this, self, sender, to, type, content, sok, serr, sm]() {
-                    if (closed_) return;
-
-                    if (!sok) {
-                        send_error(serr.empty() ? "send failed" : serr, sender);
-                        return;
-                    }
-
-                    // 告诉发送方服务端分配的 msg_id / seq / ts
-                    Message ack;
-                    ack.type            = MsgType::SendAck;
-                    ack.to              = sender;
-                    ack.msg_id          = sm.msg_id;
-                    ack.conversation_id = sm.conversation_id;
-                    ack.seq             = sm.seq;
-                    ack.ts              = sm.ts;
-                    ack.content         = sm.duplicate ? "duplicate" : "sent";
-                    send_message(ack);
-
-                    // 接收者在线则直接投递；离线消息已经由 DB 层写入 offline_messages。
-                    if (auto peer = manager_.find(to)) {
-                        Message out;
-                        out.type            = static_cast<MsgType>(type);
-                        out.from            = sender;
-                        out.to              = to;
-                        out.msg_id          = sm.msg_id;
-                        out.conversation_id = sm.conversation_id;
-                        out.seq             = sm.seq;
-                        out.ts              = sm.ts;
-                        out.content         = content;
-                        peer->deliver(out);
-
-                        std::cout << "[route] " << sender << " -> " << to
-                                  << " : " << content << std::endl;
-                    } else {
-                        std::cout << "[route] user " << to
-                                  << " offline, stored for push" << std::endl;
-                    }
-                        });
-                    /*************并发登录/注册优化：DB 回调切回本连接 strand***************/
                 });
-                });
-            /*************并发登录/注册优化：关系校验回调切回本连接 strand***************/
+            /*************并发登录/注册优化：DB 回调切回本连接 strand***************/
         });
-    /****************发送前先校验好友/拉黑关系：陌生人或被对方拉黑一律拒绝****************/
 }
 
 // ---------------------------------------------------------------------------
@@ -304,15 +384,30 @@ void session::do_history(const Message& msg) {
         return;
     }
 
+    /*************core-dump 加固：limit 必须钳制***************/
+    // content 是客户端给的字符串，原来只做 stoi 失败回退，**没有上界**。
+    // 一条 {"type":7,"to":X,"content":"100000000"} 就会让 DB 层拉回一亿行、
+    // 再由 serialize_history 在内存里整段拼成 JSON —— 帧体积远超写预算，
+    // 拼字符串时抛 bad_alloc。bad_alloc 从 strand handler 里逃逸 = 杀掉一个
+    // io 线程（main.cpp 只能记一条 then 退出 70）。所以钳制在这里做，
+    // 而不是指望下游兜。200 与 kLoginOfflineBatch 同档，够正常翻页用。
     int limit = 20;
     if (!msg.content.empty()) {
         try { limit = std::stoi(msg.content); }
         catch (...) { limit = 20; }
     }
+    if (limit < 1)   limit = 1;
+    if (limit > 200) limit = 200;
+    /*************core-dump 加固：limit 必须钳制***************/
 
     const std::uint64_t uid    = user_id_;
     const std::uint64_t peer   = msg.to;
     const std::uint64_t before = msg.seq;   // 0 = 最新
+
+    if (!reserveJob()) {                     // P0-4：历史翻页也能被狂发，纳入配额
+        send_error(Db::kBusyError, uid);
+        return;
+    }
 
     auto self = shared_from_this();
     db_.fetchHistory(uid, peer, before, limit,
@@ -321,6 +416,7 @@ void session::do_history(const Message& msg) {
             /*************并发登录/注册优化：DB 回调切回本连接 strand***************/
             boost::asio::post(strand_,
                 [this, self, uid, ok, err, msgs = std::move(msgs)]() {
+            releaseJob();                    // P0-4：strand 内归还配额
             if (closed_) return;
             if (!ok) {
                 send_error(err.empty() ? "history failed" : err, uid);
@@ -358,6 +454,13 @@ void session::do_send_group(const Message& msg) {
         return;
     }
 
+    /*************P0-4：群消息同样受在途配额约束（它的 DB 成本比单聊更高）***************/
+    if (!reserveJob()) {
+        send_error(Db::kBusyError, user_id_);
+        return;
+    }
+    /*************P0-4：群消息同样受在途配额约束***************/
+
     const std::uint64_t sender   = user_id_;           // 只信登录身份
     const std::uint64_t groupId  = msg.to;             // 群聊：to = groupId
     const int           type     = static_cast<int>(msg.type);
@@ -372,6 +475,7 @@ void session::do_send_group(const Message& msg) {
             /*************并发登录/注册优化：DB 回调切回本连接 strand***************/
             boost::asio::post(strand_,
                 [this, self, sender, groupId, type, content, ok, err, sm, memberIds]() {
+            releaseJob();                    // P0-4：strand 内归还配额
             if (closed_) return;
             if (!ok) {
                 send_error(err.empty() ? "group send failed" : err, sender);
@@ -429,15 +533,30 @@ void session::do_history_group(const Message& msg) {
         return;
     }
 
+    /*************core-dump 加固：limit 必须钳制***************/
+    // content 是客户端给的字符串，原来只做 stoi 失败回退，**没有上界**。
+    // 一条 {"type":7,"to":X,"content":"100000000"} 就会让 DB 层拉回一亿行、
+    // 再由 serialize_history 在内存里整段拼成 JSON —— 帧体积远超写预算，
+    // 拼字符串时抛 bad_alloc。bad_alloc 从 strand handler 里逃逸 = 杀掉一个
+    // io 线程（main.cpp 只能记一条 then 退出 70）。所以钳制在这里做，
+    // 而不是指望下游兜。200 与 kLoginOfflineBatch 同档，够正常翻页用。
     int limit = 20;
     if (!msg.content.empty()) {
         try { limit = std::stoi(msg.content); }
         catch (...) { limit = 20; }
     }
+    if (limit < 1)   limit = 1;
+    if (limit > 200) limit = 200;
+    /*************core-dump 加固：limit 必须钳制***************/
 
     const std::uint64_t uid  = user_id_;
     const std::uint64_t gid  = msg.to;      // 群聊：to = groupId
     const std::uint64_t before = msg.seq;
+
+    if (!reserveJob()) {                     // P0-4：与单聊历史一致的配额保护
+        send_error(Db::kBusyError, uid);
+        return;
+    }
 
     auto self = shared_from_this();
     db_.fetchGroupHistory(gid, uid, before, limit,
@@ -445,6 +564,7 @@ void session::do_history_group(const Message& msg) {
                           std::vector<StoredMessage> msgs) {
             boost::asio::post(strand_,
                 [this, self, uid, ok, err, msgs = std::move(msgs)]() {
+            releaseJob();                    // P0-4：strand 内归还配额
             if (closed_) return;
             if (!ok) {
                 send_error(err.empty() ? "history failed" : err, uid);
@@ -461,74 +581,142 @@ void session::do_history_group(const Message& msg) {
 }
 
 // ---------------------------------------------------------------------------
-// /*************群聊功能：登录补推入群事件（143/144）***************/
+// P1-3：登录补推（离线消息 + 好友事件 + 群事件，一次 DB 任务取完）
 // ---------------------------------------------------------------------------
-// 与 push_friend_events 同构，只是数据源换成 group_requests：
-//   1) 拉“我能审批的群的待处理申请” -> 推 GroupRequest(event=pending)；
-//   2) 拉“我发出的、已处理但没通知我的申请” -> 推 GroupRequestResult，并标记已通知。
-void session::push_group_events() {
+// 原来这里有三套各自独立的"取 -> 回调 -> 再取 -> 回调"链路，合计最多 7 个 DB 任务：
+//   push_offline()        fetchOffline(200)
+//   push_friend_events()  fetchPendingIncoming + fetchUnnotifiedResults
+//                         + markResultsNotified
+//   push_group_events()   fetchPendingGroupRequestsForApprover
+//                         + fetchUnnotifiedGroupResults + markGroupResultsNotified
+// 重连风暴时"每个登录 7 个任务"把 SQL 队列长度直接乘 7，这正是压测里
+// 登录之后所有接口一起变慢的原因之一。现在合并成 Db::fetchLoginSync 一个任务：
+//   * 一条连接顺序跑完所有 SELECT（外加必要的标记 UPDATE），只借还一次连接；
+//   * 离线消息单次上限降到 kLoginOfflineBatch，并用 offlineMore 告知客户端继续拉，
+//     避免"100 个用户同时登录 × 200 条"瞬间打满 3Mbps 带宽；
+//   * 无群用户在 SQL 内部直接跳过两条群查询。
+// 推给客户端的顺序保持与原来一致：离线消息 -> 好友申请 -> 好友结果
+//   -> 入群申请 -> 入群结果，老客户端无需任何改动。
+void session::push_login_sync() {
     const std::uint64_t uid = user_id_;
     auto self = shared_from_this();
 
-    db_.fetchPendingGroupRequestsForApprover(uid, 100,
-        [this, self, uid](bool ok, const std::string& err,
-                          std::vector<GroupRequestInfo> reqs) {
+    if (!reserveJob()) {          // P0-4：登录补推本身也占一个配额
+        std::cerr << "[login] skip catch-up, too many outstanding jobs, user="
+                  << uid << std::endl;
+        return;
+    }
+
+    db_.fetchLoginSync(uid, kLoginOfflineBatch,
+        [this, self, uid](bool ok, const std::string& err, Db::LoginSync sync) {
             boost::asio::post(strand_,
-                [this, self, uid, ok, err, reqs = std::move(reqs)]() {
+                [this, self, uid, ok, err, sync = std::move(sync)]() {
+            releaseJob();          // P0-4：配额必须在本连接的 strand 内归还
             if (closed_) return;
             if (!ok) {
-                std::cerr << "[group] fetch pending requests failed: " << err << std::endl;
-            } else {
-                for (const auto& r : reqs) {
-                    Message m;
-                    m.type   = MsgType::GroupRequest;
-                    m.from   = r.requester_id;
-                    m.to     = uid;
-                    m.msg_id = r.id;         // 复用 msg_id 携带 request_id，便于客户端处理
-                    m.ts     = r.created_ts;
-                    m.content = serialize_group_request_event(r, "pending");
-                    send_message(m);
-                }
-                if (!reqs.empty()) {
-                    std::cout << "[group] pushed " << reqs.size()
-                              << " pending request(s) to approver " << uid << std::endl;
-                }
+                std::cerr << "[login] catch-up failed: " << err << std::endl;
+                return;
             }
 
-            // 第 2 步：补推“我发出的申请的处理结果”。
-            db_.fetchUnnotifiedGroupResults(uid, 100,
-                [this, self, uid](bool ok2, const std::string& err2,
-                                  std::vector<GroupRequestInfo> results) {
-                    boost::asio::post(strand_,
-                        [this, self, uid, ok2, err2, results = std::move(results)]() {
-                    if (closed_) return;
-                    if (!ok2) {
-                        std::cerr << "[group] fetch results failed: " << err2 << std::endl;
-                        return;
-                    }
-                    for (const auto& r : results) {
-                        Message m;
-                        m.type    = MsgType::GroupRequestResult;
-                        m.from    = r.handler_id;
-                        m.to      = uid;
-                        m.msg_id  = r.id;
-                        m.ts      = r.created_ts;
-                        m.content = serialize_group_request_result_event(
-                                        r, r.status == 1 ? "accepted" : "rejected");
-                        send_message(m);
-                    }
-                    if (!results.empty()) {
-                        std::cout << "[group] pushed " << results.size()
-                                  << " request result(s) to user " << uid << std::endl;
-                        db_.markGroupResultsNotified(uid,
-                            [](bool ok3, const std::string& err3) {
-                                if (!ok3)
-                                    std::cerr << "[group] mark notified failed: "
-                                              << err3 << std::endl;
-                            });
-                    }
-                        });
+            // ---- 1) 离线消息 ----
+            for (const auto& sm : sync.offline) {
+                Message m;
+                m.type            = sm.type;
+                m.from            = sm.from;
+                /*************群聊功能：群消息 to 填 groupId，单聊维持 to=uid***************/
+                m.to              = sm.is_group ? sm.to : uid;
+                m.is_group        = sm.is_group;
+                /*************群聊功能：群消息 to 填 groupId***************/
+                m.msg_id          = sm.msg_id;
+                m.conversation_id = sm.conversation_id;
+                m.seq             = sm.seq;
+                m.ts              = sm.ts;
+                m.content         = sm.content;
+                send_message(m);
+            }
+            if (!sync.offline.empty()) {
+                std::cout << "[offline] pushed " << sync.offline.size()
+                          << " message(s) to user " << uid
+                          << (sync.offlineMore ? " (more pending)" : "") << std::endl;
+            }
+
+            // ---- 2) 待我处理的好友申请 ----
+            for (const auto& r : sync.pendingRequests) {
+                Message m;
+                m.type    = MsgType::FriendRequest;
+                m.from    = r.requester_id;
+                m.to      = uid;
+                m.msg_id  = r.id;          // 复用 msg_id 携带 request_id，便于客户端处理
+                m.ts      = r.created_ts;
+                m.content = serialize_friend_request_event(r, "pending");
+                send_message(m);
+            }
+
+            // ---- 3) 我发出的申请、现在才通知到的处理结果 ----
+            for (const auto& r : sync.requestResults) {
+                Message m;
+                m.type    = MsgType::FriendRequestResult;
+                m.from    = r.target_id;
+                m.to      = uid;
+                m.msg_id  = r.id;
+                m.ts      = r.created_ts;
+                m.content = serialize_friend_result_event(
+                                r, r.status == 1 ? "accepted" : "rejected");
+                send_message(m);
+            }
+
+            // ---- 4) 待我审批的入群申请 ----
+            for (const auto& r : sync.pendingGroupRequests) {
+                Message m;
+                m.type    = MsgType::GroupRequest;
+                m.from    = r.requester_id;
+                m.to      = uid;
+                m.msg_id  = r.id;
+                m.ts      = r.created_ts;
+                m.content = serialize_group_request_event(r, "pending");
+                send_message(m);
+            }
+
+            // ---- 5) 我发出的入群申请的处理结果 ----
+            for (const auto& r : sync.groupResults) {
+                Message m;
+                m.type    = MsgType::GroupRequestResult;
+                m.from    = r.handler_id;
+                m.to      = uid;
+                m.msg_id  = r.id;
+                m.ts      = r.created_ts;
+                m.content = serialize_group_request_result_event(
+                                r, r.status == 1 ? "accepted" : "rejected");
+                send_message(m);
+            }
+
+            /*************P1-3：标记"已通知"仍在推送之后***************/
+            // 与合并前的行为逐字一致：只有列表非空才发这条 UPDATE。
+            // 顺序很重要 —— 先推后标记，进程在中途崩溃时最坏是重复推送，
+            // 反过来（先标记后推送）就会真的丢事件。
+            if (!sync.requestResults.empty()) {
+                db_.markResultsNotified(uid, [](bool ok3, const std::string& err3) {
+                    if (!ok3) std::cerr << "[friend] mark notified failed: "
+                                         << err3 << std::endl;
                 });
+            }
+            if (!sync.groupResults.empty()) {
+                db_.markGroupResultsNotified(uid, [](bool ok3, const std::string& err3) {
+                    if (!ok3) std::cerr << "[group] mark notified failed: "
+                                        << err3 << std::endl;
+                });
+            }
+            /*************P1-3：标记"已通知"仍在推送之后***************/
+
+            const std::size_t events = sync.pendingRequests.size() +
+                                       sync.requestResults.size() +
+                                       sync.pendingGroupRequests.size() +
+                                       sync.groupResults.size();
+            if (events) {
+                std::cout << "[login] catch-up user=" << uid
+                          << " offline=" << sync.offline.size()
+                          << " events=" << events << std::endl;
+            }
                 });
         });
 }
@@ -546,143 +734,23 @@ void session::do_ack(const Message& msg) {
     // content = "delivered" 表示只确认投递；否则同时推进已读游标。
     const bool markRead = (msg.content != "delivered");
 
+    /*************P0-4：ACK 也计入在途配额***************/
+    // 超限时静默丢弃即可：ACK 是幂等的"游标推进"，客户端不需要错误提示，
+    // 下一条 ACK 会带着更大的 seq 把这段补回来。
+    if (!reserveJob()) return;
+    /*************P0-4：ACK 也计入在途配额***************/
+
     auto self = shared_from_this();
     db_.updateReceipt(uid, conv, seq, markRead ? seq : 0,
         [this, self](bool ok, const std::string& err) {
-            if (!ok) std::cerr << "[ack] " << err << std::endl;
+            // 归还配额必须在本连接的 strand 内做（outstanding_ 非原子）。
+            boost::asio::post(strand_, [this, self, ok, err]() {
+                releaseJob();
+                if (!ok) std::cerr << "[ack] " << err << std::endl;
+            });
         });
 }
 
-// ---------------------------------------------------------------------------
-// 登录后补推离线消息（客户端收到后应回 Ack，服务端再删除队列）
-// ---------------------------------------------------------------------------
-void session::push_offline() {
-    const std::uint64_t uid = user_id_;
-    auto self = shared_from_this();
-
-    db_.fetchOffline(uid, 200,
-        [this, self, uid](bool ok, const std::string& err,
-                          std::vector<StoredMessage> msgs) {
-            /*************并发登录/注册优化：DB 回调切回本连接 strand***************/
-            boost::asio::post(strand_,
-                [this, self, uid, ok, err, msgs = std::move(msgs)]() {
-            if (closed_) return;
-            if (!ok) {
-                std::cerr << "[offline] " << err << std::endl;
-                return;
-            }
-
-            for (const auto& sm : msgs) {
-                Message m;
-                m.type            = sm.type;
-                m.from            = sm.from;
-                /*************群聊功能：群消息 to 填 groupId，单聊维持 to=uid***************/
-                m.to              = sm.is_group ? sm.to : uid;
-                m.is_group        = sm.is_group;
-                /*************群聊功能：群消息 to 填 groupId***************/
-                m.msg_id          = sm.msg_id;
-                m.conversation_id = sm.conversation_id;
-                m.seq             = sm.seq;
-                m.ts              = sm.ts;
-                m.content         = sm.content;
-                send_message(m);
-            }
-
-            if (!msgs.empty()) {
-                std::cout << "[offline] pushed " << msgs.size()
-                          << " message(s) to user " << uid << std::endl;
-            }
-                });
-            /*************并发登录/注册优化：DB 回调切回本连接 strand***************/
-        });
-}
-
-// ---------------------------------------------------------------------------
-// 登录后补推好友事件
-// ---------------------------------------------------------------------------
-// 顺序：
-//   1) 拉取“别人发给我的待处理申请”，逐条推 FriendRequest(event=pending)；
-//   2) 拉取“我发出的申请里已通过/已拒绝但还没通知我的”，推 FriendRequestResult；
-//   3) 把第 2 步的结果标记为已通知，避免下次登录重复推送。
-//
-// 为什么用两级回调而不是一次性 join？
-//   两类数据来自同一张表的两种查询条件，分开查语义更清晰，也方便分别限流。
-//   DB 回调可能在任意 io 线程执行，因此每个回调都 post 回本连接的 strand，
-//   再调用 send_message()，保证写队列只被一个线程访问。
-// ---------------------------------------------------------------------------
-void session::push_friend_events() {
-    const std::uint64_t uid = user_id_;
-    auto self = shared_from_this();
-
-    db_.fetchPendingIncoming(uid, 100,
-        [this, self, uid](bool ok, const std::string& err,
-                          std::vector<FriendRequestInfo> reqs) {
-            /*************并发登录/注册优化：DB 回调切回本连接 strand***************/
-            boost::asio::post(strand_,
-                [this, self, uid, ok, err, reqs = std::move(reqs)]() {
-            if (closed_) return;
-            if (!ok) {
-                std::cerr << "[friend] fetch pending failed: " << err << std::endl;
-            } else {
-                for (const auto& r : reqs) {
-                    Message m;
-                    m.type    = MsgType::FriendRequest;
-                    m.from    = r.requester_id;
-                    m.to      = uid;
-                    m.msg_id  = r.id;          // 复用 msg_id 携带 request_id，便于客户端处理
-                    m.ts      = r.created_ts;
-                    m.content = serialize_friend_request_event(r, "pending");
-                    send_message(m);
-                }
-                if (!reqs.empty()) {
-                    std::cout << "[friend] pushed " << reqs.size()
-                              << " pending request(s) to user " << uid << std::endl;
-                }
-            }
-
-            // 第 2 步：补推“已处理、未通知”的结果。
-            db_.fetchUnnotifiedResults(uid, 100,
-                [this, self, uid](bool ok2, const std::string& err2,
-                                  std::vector<FriendRequestInfo> results) {
-                    boost::asio::post(strand_,
-                        [this, self, uid, ok2, err2, results = std::move(results)]() {
-                    if (closed_) return;
-                    if (!ok2) {
-                        std::cerr << "[friend] fetch results failed: " << err2 << std::endl;
-                        return;
-                    }
-
-                    for (const auto& r : results) {
-                        Message m;
-                        m.type    = MsgType::FriendRequestResult;
-                        m.from    = r.target_id;
-                        m.to      = uid;
-                        m.msg_id  = r.id;
-                        m.ts      = r.created_ts;
-                        m.content = serialize_friend_result_event(
-                                        r, r.status == 1 ? "accepted" : "rejected");
-                        send_message(m);
-                    }
-
-                    if (!results.empty()) {
-                        std::cout << "[friend] pushed " << results.size()
-                                  << " request result(s) to user " << uid << std::endl;
-                        // 标记已通知：即使本次连接随后断开，也不会重复推送。
-                        db_.markResultsNotified(uid,
-                            [](bool ok3, const std::string& err3) {
-                                if (!ok3) {
-                                    std::cerr << "[friend] mark notified failed: "
-                                              << err3 << std::endl;
-                                }
-                            });
-                    }
-                        });
-                    /*************并发登录/注册优化：DB 回调切回本连接 strand***************/
-                });
-                });
-            /*************并发登录/注册优化：DB 回调切回本连接 strand***************/
-        });
-}
 
 // ---------------------------------------------------------------------------
 // 投递入口
@@ -709,32 +777,118 @@ void session::send_error(const std::string& text, std::uint64_t to) {
 }
 
 // ---------------------------------------------------------------------------
-// 发送：序列化 -> 组帧 -> 入队 -> 必要时启动写
+// 发送：序列化 -> 组帧 -> 入队（带高水位）-> 必要时启动写
 // ---------------------------------------------------------------------------
 void session::send_message(const Message& msg) {
+    /*************core-dump 修复 ④：关闭后不再记账***************/
+    // do_close() 已经把这条连接的字节数从进程级预算里结清了。此后再入队
+    // 就是"只加不还"（写在关闭的 socket 上必然以 ec 结束，而 ec 分支不还数），
+    // 预算会被连接 churn 单向推高，最后随机踢掉好连接。
+    if (closed_) return;
+
     std::string payload = serialize_message(msg);
 
     std::string framed(frame::HEADER_LEN + payload.size(), '\0');
     frame::encode(static_cast<std::uint32_t>(payload.size()), framed.data());
     std::memcpy(framed.data() + frame::HEADER_LEN, payload.data(), payload.size());
 
-    bool idle = write_queue_.empty();
+    /*************P0-4：写队列两级预算***************/
+    // 对端读得慢（弱网、3Mbps 链路、客户端卡在 UI 线程）时，帧会一直堆在这里。
+    // 无界队列在 2GB 机器上就是 OOM 路径，而消息本身已经落库，
+    // 所以"踢掉这一条连接"比"拖死整个进程"好：客户端重连后会走
+    // push_login_sync() 的游标补推 / 历史接口把缺的部分对齐回来，不丢消息。
+    //
+    // 两级一起判：单连接 512KB + 进程级 64MB。只看单连接上限的话，
+    // 500 条慢连接各堆 1MB 也能吃掉 500MB，而那时**每条连接都没越线**。
+    //
+    // 这里的"先占额度、失败再退回"在并发下可能一瞬间多放过一帧：
+    // 预算本来就是软阈值（保护量级，不是精确记账），为它加全局锁会把
+    // 所有连接的发送路径串起来，不值得。
+    const std::size_t need        = framed.size();
+    const std::size_t connPending = write_queue_bytes_ + need;
+    const std::size_t globalWas   = g_writeQueueTotalBytes.fetch_add(need);
+
+    if (connPending > kMaxWriteBytes ||
+        globalWas + need > kGlobalWriteBudgetBytes) {
+        g_writeQueueTotalBytes.fetch_sub(need);        // 退回占用的额度
+        logFatal("[write] queue over budget, kick user=" + std::to_string(user_id_) +
+                 " conn=" + std::to_string(connPending) + "B/cap=" +
+                 std::to_string(kMaxWriteBytes) + "B, global=" +
+                 std::to_string(globalWas + need) + "B/cap=" +
+                 std::to_string(kGlobalWriteBudgetBytes) + "B");
+        close();
+        return;
+    }
+    /*************P0-4：写队列两级预算***************/
+
+    write_queue_bytes_ += need;
+    const bool idle = write_queue_.empty();
     write_queue_.push_back(std::move(framed));
     if (idle) do_write();
 }
 
 // ---------------------------------------------------------------------------
 // 写队列串行化
+// /*************P1-8：一次 async_write 合并多帧***************/
+// 登录补推、好友事件风暴这类场景会在很短时间内往同一条连接塞几十上百个小帧。
+// 一帧一次 async_write = 一帧一次系统调用 + 一帧一个独立报文，
+// 再叠上 Nagle/延迟 ACK 的交互（P1-5 已关闭 Nagle），CPU 和长尾都很难看。
+// 现在一次最多合并 kMaxWriteFrames 帧、kMaxWriteBatchBytes 字节。
+//
+// /*************core-dump 修复 ②：本批字节必须有自己的副本***************/
+// 上一版把 write_queue_ 里各个 std::string 的 const_buffer 直接交给 async_write，
+// 并在注释里断言"deque 尾追加不会让已有元素的引用失效，所以安全"。
+// 前半句是对的，结论是错的：**追加**确实不动已有元素，但这一版同时给
+// do_close() 加了 `write_queue_.clear()`（归还进程级写预算必须清队列）。
+// 于是任何一次"写入还没完成就关闭连接"（空闲踢人、对端断开、预算越线、
+// 重复登录踢旧连接）都会把 async_write 正在引用的那批 std::string **释放掉**，
+// 而 op 对象仍持有指向它们的指针 —— 标准的 use-after-free，
+// 只在"多帧成批 + 同刻断线"时出现，正是压测阶段4（100 条连接同时收
+// FriendListChanged、同时有连接在关）的形状。
+// 现在：本批内容拷进一个由本次写操作独占持有的连续缓冲区（shared_ptr 进回调），
+// write_queue_ 之后怎么 clear/pop 都碰不到内核正在读的那块内存。
+// 代价是一次 ≤64KB 的 memcpy，换来的是"写路径不再有悬垂指针"这一整类故障。
 // ---------------------------------------------------------------------------
 void session::do_write() {
+    if (closed_ || writing_) return;      // 修复①：绝不允许第二个写在途
+
+    std::size_t bytes  = 0;
+    std::size_t frames = 0;
+    for (const auto& f : write_queue_) {
+        if (frames >= static_cast<std::size_t>(kMaxWriteFrames) ||
+            (bytes > 0 && bytes + f.size() > kMaxWriteBatchBytes)) {
+            break;
+        }
+        bytes += f.size();
+        ++frames;
+    }
+    if (frames == 0) return;
+
+    auto batch = std::make_shared<std::string>();
+    batch->reserve(bytes);
+    for (std::size_t i = 0; i < frames; ++i) batch->append(write_queue_[i]);
+
+    writing_ = true;
     auto self = shared_from_this();
-
-    boost::asio::async_write(socket_, boost::asio::buffer(write_queue_.front()),
+    boost::asio::async_write(socket_, boost::asio::buffer(*batch),
         boost::asio::bind_executor(strand_,
-        [this, self](boost::system::error_code ec, std::size_t /*bytes_written*/) {
+        [this, self, batch, frames](boost::system::error_code ec, std::size_t /*bytes_written*/) {
+            writing_ = false;
             if (ec) { close(); return; }
+            // 连接已关：write_queue_ 与两份字节计数都由 do_close() 结清了，
+            // 这里绝不能再 pop/扣减（那是第二次扣，会把全局预算扣成天文数字）。
+            if (closed_) return;
 
-            write_queue_.pop_front();
+            // 出队：本地与全局两份字节数都要还回去。
+            // 出错分支**故意不**在这里还：那时由 do_close() 一次性清干净，
+            // 两条路径各还一次，才不会重复扣减全局预算。
+            std::size_t freed = 0;
+            for (std::size_t i = 0; i < frames && !write_queue_.empty(); ++i) {
+                freed += write_queue_.front().size();
+                write_queue_.pop_front();
+            }
+            write_queue_bytes_ -= freed;
+            g_writeQueueTotalBytes.fetch_sub(freed);
             if (!write_queue_.empty()) do_write();
         }));
 }
@@ -763,12 +917,35 @@ void session::do_close() {
         // ignore
     }
 
+    /*************core-dump 修复 ③：注销要认"是不是我"***************/
+    // 原来是无条件 manager_.remove(user_id_)。重复登录时在线表里这一格
+    // 已经被新连接占用（do_login 先 add 再踢旧），旧连接随后走到这里就会把
+    // **新连接**的登记删掉：新连接还活着、socket 还好用，但已经不在表里，
+    // 于是所有发给它的路由都判成"对方离线"，改走离线落库，
+    // 客户端表现为"我在线却收不到消息"。必须带身份比对。
     if (logged_in_) {
-        manager_.remove(user_id_);
+        manager_.remove(user_id_, this);
         logged_in_ = false;
         std::cout << "[logout] user " << user_id_
                   << ", online=" << manager_.size() << std::endl;
     }
+
+    /*************P0-4：归还这条连接还压在写队列里的字节***************/
+    // 必须有这一步。写队列的进程级预算是**全局计数**，而出队只发生在
+    // "写完成"这条路径上；连接被踢 / 对端断开 / 中途出错时，队列里那些
+    // 永远等不到写完成的帧如果不在这里释放，预算就会随连接 churn 单向上涨，
+    // 最后把好端端的连接也一起踢掉——一个典型的记账泄漏。
+    // 与 do_write 的分工很清楚：写成功 → 由写回调按帧归还；
+    // 其余一切路径 → 由这里一次性清空。两条路径不会同时命中同一批字节
+    // （写回调遇到 ec / closed_ 时不 pop、不扣减，直接返回）。
+    // 这里的 clear() 之所以安全：do_write 交给 async_write 的是**本批自己的副本**，
+    // 不再指向 deque 里的这些 string（见 do_write 的"core-dump 修复 ②"）。
+    if (write_queue_bytes_ > 0) {
+        g_writeQueueTotalBytes.fetch_sub(write_queue_bytes_);
+        write_queue_bytes_ = 0;
+    }
+    write_queue_.clear();
+    /*************P0-4：归还这条连接还压在写队列里的字节***************/
 
     socket_.shutdown(boost::asio::ip::tcp::socket::shutdown_both, ignored);
     socket_.close(ignored);

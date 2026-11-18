@@ -1,4 +1,5 @@
 
+
 OPENSSL_ROOT_DIR=""
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -6,11 +7,87 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 DEB_PACKAGE_NAME="cxim"
 DEB_PACKAGE_VERSION="1.0.0"
 DEB_PACKAGE_ARCH=""
-DB_POOL_SIZE=50
-DB_WORKER_COUNT=8
+
+# ============================================================================
+# 压测/取证档（DEV）与生产档必须各自成套，不要"半开门"
+# ----------------------------------------------------------------------------
+# 之前这里只放开 AUTH_RATE_*，但准入还有另外三道闸：
+#   HTTP_MAX_INFLIGHT（在途响应 + SQL 队列深度）、DB_QUEUE_LIMIT、TCP_MAX_SESSIONS。
+# 只开一道的结果是：认证不再被 429，但请求仍然会在准入层被 503/关连接，
+# 于是测到的既不是"服务端真实容量"，也不是"保护生效下的用户体验"，
+# 而是一份两种闸门混合的数据 —— 这种数据没法和 readme §11.8 的任何预测对照。
+#
+# 因此 DEV 档把**所有**闸门一起抬到高于真实容量，让压测直接撞在服务端资源上；
+# 同时打开日志，因为 DEV 档常常是用来定位"进程为什么没了"的，
+# 而 QUIET_LOG=1 会把普通 cerr 流水一起吞掉（logFatal 那一路永不被静音）。
+#
+# ⚠️ DEV 档不是生产配置：它关掉了过载保护。正式部署请置为 False。
+#    现在支持外部覆盖：OPEN_STRESS_TEST_DEV_MODE=False bash build.sh
+# ============================================================================
+OPEN_STRESS_TEST_DEV_MODE="${OPEN_STRESS_TEST_DEV_MODE:-True}"
+
+if [[ "${OPEN_STRESS_TEST_DEV_MODE}" = "True" ]]; then
+    # —— 认证限流：抬到远高于 2 核容量（~28 哈希/s @cost=10）——
+    AUTH_RATE_BURST=10000
+    AUTH_RATE_PER_SEC=10000
+    AUTH_IP_PER_SEC=10000
+    # —— 其余准入闸门一起抬，否则数据仍是"混合闸门"——
+    HTTP_MAX_INFLIGHT=20000
+    DB_QUEUE_LIMIT=200000
+    TCP_MAX_SESSIONS=20000
+    TCP_MAX_OUTSTANDING=10000
+    # —— 取证档必须留日志（见上面说明）——
+    QUIET_LOG=0
+fi
+
+# ============================================================================
+# 运行期参数（写进 CXIM.service，见 generate_service_file）
+# ----------------------------------------------------------------------------
+# 性能优化 P0-1 / P0-2 / P0-4 / P0-7：
+#   目标机是 2 核 / 2GB / 3Mbps，且 mariadbd 与应用同机。线程数一律按"核数"收敛：
+#   超订（例如 8 个 worker 抢 2 个核）不会提高吞吐，只会让所有接口——包括完全不
+#   碰 bcrypt 的发消息/查好友——一起变慢，因为同机的 mariadbd 抢不到 CPU。
+#
+#   DB_WORKER_COUNT  SQL worker 线程数（默认给 4：2 核机器上留算力给 mariadbd）
+#   DB_POOL_SIZE     连接池上限，与 SQL worker 一致即可（并发连接数不会超过 worker）
+#   DB_HASH_WORKER_COUNT  bcrypt worker 线程数 = 核数
+#   BCRYPT_COST      bcrypt 成本因子（12→10：单次哈希 ~138ms → ~35ms）
+#   DB_QUEUE_LIMIT   任务队列深度上限（P0-4 背压）
+#   HTTP_MAX_INFLIGHT / HTTP_BODY_MAX / AUTH_RATE_* / TCP_MAX_*  过载保护阈值
+#   OFFLINE_CURSOR   1=用 conversation_members.last_delivered_seq 游标补推离线消息，
+#                    不再写 offline_messages 行级队列（P1-4，多端投递语义见 readme.md）
+#   RELATION_CACHE_TTL  发消息前置关系校验的缓存毫秒数（P1-1，0=关闭）
+#
+# 需要覆盖时：在环境里先 export 再执行本脚本（用 ${VAR:-default} 允许外部传入）。
+# ============================================================================
+DB_WORKER_COUNT="${DB_WORKER_COUNT:-4}"
+DB_POOL_SIZE="${DB_POOL_SIZE:-$DB_WORKER_COUNT}"
+DB_HASH_WORKER_COUNT="${DB_HASH_WORKER_COUNT:-2}"
+BCRYPT_COST="${BCRYPT_COST:-10}"
+DB_QUEUE_LIMIT="${DB_QUEUE_LIMIT:-2000}"
+OFFLINE_CURSOR="${OFFLINE_CURSOR:-0}"
+RELATION_CACHE_TTL="${RELATION_CACHE_TTL:-10000}"
+HTTP_MAX_INFLIGHT="${HTTP_MAX_INFLIGHT:-512}"
+HTTP_BODY_MAX="${HTTP_BODY_MAX:-65536}"
+AUTH_RATE_BURST="${AUTH_RATE_BURST:-40}"
+AUTH_RATE_PER_SEC="${AUTH_RATE_PER_SEC:-20}"
+# 每 IP 阈值刻意**宽于**全局阈值：全局桶是"机器容量闸门"，每 IP 桶是"反滥用"。
+# 反过来配（例如每 IP 5/s）会让每 IP 桶变成实际限制——办公室/CGNAT 共享出口 IP 的
+# 真实用户会互相拖死，单机压测也会在服务器空闲时被大面积 429。
+# 若服务将来挂在 nginx/CLB 后面，需要改成"只信任可信代理的 X-Forwarded-For"，
+# 否则客户端自己塞一个 XFF 就能绕过每 IP 限制（这是安全配置，不能顺手加）。
+AUTH_IP_PER_SEC="${AUTH_IP_PER_SEC:-30}"
+TCP_MAX_SESSIONS="${TCP_MAX_SESSIONS:-2000}"
+TCP_MAX_OUTSTANDING="${TCP_MAX_OUTSTANDING:-64}"
+IDLE_TIMEOUT_SEC="${IDLE_TIMEOUT_SEC:-60}"
 TCP_PORT=10001
 HTTP_PORT=10002
-QUIET_LOG=1
+# 用 :- 而不是直接赋值：DEV 档在上面已经把 QUIET_LOG 置 0（取证必须留日志），
+# 这里无条件写 1 会把那一档吃掉，表现为"日志开关改了没反应"。
+QUIET_LOG="${QUIET_LOG:-1}"
+
+# 构建类型（P0-5）：默认 Release，可 export CMAKE_BUILD_TYPE=RelWithDebInfo 覆盖。
+BUILD_TYPE="${CMAKE_BUILD_TYPE:-Release}"
 # 生成 systemd 用户级服务文件到项目当前目录。
 # 安装后 CXIM.service 位于 /opt/CXIM/CXIM.service，由 postinst 拷贝到
 # 目标用户的 ~/.config/systemd/user/ 下。
@@ -31,8 +108,23 @@ Environment=TCP_PORT=${TCP_PORT}
 Environment=HTTP_PORT=${HTTP_PORT}
 Environment=DB_POOL_SIZE=${DB_POOL_SIZE}
 Environment=DB_WORKER_COUNT=${DB_WORKER_COUNT}
+Environment=DB_HASH_WORKER_COUNT=${DB_HASH_WORKER_COUNT}
+Environment=BCRYPT_COST=${BCRYPT_COST}
+Environment=DB_QUEUE_LIMIT=${DB_QUEUE_LIMIT}
+Environment=OFFLINE_CURSOR=${OFFLINE_CURSOR}
+Environment=RELATION_CACHE_TTL=${RELATION_CACHE_TTL}
+Environment=HTTP_MAX_INFLIGHT=${HTTP_MAX_INFLIGHT}
+Environment=HTTP_BODY_MAX=${HTTP_BODY_MAX}
+Environment=AUTH_RATE_BURST=${AUTH_RATE_BURST}
+Environment=AUTH_RATE_PER_SEC=${AUTH_RATE_PER_SEC}
+Environment=AUTH_IP_PER_SEC=${AUTH_IP_PER_SEC}
+Environment=TCP_MAX_SESSIONS=${TCP_MAX_SESSIONS}
+Environment=TCP_MAX_OUTSTANDING=${TCP_MAX_OUTSTANDING}
+Environment=IDLE_TIMEOUT_SEC=${IDLE_TIMEOUT_SEC}
 Environment=QUIET_LOG=${QUIET_LOG}
-Restart=on-failure
+LimitNOFILE=${LIMIT_NOFILE:-65535}
+LimitCORE=${LIMIT_CORE:-infinity}
+Restart=always
 RestartSec=3
 StandardOutput=journal
 StandardError=journal
@@ -237,8 +329,12 @@ elif [[ "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* || "$(uname -s)" == CY
 fi
 
 # 构造 cmake 参数
+# P0-5：显式传 CMAKE_BUILD_TYPE。
+#   * Linux（Unix Makefiles，单配置）：不传就得到空的 CXX_FLAGS = -O0；
+#   * Windows（Visual Studio，多配置）：这里传的值不生效，靠下面 --config 决定。
 CMAKE_ARGS=(
     -S . -B build
+    -DCMAKE_BUILD_TYPE="${BUILD_TYPE}"
     -DBoost_INCLUDE_DIRS="${Boost_INCLUDE_DIRS}"
     -DBOOST_ROOT="${BOOST_ROOT}"
     -DMariaDB_include="${MariaDB_include}"
@@ -253,9 +349,12 @@ fi
 cmake "${CMAKE_ARGS[@]}"
 
 if [[ "$(uname -s)" == Linux* ]]; then
+    # 单配置生成器：上面已传 -DCMAKE_BUILD_TYPE=${BUILD_TYPE}
     cmake --build build -j2
 elif [[ "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* || "$(uname -s)" == CYGWIN* ]]; then
-    cmake --build build -j
+    # 多配置生成器：不写 --config 默认编 Debug(/Od)，压测数据会被客户端自身拖慢。
+    # 产物在 build/bin/${BUILD_TYPE}/，用它跑 stress 才与服务端同级。
+    cmake --build build --config "${BUILD_TYPE}" -j
 fi
 # Linux 下编译完成后自动生成服务文件并打包 .deb
 if [[ "$(uname -s)" == Linux* ]]; then

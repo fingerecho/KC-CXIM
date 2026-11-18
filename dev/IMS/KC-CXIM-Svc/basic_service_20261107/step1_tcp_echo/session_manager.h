@@ -30,7 +30,11 @@ public:
     // 注册登录。若该 userId 已在线，返回旧连接（调用方在锁外关掉它，避免死锁）。
     SessionPtr add(UserId uid, const SessionPtr& s);
     // 注销（连接断开时调用）。
-    void       remove(UserId uid);
+    // 带 owner：**只有当这一格登记的确实是自己时才删**。
+    // 重复登录的顺序是"新连接 add 覆盖 → 旧连接 close"，旧连接若无条件按 uid 删，
+    // 删掉的是新连接的登记：它还活着却不再可路由，别人发给它的消息全被判成离线。
+    // owner 传 nullptr 表示"无条件删"（仅用于清理/测试）。
+    void       remove(UserId uid, const session* owner = nullptr);
     // 按 userId 查连接；不在线或连接已销毁则返回 nullptr。
     SessionPtr find(UserId uid) const;
     // 当前表里登记的用户数。

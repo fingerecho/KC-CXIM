@@ -21,6 +21,18 @@ add_executable(cxim-server
 # 把当前目录加入 include 路径，便于 #include "frame.h" 这类同目录头文件。
 target_include_directories(cxim-server PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
+# /*************core-dump 修复 ⑧：Release 也要留符号与帧指针***************/
+# 只加 -g / -fno-omit-frame-pointer，**不动优化级别**（CMAKE_BUILD_TYPE 仍是
+# Release，-O3 照旧，压测数据不受影响，见 readme §11.6 第 1 条）。
+# 为什么必须加：core 与 backtrace 里只有地址时，等于没有现场。
+#   * -g                        → gdb bt / addr2line 能出函数名与行号
+#   * -fno-omit-frame-pointer   → 即使 -O3，栈也能一路走回去
+# 体积代价：可执行文件变大几 MB，运行期内存几乎不变（调试段不进 RSS）。
+# 需要纯 Release 时：-DCXIM_NO_DEBUG_INFO=ON。
+if(NOT MSVC AND NOT CXIM_NO_DEBUG_INFO)
+    target_compile_options(cxim-server PRIVATE -g -fno-omit-frame-pointer)
+endif()
+
 # 加入 MariaDB C++ Connector 头文件目录（由 build_step.sh 通过 -DMariaDB_include 传入）。
 target_include_directories(cxim-server PRIVATE ${MariaDB_include})
 

@@ -13,7 +13,7 @@
 // 用法：
 //   test_stress_03 --host H [--friends 100]
 //                  [--http-port 8080] [--tcp-port 8888]
-//                  [--hb-interval 5] [--timeout 120] [--help]
+//                  [--hb-interval 30] [--timeout 120] [--help]
 //
 // 输出：
 //   - 每个阶段的成功数量；
@@ -41,6 +41,7 @@
 #include <utility>
 #include <vector>
 #include <algorithm>
+#include <cctype>   // std::tolower：解析 Retry-After 头
 #include <cmath>
 
 #ifndef _WIN32
@@ -68,7 +69,9 @@ struct Config {
     unsigned short httpPort = 8080;
     unsigned short tcpPort = 8888;
     int friends = 100;
-    int hbIntervalSec = 5;
+    // P0-4：心跳从 5s 放宽到 30s。服务端 IDLE_TIMEOUT_SEC 默认 60，30s 留一倍余量，
+    // 却把长连接的心跳帧率降到原来的 1/6（带宽、io 线程唤醒、定时器数量都受益）。
+    int hbIntervalSec = 30;
     int timeoutSec = 120;
 };
 
@@ -112,9 +115,15 @@ private:
     bool closed_ = false;
 };
 
-struct HttpResponse { int status = 0; std::string body; };
+struct HttpResponse {
+    int status = 0;
+    std::string body;
+    int retryAfter = 0;   // 429/503 时服务端建议的等待秒数（P0-4）
+};
 
-HttpResponse http_call(const std::string& host, unsigned short port,
+// 单次请求：一个连接、一个请求、读完即关（保留 Connection: close，
+// 这样才能测出"服务端 keep-alive 支持"之外那部分真实开销）。
+HttpResponse http_call_once(const std::string& host, unsigned short port,
                        const std::string& method, const std::string& path,
                        const std::string& token, const std::string& body) {
     boost::asio::io_context io;
@@ -148,8 +157,42 @@ HttpResponse http_call(const std::string& host, unsigned short port,
     if (firstSpace != std::string::npos) {
         try { out.status = std::stoi(raw.substr(firstSpace + 1, 3)); } catch (...) {}
     }
+
+    // 解析 Retry-After（大小写不敏感；服务端用标准拼写 "Retry-After"，
+    // 但 HTTP 头字段名本来就大小写不敏感，不能依赖它）。
+    {
+        std::string lower;
+        lower.reserve(headerEnd);
+        for (std::size_t i = 0; i < headerEnd; ++i)
+            lower.push_back(static_cast<char>(
+                std::tolower(static_cast<unsigned char>(raw[i]))));
+        const std::size_t p = lower.find("retry-after:");
+        if (p != std::string::npos) {
+            try { out.retryAfter = std::stoi(raw.substr(p + 12, 6)); } catch (...) {}
+        }
+    }
     return out;
 }
+
+// /*************P0-4：429/503 是"稍后再试"，不是业务失败***************/
+// 服务端加了认证限流与过载拒绝之后，如果客户端把 429/503 当成失败，
+// 就会得出"服务端报错率 100%"的错误结论——而服务端其实是在正确地保护自己。
+// 所以这里按 Retry-After（缺省 1s）退避重试，最多 attempts 次。
+// 注意：调用点的延迟采样包含这些等待时间，这是**对的**——
+// 客户端真实感受到的延迟就该把退避算进去。
+HttpResponse http_call(const std::string& host, unsigned short port,
+                       const std::string& method, const std::string& path,
+                       const std::string& token, const std::string& body,
+                       int attempts = 4) {
+    for (int a = 1; ; ++a) {
+        HttpResponse r = http_call_once(host, port, method, path, token, body);
+        if (r.status != 429 && r.status != 503) return r;
+        if (a >= attempts) return r;      // 让上层按 HTTP 状态码报错，但已尽力退避
+        const int waitSec = r.retryAfter > 0 ? std::min(r.retryAfter, 5) : 1;
+        sleep_ms(waitSec * 1000 + (a * 137) % 400);   // 固定抖动，避免所有线程同一时刻重试
+    }
+}
+/*************P0-4：429/503 是"稍后再试"，不是业务失败***************/
 
 rapidjson::Document parse_json(const std::string& text) {
     rapidjson::Document doc;
@@ -582,7 +625,7 @@ void print_usage(const char* prog) {
               << "  --http-port PORT   HTTP 端口（默认 8080）\n"
               << "  --tcp-port PORT    TCP 端口（默认 8888）\n"
               << "  --friends N        好友数量（默认 100）\n"
-              << "  --hb-interval SEC  心跳间隔秒（默认 5）\n"
+              << "  --hb-interval SEC  心跳间隔秒（默认 30，需小于服务端 IDLE_TIMEOUT_SEC）\n"
               << "  --timeout SEC      单阶段超时秒（默认 120）\n"
               << "  --help             帮助\n";
 }
