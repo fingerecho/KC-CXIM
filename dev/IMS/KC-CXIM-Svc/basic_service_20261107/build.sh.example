@@ -366,6 +366,11 @@ if [[ -n "${OPENSSL_ROOT_DIR}" ]]; then
     CMAKE_ARGS+=(-DOPENSSL_ROOT_DIR="${OPENSSL_ROOT_DIR}")
 fi
 
+# 只有BUILD_TYPE为Release时，加上 -DCXIM_NO_DEBUG_INFO=ON
+if [[ "${OPENSSL_ROOT_DIR}" == "Release" ]]; then
+    CMAKE_ARGS+=(-DCXIM_NO_DEBUG_INFO=ON)
+fi
+
 cmake "${CMAKE_ARGS[@]}"
 
 if [[ "$(uname -s)" == Linux* ]]; then

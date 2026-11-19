@@ -435,3 +435,30 @@ curl: (56) Recv failure: Connection was reset
 请根据readme.md 以及D:/FKC/KC-CXIM/dev/IMS/KC-CXIM-Svc/basic_service_20261107/fixme.md的706行~887行的运行step2_test_client/test_stress_03.cpp报错信息，告诉我解决方案，并把解决方案的内容追加到fixme.md的末尾。
 
 请根据D:/FKC/KC-CXIM/dev/IMS/KC-CXIM-Svc/basic_service_20261107/的readme.md和该目录下的项目代码， 以及D:/FKC/KC-CXIM/dev/IMS/KC-CXIM-Svc/basic_service_20261107/fixme.md的1661行到1740行的运行step2_test_client/test_stress_03.cpp报错信息， 告诉我日志报错core-dump的解决方案，并把解决方案的内容追加到fixme.md的末尾，并尝试修改代码解决这个core-dump的错误。
+
+请根据以下报错修复D:/FKC/KC-CXIM/dev/IMS/KC-CXIM-Svc/basic_service_20261107/step2_test_client/test_stress_03_iocp_opt.cpp , 修复之后运行D:/FKC/KC-CXIM/dev/IMS/KC-CXIM-Svc/basic_service_20261107/step2_test_client/build_msvc_test_stress_03_iocp.bat构建脚本，然后使用D:/FKC/KC-CXIM/dev/IMS/KC-CXIM-Svc/basic_service_20261107/build/bin/Release/test_stress_03_iocp.exe --host 110.40.206.253 --http-port 10002 --tcp-port 10001 --friends 100测试直到不报错通过为止。
+报错内容是：
+./build/bin/Release/test_stress_03_iocp.exe --host 110.40.206.253 --http-port 10002 --tcp-port 10001 --friends 100
+[stress03iocp] host=110.40.206.253 http=10002 tcp=10001 friends=100 runId=61519854 hb=30s timeout=120s ramp-up=500/s
+[stress03iocp] iocp workers=16 http workers=16 (logic thread = 1)
+[stress03iocp] main tcp ConnectEx retry 1: �����Э�黹û����ϵͳ�����ã�����û�������ڵļ���
+[stress03iocp] main tcp ConnectEx retry 2: �����Э�黹û����ϵͳ�����ã�����û�������ڵļ���
+[stress03iocp] main tcp ConnectEx retry 3: �����Э�黹û����ϵͳ�����ã�����û�������ڵļ���
+[stress03iocp] main tcp ConnectEx retry 4: �����Э�黹û����ϵͳ�����ã�����û�������ڵļ���
+[stress03iocp] main tcp ConnectEx retry 5: �����Э�黹û����ϵͳ�����ã�����û�������ڵļ���
+[stress03iocp] main tcp ConnectEx retry 6: �����Э�黹û����ϵͳ�����ã�����û�������ڵļ���
+[stress03iocp] main tcp ConnectEx retry 7: �����Э�黹û����ϵͳ�����ã�����û�������ڵļ���
+[stress03iocp] main tcp ConnectEx retry 8: �����Э�黹û����ϵͳ�����ã�����û�������ڵļ���
+[stress03iocp] main tcp ConnectEx retry 9: �����Э�黹û����ϵͳ�����ã�����û�������ڵļ���
+[stress03iocp] main user FAILED: tcp login failed: ConnectEx: �����Э�黹û����ϵͳ�����ã�����û�������ڵļ���
+[stress03iocp] fatal: main user: tcp login failed: ConnectEx: �����Э�黹û����ϵͳ�����ã�����û�������ڵļ��� (waited until timeout: main tcp login timeout)
+
+===== Stress03 Aborted =====
+reason          : main user: tcp login failed: ConnectEx: �����Э�黹û����ϵͳ�����ã�����û�������ڵļ��� (waited until timeout: main tcp login timeout)
+friends ready   : 0/100
+accepted        : 0/100
+messages        : 0/100
+listed          : 0/100
+deleted         : 0/100
+failed          : 1
+============================

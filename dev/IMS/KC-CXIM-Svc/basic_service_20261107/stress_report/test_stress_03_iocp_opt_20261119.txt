@@ -1,0 +1,86 @@
+./build/bin/Release/test_stress_03_iocp.exe --host 110.40.206.253 --http-port 10002 --tcp-port 10001 --friends 100
+[stress03iocp] host=110.40.206.253 http=10002 tcp=10001 friends=100 runId=62729579 hb=30s timeout=120s ramp-up=500/s
+[stress03iocp] iocp workers=16 http workers=16 (logic thread = 1)
+[stress03iocp] main user TCP ready, userId=6368
+[stress03iocp] main ready, launching 100 friend agents (ramp-up=500/s)
+[stress03iocp] all friends registered + TCP logged in; creating requests...
+[stress03iocp] friend requests created; waiting accepts...
+[stress03iocp] friends accepted; exchanging messages...
+[stress03iocp] main replies acked=100, delivery acks flushed
+[stress03iocp] messages exchanged; send retries=0
+[stress03iocp] lists queried; deleting friends...
+[stress03iocp] all deletes acknowledged; verifying main friend list...
+[stress03iocp] verify done, remaining=0
+
+===== Stress03 Report (IOCP) =====
+elapsed                  : 32.87 s
+friends                : 100
+friends ready          : 100
+friend requests created: 100
+accepted               : 100
+messages sent+acked    : 100
+friend lists queried   : 100
+friends deleted        : 100
+full lifecycle ok      : 100/100
+failed                 : 0
+send retries           : 0
+main friends after delete: 0
+--- iocp runtime ---
+io worker threads      : 16
+http pool threads      : 16
+tcp connections peak   : 101
+tcp connections open   : 0
+frames sent / recv     : 502 / 1053
+bytes sent / recv      : 88051 / 218294
+http requests          : 604
+throughput             : 3.04 friend-lifecycle/s
+
+latency (ms)        p50 / p95 / p99 / avg / max
+register           : 1533.01 / 3662.02 / 8252.54 / 1885.13 / 8627.00 ms  (n=101)
+login              : 3175.85 / 4290.84 / 6010.76 / 3211.99 / 6096.00 ms  (n=101)
+create request     : 480.46 / 1655.64 / 3523.78 / 678.04 / 4064.00 ms  (n=100)
+accept             : 527.86 / 2590.73 / 3310.97 / 883.11 / 3482.00 ms  (n=100)
+tcp send           : 659.81 / 1203.03 / 1248.71 / 658.42 / 1257.00 ms  (n=100)
+tcp reply          : 4729.49 / 7723.75 / 7999.21 / 4672.44 / 8073.00 ms  (n=100)
+list friends       : 745.57 / 1743.50 / 2126.31 / 890.71 / 2241.00 ms  (n=101)
+delete friend      : 504.01 / 1807.53 / 4136.32 / 771.41 / 4255.00 ms  (n=100)
+================================
+
+
+
+./build/bin/Release/test_stress_03_iocp.exe --host 110.40.206.253 --http-port 10002 --tcp-port 10001 --friends 5000 --ramp-up 300 --hb-interval 30
+[stress03iocp] host=110.40.206.253 http=10002 tcp=10001 friends=5000 runId=62908529 hb=30s timeout=120s ramp-up=300/s
+[stress03iocp] iocp workers=16 http workers=256 (logic thread = 1)
+[stress03iocp] main user TCP ready, userId=6469
+[stress03iocp] main ready, launching 5000 friend agents (ramp-up=300/s)
+[stress03iocp] fatal: register s3F_62908529_1511 failed: connect http: �������ӷ���һ��ʱ���û����ȷ�𸴻����ӵ�����û�з�Ӧ�����ӳ���ʧ�ܡ� (waited until timeout: friends not ready: 163/5000)
+[stress03iocp] friend 0 error: aborted before phase 1 (accept)
+
+===== Stress03 Aborted =====
+reason          : register s3F_62908529_1511 failed: connect http: �������ӷ���һ��ʱ���û����ȷ�𸴻����ӵ�����û�з�Ӧ�����ӳ���ʧ�ܡ� (waited until timeout: friends not ready: 163/5000)
+friends ready   : 1832/5000
+accepted        : 0/5000
+messages        : 0/5000
+listed          : 0/5000
+deleted         : 0/5000
+failed          : 478
+============================
+
+
+./build/bin/Release/test_stress_03_iocp.exe --host 110.40.206.253 --http-port 10002 --tcp-port 10001 --friends 20000 --io-threads 8 --http-threads 64
+[stress03iocp] host=110.40.206.253 http=10002 tcp=10001 friends=20000 runId=63291740 hb=30s timeout=120s ramp-up=500/s
+[stress03iocp] iocp workers=8 http workers=64 (logic thread = 1)
+[stress03iocp] main user TCP ready, userId=11464
+[stress03iocp] main ready, launching 20000 friend agents (ramp-up=500/s)
+[stress03iocp] fatal: register s3F_63291740_1862 failed: connect http: �������ӷ���һ��ʱ���û����ȷ�𸴻����ӵ�����û�з�Ӧ�����ӳ���ʧ�ܡ� (waited until timeout: friends not ready: 132/20000)
+[stress03iocp] friend 0 error: aborted before phase 1 (accept)
+
+===== Stress03 Aborted =====
+reason          : register s3F_63291740_1862 failed: connect http: �������ӷ���һ��ʱ���û����ȷ�𸴻����ӵ�����û�з�Ӧ�����ӳ���ʧ�ܡ� (waited until timeout: friends not ready: 132/20000)
+friends ready   : 2379/20000
+accepted        : 0/20000
+messages        : 0/20000
+listed          : 0/20000
+deleted         : 0/20000
+failed          : 1124
+============================
