@@ -221,6 +221,8 @@ package_deb() {
         cp -f "${SCRIPT_DIR}/DBConfig.ini" "${stage_dir}/opt/CXIM/DBConfig.ini"
     [[ -f "${SCRIPT_DIR}/JWTConfig.json" ]] && \
         cp -f "${SCRIPT_DIR}/JWTConfig.json" "${stage_dir}/opt/CXIM/JWTConfig.json"
+    [[ -f "${SCRIPT_DIR}/QiniuConfig.json" ]] && \
+        cp -f "${SCRIPT_DIR}/QiniuConfig.json" "${stage_dir}/opt/CXIM/QiniuConfig.json"
 
     # 保证主程序可执行
     chmod 0755 "${stage_dir}/opt/CXIM/bin/cxim-server" 2>/dev/null || true

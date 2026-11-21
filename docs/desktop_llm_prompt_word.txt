@@ -240,3 +240,13 @@
    完成后提交代码并简要总结新增/修改文件清单与关键调用链。
 
 您好，wechat.xml这个界面的UI及并没有群聊相关的功能，请补充，我要完整的群聊闭环功能。请完成后运行./x64/Release/CXIM.exe，测试的几个账号为 User:fingerecho11  Pass:asdfls  , User:helloworld0 Pass:helloworld, User:helloworld1 Pass:asdfls , User:helloworld2 Pass:asdfls ,  User:helloworld3 Pass:asdfls , 请完成UI对应的功能并测试几个账号的群聊、单聊。
+
+请根据D:\FKC\KC-CXIM\docs\目录下的desktop_real_login_ui_0.png、desktop_real_register_ui_0.png、desktop_real_add_group_ui_0.png使用Qt6的QWidget在D:\FKC\KC-CXIM\dev\Desktop\KC_CXIM_Desktop\CXIM_Qt6_QWidget目录下的项目中增改代码实现这个即时通信软件的Qt版桌面端，参考D:\FKC\KC-CXIM\dev\Desktop\KC_CXIM_Desktop\CXIM项目中的对接方式，尽量使用Qt原生的库，结合D:\FKC\KC-CXIM\dev\IMS\KC-CXIM-Svc\basic_service_20261107\readme.md这个IM后端的说明和D:\FKC\KC-CXIM\docs\IMS_communication_protocol.md这个后端服务的通信协议，完成从注册、登录、好友操作、互发消息(单聊群聊)、群操作、互发文件等UI界面以及功能，尽量降低代码的耦合度，分成多个目录，UI和功能分离，并在关键的地方加好注释，使得程序后期可扩展性强。
+
+请根据美观度调整UI：登录注册窗口宽度、高度分别调整到原来的三分之二，登录注册窗口内部元素同样调整尺寸；另外，请使用用户名fingerecho11和密码asdfls，使用 ./build/Check/CXIM_Qt6_QWidget.exe运行测试，登录界面之后请完成好友添加(加好友fingerecho15,它的密码是asdfls)、与fingerecho15互发消息和文件，请使用脚本采用点击桌面的方式自动测试，测试完毕之后修改一切对人类不友好的界面功能。
+
+UI界面修复:好友列表、消息列表不美观，字体被截断了。聊天气泡不美观，字体被截断了。请先修复这两处。
+
+UI界面及功能修复：新建群聊，选中不了群成员。请修复。
+
+UI界面及功能修复：聊天气泡，对方发过来的消息字体展示不全，另外，气泡的宽度太小了，应该占整个聊天窗口的四分之三更合适。另外注册窗口输入用户名时字体被截断了，请修复。
