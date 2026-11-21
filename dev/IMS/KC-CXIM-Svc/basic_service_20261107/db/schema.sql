@@ -421,6 +421,56 @@ CREATE TABLE IF NOT EXISTS group_requests (
 
 
 -- ============================================================================
+-- 10) files：图片/文件对象登记表（图片文件功能·七牛云直传）
+-- ----------------------------------------------------------------------------
+-- 设计原理（与规划一致，逐条对应实现）：
+--   * 这张表只登记"对象元数据 + 权属"，**二进制永远在七牛**——messages 表
+--     注释早就写明"图片/文件存 URL，不塞数据库"，这里把另一半补齐：
+--     URL 指向的对象归七牛管，我们只管"谁传的、多大、叫什么、还在不在"。
+--   * uuid 唯一键是对外标识（自增 id 只做主键，防止"枚举 id 摸文件"）；
+--     object_key 由服务端生成（im/<yyyy-mm>/<uuid>.<ext>）并锁进上传凭证
+--     policy——客户端拿着凭证也只能写这一个 key。
+--   * 签发上传凭证时**不写这张表**（无状态票据替代，见 object_store.cpp）：
+--     行只出现在 commit 之后，"没 commit 的文件不存在"因此是数据库层面
+--     的事实，而不是靠应用代码记着的约定。
+--   * size/qetag 登记的是七牛 stat 的权威返回：服务器不中继字节，
+--     客户端自报的大小只能用于配额与 policy 限额，落库一律以 stat 为准。
+--   * qetag 是七牛自定义校验和（与标准 sha256 **算法不同**，不可互相验证）。
+--     强度边界如实记录：服务器不碰字节，所以无法核验客户端自报的 sha256；
+--     完整性核对链路是"上传→stat 登记 qetag→下载后本地重算比对登记值"。
+--   * status 软删除：1=正常，2=已标记删除。DELETE 接口先标 2 再调七牛物理删
+--     （删除失败只留孤儿对象+日志，不会让业务"看得见已删文件"）。
+--   * 保留/清理（已知边界的落地口径，规划要求写进注释不假装）：
+--       - 直传成功但从未 commit 的对象 = 本表不可见的孤儿：签发不落库，
+--         所以这类孤儿**只能靠七牛控制台/生命周期规则兜底**，应用侧无表可扫；
+--         真实模式强烈建议给 bucket 配置"未命名片段 7 天自动清理"+定期对账。
+--       - status=1 超过 FILE_RETENTION_DAYS=30 天仅打告警日志，是否强删
+--         等产品拍板（七牛存储按量计费，"先存着"不是无代价的）。
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS files (
+    id          BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT      COMMENT '内部主键（不对外）',
+    uuid        CHAR(36)         NOT NULL                     COMMENT '对外文件标识：服务端生成的随机 v4，出现在 object_key 与换取 URL',
+    uploader_id BIGINT UNSIGNED  NOT NULL                     COMMENT '上传者 userId（发送校验的权属依据：只能发自己上传的文件）',
+    name        VARCHAR(255)     NOT NULL DEFAULT ''          COMMENT '原始文件名（仅展示；消毒后存储：去控制字符、UTF-8 边界安全截断）',
+    size        BIGINT UNSIGNED  NOT NULL DEFAULT 0           COMMENT '字节数：以七牛 stat 返回为准登记，防客户端谎报',
+    mime        VARCHAR(127)     NOT NULL DEFAULT ''          COMMENT 'MIME（按扩展名白名单归一化后的值）',
+    qetag       CHAR(32)         NOT NULL DEFAULT ''          COMMENT '七牛对象校验和（stat 返回；与标准 sha256 算法不同，不可互换核验——强度边界见本节注释）',
+    object_key  VARCHAR(255)     NOT NULL                     COMMENT '七牛对象名 im/<yyyy-mm>/<uuid>.<ext>；服务端生成并锁进上传凭证 policy',
+    bucket      VARCHAR(63)      NOT NULL DEFAULT ''          COMMENT '所在 bucket（换空间/迁移后旧行可追溯）',
+    zone        TINYINT UNSIGNED NOT NULL DEFAULT 0           COMMENT '七牛区域：0=z0华东,1=z1华北,2=z2华南,3=na0北美,4=as0东南亚',
+    status      TINYINT UNSIGNED NOT NULL DEFAULT 1           COMMENT '1=正常，2=已删除（软删：先标库再删七牛对象）',
+    created_at  DATETIME(3)      NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT 'commit 登记时间（毫秒精度）',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_files_uuid (uuid),
+    KEY idx_files_uploader_created (uploader_id, created_at),   -- 日配额 SUM(size) 按 (uploader,当天) 扫
+    KEY idx_files_status_created (status, created_at),          -- 超期告警/清理扫描
+    KEY idx_files_object_key (object_key),                      -- 对账（按 key 反查登记）
+    CONSTRAINT fk_files_uploader FOREIGN KEY (uploader_id) REFERENCES users(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  COMMENT='图片/文件对象登记（七牛云直传，二进制不在本库）';
+
+
+-- ============================================================================
 -- 附：数据保留 / 清理 / 备份与恢复（说明性内容，不自动执行）
 -- ============================================================================
 -- 1) 消息保留策略

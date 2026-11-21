@@ -23,8 +23,19 @@ namespace kc {
 // 底层类型固定为 uint16_t，保证线上协议里的数值稳定（不会因编译器变化）。
 enum class MsgType : std::uint16_t {
     Text        = 1,     // 文本消息
-    Image       = 2,     // 图片消息（content 放 URL 或 base64，不要塞原始二进制）
+    /*************图片文件功能（七牛云直传）：type=2/4 的 content 是元数据 JSON***************/
+    // 二进制一律不落 TCP 帧（上行帧 body ≤ 4096）、也不落本服务器磁盘。
+    // content 形如：
+    //   {"file_id":"<uuid>","url":"<服务器换取入口>/api/files/<uuid>",
+    //    "name":"照片.png","size":345678,"mime":"image/png","qetag":"<hex32>"}
+    // url/name/size/mime/qetag 全部由服务端在权属校验通过后**重建**，
+    // 客户端只需要在发送时带 file_id（见 session.cpp do_send_media）。
+    // 禁止：往 content 塞 base64 二进制；塞七牛签名直链（deadline 会腐化历史消息）。
+    Image       = 2,     // 图片消息
     Heartbeat   = 3,     // 心跳，用于保活 / 检测连接是否还活着
+    File        = 4,     // 文件消息（新增；4~99 空闲区，不复用/不改变任何现有语义）
+                         // ⚠ 部署顺序：必须**先发版所有客户端**再上线带 File=4 的服务端——
+                         // 老客户端 parse_message 遇未知 type 会判非法并断线（fixme 有先例）。
     Login       = 100,   // 登录请求：from = userId，content = token
     LoginAck    = 101,   // 登录成功回执
     Error       = 102,   // 错误通知（如"未登录就发消息"）

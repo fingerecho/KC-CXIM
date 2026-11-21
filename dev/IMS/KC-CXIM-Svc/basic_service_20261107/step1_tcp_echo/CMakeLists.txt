@@ -16,6 +16,11 @@ add_executable(cxim-server
     jwt_config.cpp
     token_service.cpp
     http_server.cpp
+    #/*************图片文件功能（七牛云直传）：新增源文件***************/
+    file_types.cpp      # 文件领域模型：uuid/元数据 JSON/白名单/FileRuntime
+    qiniu_signer.cpp    # 七牛三类签名的纯本地计算（OpenSSL HMAC/Base64）
+    object_store.cpp    # ObjectStorage 抽象 + MockObjectStore + QiniuObjectStore(含管理API客户端)
+    #/*************图片文件功能（七牛云直传）：新增源文件***************/
 )
 
 # 把当前目录加入 include 路径，便于 #include "frame.h" 这类同目录头文件。
@@ -46,10 +51,19 @@ target_link_libraries(cxim-server PRIVATE mariadbcpp)
 #链接libbcrypt库
 target_link_libraries(cxim-server PRIVATE bcrypt)
 
+# 图片文件功能调试期补强：Windows 崩溃处理器用 dbghelp 做栈符号化（main.cpp），
+# 只在 MSVC 下需要；Linux 走 execinfo（无需额外库）。
+if(MSVC)
+    target_link_libraries(cxim-server PRIVATE dbghelp)
+endif()
+
 #找到并链接OpenSSL库
+# 图片文件功能（七牛云直传）：OpenSSL::Crypto 供 HMAC/Base64/uuid 随机源；
+# OpenSSL::SSL 供管理 API（rs.qbox.me）的 HTTPS 调用（object_store.cpp）。
 find_package(OpenSSL REQUIRED)
 target_link_libraries(cxim-server PRIVATE
     OpenSSL::Crypto
+    OpenSSL::SSL
 )
 
 # ---------------------------------------------------------------------------

@@ -13,6 +13,9 @@
 #include "jwt_config.h"                    // 加载项目根目录 JWTConfig.json
 #include "db.h"                            // 数据库层（连接池 + worker 线程池）
 #include "db_config.h"                     // 数据库配置
+/*************图片文件功能（七牛云直传）：存储抽象注入***************/
+#include "object_store.h"                  // ObjectStorage / makeObjectStorage / FileRuntime
+/*************图片文件功能（七牛云直传）：存储抽象注入***************/
 
 #include "quiet_log.h"                     // 防止运行期打印std::cout的日志
 
@@ -148,7 +151,131 @@ void installCrashHandler() {
 
 } // namespace
 #else
-inline void installCrashHandler() {}   // Windows/MSVC：用调试器看崩溃转储，不装处理器
+/*************core-dump 修复（Windows 侧）：崩溃现场同样必须留痕***************/
+// Linux 有 backtrace()+journald；Windows 上原来的做法是"用调试器看 dump"，
+// 但这台开发机没有 cdb/windbg、WER 也没配 LocalDumps —— SEGV 就是无声消失，
+// 排查只能靠二分复现（本轮文件功能验收就是这么卡住的）。
+// 现在装一个 unhandled-exception filter：把异常码、出错地址、栈帧
+// （尽量符号化：同目录有 .pdb 时 SymFromAddr 能给出函数名）直接写进
+// stderr（即服务日志），不需要任何外部调试器。
+#include <windows.h>
+#include <dbghelp.h>
+#include <crtdbg.h>       // _CrtSetReportMode/_CrtSetReportFile（Debug 排障用）
+#include <cstdio>
+
+namespace {
+
+LONG WINAPI winCrashFilter(PEXCEPTION_POINTERS ep) {
+    HANDLE hErr = GetStdHandle(STD_ERROR_HANDLE);
+    auto writeRaw = [&hErr](const char* s) {
+        DWORD done = 0;
+        WriteFile(hErr, s, static_cast<DWORD>(lstrlenA(s)), &done, nullptr);
+    };
+    char line[512];
+    lstrcpyA(line, "[fatal] windows crash code=0x");
+    {
+        static const char* hexd = "0123456789abcdef";
+        std::size_t n = lstrlenA(line);
+        auto code = ep->ExceptionRecord->ExceptionCode;
+        for (int i = 28; i >= 0; i -= 4) line[n++] = hexd[(code >> i) & 0xF];
+        line[n++] = ' '; line[n++] = 'a'; line[n++] = 'd'; line[n++] = 'd';
+        line[n++] = 'r'; line[n++] = '=';
+        auto addr = reinterpret_cast<ULONGLONG>(ep->ExceptionRecord->ExceptionAddress);
+        for (int i = 60; i >= 0; i -= 4) line[n++] = hexd[(addr >> i) & 0xF];
+        line[n] = '\0';
+    }
+    lstrcatA(line, "\n");
+    writeRaw(line);
+
+    // 符号化一次即可：进程还在，PDB 能被 dbghelp 读到（Release 需带 /Zi）。
+    SymSetOptions(SYMOPT_LOAD_LINES | SYMOPT_UNDNAME);
+    SymInitialize(GetCurrentProcess(), nullptr, TRUE);
+
+    void* frames[64];
+    const USHORT n = CaptureStackBackTrace(0, 64, frames, nullptr);
+    writeRaw("[fatal] backtrace:\n");
+    // 栈记录缓冲要容纳 SYMBOL_INFOW 头部 + 名字：必须按柔性数组正确分配。
+    alignas(SYMBOL_INFOW) char symBuf[sizeof(SYMBOL_INFOW) + 512 * sizeof(WCHAR)];
+    auto* sym = reinterpret_cast<SYMBOL_INFOW*>(symBuf);
+    for (USHORT i = 0; i < n; ++i) {
+        lstrcpyA(line, "  #");
+        { char tmp[8]; wsprintfA(tmp, "%u", static_cast<unsigned>(i)); lstrcatA(line, tmp); lstrcatA(line, " "); }
+        {
+            char tmp[32];
+            wsprintfA(tmp, "0x%016I64x ", reinterpret_cast<ULONGLONG>(frames[i]));
+            lstrcatA(line, tmp);
+        }
+        sym->SizeOfStruct = sizeof(SYMBOL_INFOW);
+        sym->MaxNameLen   = 512;
+        DWORD64 disp = 0;
+        if (SymFromAddrW(GetCurrentProcess(),
+                         reinterpret_cast<DWORD64>(frames[i]), &disp, sym)) {
+            // 符号名是窄字符足够（C++ 修饰名 undecorate 后仍是 ASCII）。
+            char nameBuf[520];
+            const int m = WideCharToMultiByte(CP_ACP, 0, sym->Name, -1,
+                                              nameBuf, sizeof(nameBuf), nullptr, nullptr);
+            if (m > 0) lstrcatA(line, nameBuf);
+            char tmp[48];
+            wsprintfA(tmp, "+0x%I64x\n", disp);
+            lstrcatA(line, tmp);
+        } else {
+            lstrcatA(line, "<no symbol>\n");
+        }
+        writeRaw(line);
+    }
+    SymCleanup(GetCurrentProcess());
+    writeRaw("[fatal] (install a pdb next to the exe for symbolized lines)\n");
+    return EXCEPTION_EXECUTE_HANDLER;   // 直接终止，不再回到已损坏的现场
+}
+
+} // namespace
+
+// 调试期补强：std::terminate（未捕获异常/析构抛异常/noexcept 违约）默认
+// 直接 abort——恰好是本轮崩溃"进程无声消失、连 fatal 都没有"的形态。
+// 这里把活跃异常的类型与 what() 打进 stderr，让这条路也留现场。
+#include <exception>
+#include <typeinfo>
+inline void winTerminateHandler() {
+    char line[512];
+    lstrcpyA(line, "[fatal] std::terminate\n");
+    DWORD done = 0;
+    WriteFile(GetStdHandle(STD_ERROR_HANDLE), line,
+              static_cast<DWORD>(lstrlenA(line)), &done, nullptr);
+    // 活跃异常带类型信息时重抛一次取 what()——terminate 上下文里这是
+    // 唯一还能拿到异常文本的机会（只为留现场，catch 后直接退出）。
+    try {
+        if (auto eptr = std::current_exception()) std::rethrow_exception(eptr);
+        lstrcatA(line, "(no active exception)\n");
+    } catch (const std::exception& e) {
+        lstrcatA(line, e.what());
+        lstrcatA(line, "\n");
+    } catch (...) {
+        lstrcatA(line, "(non-std exception)\n");
+    }
+    WriteFile(GetStdHandle(STD_ERROR_HANDLE), line,
+              static_cast<DWORD>(lstrlenA(line)), &done, nullptr);
+    exit(101);
+}
+
+inline void installCrashHandler() {
+    SetUnhandledExceptionFilter(winCrashFilter);
+    // CRT 的 abort/purecall 不会走 unhandled filter，单独接一下。
+    SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
+    _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
+    std::set_terminate(winTerminateHandler);
+#ifdef _DEBUG
+    // Debug 排障（本轮文件功能崩溃现场）：/RTC1 运行期检查与断言默认会弹
+    // **看不见的模态对话框**——服务是后台控制台进程，线程直接挂死在弹窗上，
+    // 表现就是"请求永久无响应"。把三类报告全部改道到 stderr（即服务日志），
+    // 崩溃位置的源码行会直接打在日志里。
+    _CrtSetReportMode(_CRT_ASSERT, _CRTDBG_MODE_FILE);
+    _CrtSetReportFile(_CRT_ASSERT, _CRTDBG_FILE_STDERR);
+    _CrtSetReportMode(_CRT_ERROR, _CRTDBG_MODE_FILE);
+    _CrtSetReportFile(_CRT_ERROR, _CRTDBG_FILE_STDERR);
+    _CrtSetReportMode(_CRT_WARN, _CRTDBG_MODE_FILE);
+    _CrtSetReportFile(_CRT_WARN, _CRTDBG_FILE_STDERR);
+#endif
+}
 #endif
 /*************core-dump 修复 ⑥：崩的时候必须自己留下栈帧***************/
 
@@ -230,11 +357,22 @@ int main(int argc, char* argv[]) {
         kc::JwtConfig jwtCfg = kc::JwtConfig::load(jwtPath);     // 读取 jwt_secret / jwt_issuer
         kc::TokenService tokens(jwtCfg);                         // 无状态签名/验签服务
 
+        /*************图片文件功能（七牛云直传）：构造存储抽象***************/
+        // QINIU_ENABLED=0（默认）→ MockObjectStore：无七牛账号也能全流程验收；
+        // QINIU_ENABLED=1 → QiniuObjectStore：必须能读到 QiniuConfig.json
+        //（QINIU_CONFIG 可覆盖路径），缺文件/缺字段直接抛异常——
+        // "启动失败"比"悄悄退回 mock"诚实，生产环境绝不能静默降级。
+        kc::FileRuntime fileRt = kc::FileRuntime::fromEnv();
+        auto store = kc::makeObjectStorage(fileRt, io);
+        std::cout << "[file] object storage = " << store->kind()
+                  << " (QINIU_ENABLED=" << (fileRt.qiniuEnabled ? 1 : 0) << ")" << std::endl;
+        /*************图片文件功能（七牛云直传）：构造存储抽象***************/
+
         // 同一个 io_context 里挂两个 acceptor：TCP 长连接 + HTTP 短连接。
         kc::server srv(io, tcpPort, db, tokens);                    // 创建 TCP 监听
         // HTTP 层与 TCP 层共享同一个 SessionManager：
         // 好友申请/通过等写操作走 HTTP，完成后通过在线表把事件推给 TCP 长连接。
-        kc::http_server http(io, httpPort, db, tokens, srv.sessions());
+        kc::http_server http(io, httpPort, db, tokens, srv.sessions(), store, fileRt);
         srv.run();                                               // 打印 TCP 端口
         http.run();                                              // 打印 HTTP 端口
 

@@ -68,12 +68,19 @@ inline bool parse_message(const std::vector<char>& body, Message& out, std::stri
         // 心跳不需要 content，直接放过。
         break;
 
+    /*************图片文件功能（七牛云直传）：File=4 与 Text/Image 同规则解析***************/
+    // type=2/4 的 content 是服务端重建过的元数据 JSON 文本——对编解码而言
+    // 它和普通字符串 content 没有区别（业务校验在 session.cpp do_send_media）。
+    // 注意：这里**必须**显式列出 File——default 分支会拒绝未知 type，
+    // 新类型不加进来服务器会把合法的群文件消息当成非法帧断连。
     case MsgType::Text:
     case MsgType::Image:
-        // 文本/图片必须带 content。
+    case MsgType::File:
+        // 文本/图片/文件必须带 content。
         if (!doc.HasMember("content") || !doc["content"].IsString()) { err = "missing content"; return false; }
         assign_json_string(doc["content"], out.content);
         break;
+    /*************图片文件功能（七牛云直传）：File=4 解析***************/
 
     case MsgType::HistoryReq:
         // 历史请求：content 可选（里面放 limit，如 "20"）。

@@ -37,7 +37,7 @@ SERVER_BIN=''
 if [[ "$(uname -s)" == Linux* ]]; then
     SERVER_BIN="${BUILD_DIR}/bin/cxim-server"
 elif [[ "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* || "$(uname -s)" == CYGWIN* ]]; then
-    SERVER_BIN="${BUILD_DIR}/bin/Debug/cxim-server.exe"
+    SERVER_BIN="${BUILD_DIR}/bin/Release/cxim-server.exe"
 fi
 
 if [[ ! -x "$SERVER_BIN" ]]; then

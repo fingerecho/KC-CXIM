@@ -3,6 +3,7 @@
 #include "db.h"
 #include "friend_types.h"    // 好友事件 JSON 序列化
 #include "group_types.h"     // /*************群聊功能：群事件 JSON 序列化***************/
+#include "file_types.h"      // /*************图片文件功能（七牛云直传）：媒体元数据校验/重建***************/
 #include "message_codec.h"
 #include "token_service.h"   // JWT 校验：TCP 登录只验 token，不再查库比对密码
 #include "quiet_log.h"       // logFatal：踢连接/预算越线这类事件不能被 QUIET_LOG 吞掉
@@ -197,12 +198,18 @@ void session::handle_message(const Message& msg) {
         // 心跳已在 reset_idle_timer() 里刷新超时时间，不需要额外回应。
         break;
 
+    /*************图片文件功能（七牛云直传）：File=4 与 Text/Image 同一入口***************/
+    // 单聊/群聊由 is_group 区分，媒体/纯文本由 do_send* 内部再分流——
+    // 投递、离线补推、历史、回执链路对 type 完全无感（type 原样透传），
+    // 媒体特有的只是"先验权属、再重建元数据"这一前置步骤。
     case MsgType::Text:
     case MsgType::Image:
+    case MsgType::File:
         /*************群聊功能：is_group=true 时 to 是 groupId，走群消息写扩散***************/
         if (msg.is_group) do_send_group(msg);
         else              do_send(msg);
         break;
+    /*************图片文件功能（七牛云直传）：File=4 与 Text/Image 同一入口***************/
 
     case MsgType::HistoryReq:
         if (msg.is_group) do_history_group(msg);
@@ -297,19 +304,27 @@ void session::do_send(const Message& msg) {
         return;
     }
 
+    /*************图片文件功能（七牛云直传）：媒体消息先验权属再落库***************/
+    if (msg.type == MsgType::Image || msg.type == MsgType::File) {
+        do_send_media(msg, /*group=*/false);
+        return;
+    }
+    /*************图片文件功能（七牛云直传）：媒体消息先验权属再落库***************/
+
+    // 以会话身份为准，不信任客户端传来的 from。
+    finish_send(user_id_, msg.to, static_cast<int>(msg.type),
+                msg.content, msg.msg_id);
+}
+
+// do_send 的"内容已定稿"部分：文本直达这里，媒体在权属校验通过后也汇入这里。
+void session::finish_send(std::uint64_t sender, std::uint64_t to, int type,
+                          const std::string& content, std::uint64_t clientMsgId) {
     /*************P0-4：在途任务配额***************/
     if (!reserveJob()) {
         send_error(Db::kBusyError, user_id_);   // 让客户端按自己的重试策略降速
         return;
     }
     /*************P0-4：在途任务配额***************/
-
-    // 以会话身份为准，不信任客户端传来的 from。
-    const std::uint64_t sender     = user_id_;
-    const std::uint64_t to         = msg.to;
-    const int           type       = static_cast<int>(msg.type);
-    const std::string   content    = msg.content;
-    const std::uint64_t clientMsgId = msg.msg_id;   // 客户端临时消息号，用于去重
 
     auto self = shared_from_this();
     db_.sendChecked(sender, to, type, content, clientMsgId,
@@ -370,6 +385,88 @@ void session::do_send(const Message& msg) {
             /*************并发登录/注册优化：DB 回调切回本连接 strand***************/
         });
 }
+
+// ============================================================================
+// /*************图片文件功能（七牛云直传）：do_send_media——媒体消息发送前置校验***************/
+// ----------------------------------------------------------------------------
+// 校验链（规划 5.TCP 的落地）：
+//   1) io 线程：粗解析 content JSON，抽 file_id 并验 uuid 形状（纯 CPU，微秒级）；
+//   2) DB worker：getFileByUuid 取回 files 行（走 submitSql 硬上限：满了
+//      立刻回 kBusyError，与文本发送同一套背压语义）；
+//   3) strand 内：found && status==1 && uploader_id == 登录身份 —— 三个条件
+//      缺一不可，分别挡"不存在的 file_id""已删除文件""冒用他人文件"；
+//   4) 用 buildMediaMetaJson **整体重建** content：url 固定为自家换取入口、
+//      name/size/mime/qetag 全部来自 DB 行——客户端自报的 url 在这一刻死亡，
+//      接收端不可能被诱导去点任何外部链接（规划里的防钓鱼红线）。
+// 校验通过后汇入 finish_send / finish_send_group：与文本共用同一条
+// sendChecked / sendGroupMessage 事务，媒体差异只存在于"发什么内容"，
+// 不存在于"怎么投递"——这正是消息链路对 type 无感的红利。
+//
+// 已知取舍（如实记录，不藏）：
+//   * 权属校验与落库是**两个 DB 任务**，之间有理论窗口："校验通过后文件被
+//     并发删除"的消息仍会入库。后果被限制为"接收者点开时 404"，不是安全
+//     问题；把它压进一个事务要动 sendChecked/sendGroupMessage 的签名，
+//     不值得为这个窗口幅度（毫秒级 × 删除频率）改两条热路径。
+//   * 每条媒体消息比文本多 1 个 SQL 任务（uuid 索引点查）。
+// ============================================================================
+void session::do_send_media(const Message& msg, bool group) {
+    // 以会话身份为准，不信任客户端传来的 from（与文本路径同一纪律）。
+    const std::uint64_t sender      = user_id_;
+    const std::uint64_t dest        = msg.to;                 // 单聊=对方 uid / 群聊=groupId
+    const int           type        = static_cast<int>(msg.type);
+    const std::uint64_t clientMsgId = msg.msg_id;
+
+    // ---- 1) io 线程粗解析 --------------------------------------------------
+    std::string uuid, perr;
+    if (!extractFileIdFromContent(msg.content, uuid, perr)) {
+        send_error("bad media metadata: " + perr, sender);    // 回 Error 帧，不断连接
+        return;
+    }
+
+    // ---- 2) DB worker 查权属 -----------------------------------------------
+    if (!reserveJob()) {
+        send_error(Db::kBusyError, sender);
+        return;
+    }
+
+    auto self = shared_from_this();
+    db_.getFileByUuid(uuid,
+        [this, self, sender, dest, type, clientMsgId, group, uuid]
+        (bool ok, const std::string& err, const FileRecord& rec) {
+            /*************并发登录/注册优化：DB 回调切回本连接 strand***************/
+            boost::asio::post(strand_,
+                [this, self, sender, dest, type, clientMsgId, group, rec, ok, err]() {
+            releaseJob();
+            if (closed_) return;
+
+            if (!ok) {
+                send_error(err.empty() ? "file lookup failed" : err, sender);
+                return;
+            }
+            // ---- 3) 三条件权属校验 ------------------------------------------
+            if (!rec.found || rec.status != 1) {
+                send_error("file not found or deleted", sender);
+                return;
+            }
+            if (rec.uploader_id != sender) {
+                // 冒用他人 file_id：这是探测别人文件的行为，值得单独一条日志
+                // （不带任何文件内容，只有 uid，避免日志泄漏文件名）。
+                std::cout << "[media] user " << sender
+                          << " tried to send file owned by " << rec.uploader_id
+                          << std::endl;
+                send_error("file not uploaded by sender", sender);
+                return;
+            }
+
+            // ---- 4) 服务端权威重建元数据后，汇入与文本相同的投递路径 ----------
+            const std::string meta = buildMediaMetaJson(rec, mediaBaseUrl());
+            if (group) finish_send_group(sender, dest, type, meta, clientMsgId);
+            else       finish_send(sender, dest, type, meta, clientMsgId);
+                });
+            /*************并发登录/注册优化：DB 回调切回本连接 strand***************/
+        });
+}
+/*************图片文件功能（七牛云直传）：do_send_media 结束***************/
 
 // ---------------------------------------------------------------------------
 // 历史分页
@@ -454,18 +551,26 @@ void session::do_send_group(const Message& msg) {
         return;
     }
 
+    /*************图片文件功能（七牛云直传）：群媒体消息同样先验权属再写扩散***************/
+    if (msg.type == MsgType::Image || msg.type == MsgType::File) {
+        do_send_media(msg, /*group=*/true);
+        return;
+    }
+    /*************图片文件功能（七牛云直传）：群媒体消息同样先验权属再写扩散***************/
+
+    finish_send_group(user_id_, msg.to, static_cast<int>(msg.type),
+                      msg.content, msg.msg_id);
+}
+
+// do_send_group 的"内容已定稿"部分（与 finish_send 对称）。
+void session::finish_send_group(std::uint64_t sender, std::uint64_t groupId, int type,
+                                const std::string& content, std::uint64_t clientMsgId) {
     /*************P0-4：群消息同样受在途配额约束（它的 DB 成本比单聊更高）***************/
     if (!reserveJob()) {
         send_error(Db::kBusyError, user_id_);
         return;
     }
     /*************P0-4：群消息同样受在途配额约束***************/
-
-    const std::uint64_t sender   = user_id_;           // 只信登录身份
-    const std::uint64_t groupId  = msg.to;             // 群聊：to = groupId
-    const int           type     = static_cast<int>(msg.type);
-    const std::string   content  = msg.content;
-    const std::uint64_t clientMsgId = msg.msg_id;
 
     auto self = shared_from_this();
     db_.sendGroupMessage(sender, groupId, type, content, clientMsgId,

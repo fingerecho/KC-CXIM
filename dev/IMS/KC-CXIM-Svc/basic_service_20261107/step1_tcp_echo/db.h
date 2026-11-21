@@ -20,6 +20,7 @@
 #include "db_config.h"
 #include "friend_types.h"
 #include "group_types.h"      // /*************群聊功能：群领域模型（GroupInfo 等）***************/
+#include "file_types.h"       // /*************图片文件功能（七牛云直传）：FileRecord/元数据工具***************/
 #include "message.h"
 
 namespace sql { class Connection; }   // 不在头文件里暴露 Connector 细节
@@ -342,6 +343,30 @@ public:
     // BE-GROUP-06：登录补推——我发出的、已处理但还没通知我的入群申请结果。
     void fetchUnnotifiedGroupResults(std::uint64_t userId, int limit,
                                      GroupReqListCb cb);
+
+    /*************图片文件功能（七牛云直传）：files DAO***************/
+    // 四个入口覆盖文件功能的全部 DB 触点；签发上传凭证**没有** DB 触点
+    // （签发记录 = 无状态 HMAC 票据，见 object_store.cpp 顶部注释）。
+    using FileMetaCb = std::function<void(bool ok, const std::string& err,
+                                          const FileRecord& rec)>;
+    using FileIdCb   = std::function<void(bool ok, const std::string& err,
+                                          std::uint64_t fileId)>;
+    using BytesCb    = std::function<void(bool ok, const std::string& err,
+                                          long long bytes)>;
+
+    // 按 uuid 取文件记录（TCP 发送校验热路径：submitSql 硬上限）。
+    void getFileByUuid(const std::string& uuid, FileMetaCb cb);
+
+    // commit 登记：size/qetag 必须是七牛 stat 的权威返回。
+    void commitFile(const FileRecord& rec, FileIdCb cb);
+
+    // 标记删除（status=2），仅上传者本人；0 行=统一 not found。
+    // 成功时回调带回 rec（含 object_key）——HTTP 层要用它去删七牛对象。
+    void deleteFileByUuid(const std::string& uuid, std::uint64_t uploader, FileMetaCb cb);
+
+    // 当日已 commit 的字节数（签发凭证时的日配额检查用）。
+    void fileQuotaToday(std::uint64_t uploader, BytesCb cb);
+    /*************图片文件功能（七牛云直传）：files DAO***************/
     // 批量标记“我发出的入群申请结果”已通知（登录后补推）。
     void markGroupResultsNotified(std::uint64_t userId, StatusCb cb);
     // 精确标记某条入群申请结果已通知（申请人在线、已实时推送时）。

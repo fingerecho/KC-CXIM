@@ -1,0 +1,19 @@
+{
+  "_comment": "七牛云对象存储配置模板。复制为 QiniuConfig.json 并填入真实值；该文件含密钥，禁止提交到仓库（与 JWTConfig/DBConfig 同规则）。仅当环境变量 QINIU_ENABLED=1 时才会被读取；读不到或字段缺失 = 服务启动失败（刻意不静默退回 mock，见 object_store.cpp 工厂注释）。",
+  "_zone": "区域编号：0=z0 华东,1=z1 华北,2=z2 华南,3=na0 北美,4=as0 东南亚（要与 bucket 实际区域一致）",
+  "_up_host": "直传域名，按区域选择，如 https://up-z0.qiniup.com / https://upload.z1.qiniup.com，完整列表见七牛官方『地域和域名』文档",
+  "_domain": "下载域名（含 https:// 前缀）：绑定到 bucket 的自有域名或 CDN 加速域名；一级测试域名 30 天回收，生产必须用自己的已备案域名",
+  "_ca_bundle": "管理 API(https://rs.qbox.me) 校验服务端证书用的 CA 文件路径；Windows 下 OpenSSL 不读系统证书库，此项留空会退化为『不校验证书』并在启动日志告警——生产强烈建议填写（如 cacert.pem）",
+
+  "access_key": "<七牛控制台 AK>",
+  "secret_key": "<七牛控制台 SK>",
+  "ticket_secret": "<可选：票据/入口签名专用独立密钥；留空则复用 secret_key>",
+  "bucket": "<空间名>",
+  "zone": 0,
+  "up_host": "https://up-z0.qiniup.com",
+  "domain": "https://files.example.com",
+  "private_space": true,
+  "rs_scheme": "https",
+  "rs_host": "rs.qbox.me",
+  "ca_bundle": ""
+}

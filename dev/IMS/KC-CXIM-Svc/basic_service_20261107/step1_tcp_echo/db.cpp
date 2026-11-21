@@ -4111,4 +4111,179 @@ void Db::markGroupRequestNotified(std::uint64_t requestId, StatusCb cb) {
 }
 /*************群聊功能：群 DAO 实现结束***************/
 
+// ============================================================================
+// /*************图片文件功能（七牛云直传）：files DAO***************/
+// ----------------------------------------------------------------------------
+// 分工回顾（与规划一致）：
+//   * 上传凭证签发（upload-token）**不碰数据库**——签发记录是无状态票据
+//     （object_store.cpp:makeTicket），服务器重启也不丢；
+//   * commit 才是 files 表唯一的一次 INSERT，且 size/qetag 以七牛 stat
+//     返回为准（调用方把 stat 结果填进 FileRecord 再传进来）；
+//   * TCP 发送校验走 getFileByUuid（热路径，用硬上限投递口 submitSql：
+//     队列满立即回 kBusyError，客户端能收到明确的 Error 帧而不是干等）；
+//   * 删除/配额是低频操作，用软上限 submit（回调签名多样、无法统一回忙，
+//     原因见 db.h 的 submit 注释——同一个纪律，不在这里重新发明）。
+//
+// 标准 SELECT 列顺序（readFileRow 依赖，改动必须同步）：
+//   id, uuid, uploader_id, name, size, mime, qetag, object_key, bucket, zone, status
+// ============================================================================
+namespace {
+
+FileRecord readFileRow(sql::ResultSet& rs) {
+    FileRecord rec;
+    rec.found      = true;
+    rec.id         = rs.getUInt64(1);
+    rec.uuid       = sstr(rs.getString(2));
+    rec.uploader_id = rs.getUInt64(3);
+    rec.name       = sstr(rs.getString(4));
+    rec.size       = static_cast<std::int64_t>(rs.getUInt64(5));
+    rec.mime       = sstr(rs.getString(6));
+    rec.qetag      = sstr(rs.getString(7));
+    rec.object_key = sstr(rs.getString(8));
+    rec.bucket     = sstr(rs.getString(9));
+    rec.zone       = rs.getInt(10);
+    rec.status     = rs.getInt(11);
+    return rec;
+}
+
+const char* kFileSelectCols =
+    "SELECT id,uuid,uploader_id,name,size,mime,qetag,object_key,bucket,zone,status ";
+
+} // namespace
+
+// 按 uuid 查一条文件记录。uuid 不区分"不存在"与"已删除"：
+// 回调统一 found=false，由上层决定文案（发送校验要拒绝、下载要 404，语义天然不同）。
+void Db::getFileByUuid(const std::string& uuid, FileMetaCb cb) {
+    if (!submitSql(sqlQueue_, [this, uuid, cb]() {
+        bool ok = false;
+        std::string err;
+        FileRecord rec;
+        try {
+            PooledConn pc(*pool_);
+            if (!pc) throw std::runtime_error("db pool unavailable");
+            std::unique_ptr<sql::PreparedStatement> st(pc->prepareStatement(
+                std::string(kFileSelectCols) + "FROM files WHERE uuid=?"));
+            st->setString(1, uuid);
+            std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
+            if (rs->next()) rec = readFileRow(*rs);
+            ok = true;
+        } catch (const std::exception& e) {
+            err = std::string("db error: ") + e.what();
+        }
+        postToIo([cb, ok, err, rec]() { cb(ok, err, rec); });
+    })) {
+        postToIo([cb]() { cb(false, kBusyError, FileRecord{}); });
+    }
+}
+
+// commit 登记：七牛 stat 成功后，用 stat 权威值插入 files。
+// 唯一键 (uuid) 兜底并发重复 commit：第二次 INSERT 触发 1062，
+// 当作"已登记"幂等成功并回读原行 id——与注册用户名重复的处理同一手法。
+void Db::commitFile(const FileRecord& rec, FileIdCb cb) {
+    fileCrumb("db.commitFile.submit");
+    if (!submitSql(sqlQueue_, [this, rec, cb]() {
+        bool ok = false;
+        std::string err;
+        std::uint64_t fileId = 0;
+        try {
+            fileCrumb("db.commitFile.task-begin");
+            PooledConn pc(*pool_);
+            if (!pc) throw std::runtime_error("db pool unavailable");
+
+            std::unique_ptr<sql::PreparedStatement> st(pc->prepareStatement(
+                "INSERT INTO files(uuid,uploader_id,name,size,mime,qetag,object_key,bucket,zone,status) "
+                "VALUES(?,?,?,?,?,?,?,?,?,1) "
+                "ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id)"));
+            st->setString(1, rec.uuid);
+            st->setUInt64(2, rec.uploader_id);
+            st->setString(3, rec.name);
+            st->setUInt64(4, static_cast<std::uint64_t>(rec.size));
+            st->setString(5, rec.mime);
+            st->setString(6, rec.qetag);
+            st->setString(7, rec.object_key);
+            st->setString(8, rec.bucket);
+            st->setInt(9, rec.zone);
+            st->executeUpdate();
+
+            // ON DUPLICATE 时 LAST_INSERT_ID(id) 借道回传原行 id（同会话消息
+            // 的 conv id 分配技巧一脉相承；连接器 1.1.9 没有 getLastInsertId()，
+            // 原因见 lastInsertId() 的注释）。
+            fileId = lastInsertId(pc.get());
+            ok = true;
+            fileCrumb("db.commitFile.task-done");
+        } catch (const std::exception& e) {
+            err = std::string("db error: ") + e.what();
+        }
+        postToIo([cb, ok, err, fileId]() { cb(ok, err, fileId); });
+    })) {
+        postToIo([cb]() { cb(false, kBusyError, 0); });
+    }
+}
+
+// 标记删除（仅上传者本人、仅 status=1）。0 行=不是你的文件/已删/不存在，
+// 统一 ok=false + "not found"，不区分原因（防探测别人有多少文件）。
+// 物理删除七牛对象由 HTTP 层在事务外发起（remove 是外网调用，不能占 SQL 事务）。
+void Db::deleteFileByUuid(const std::string& uuid, std::uint64_t uploader, FileMetaCb cb) {
+    submit([this, uuid, uploader, cb]() {
+        bool ok = false;
+        std::string err;
+        FileRecord rec;
+        try {
+            PooledConn pc(*pool_);
+            if (!pc) throw std::runtime_error("db pool unavailable");
+            std::unique_ptr<sql::PreparedStatement> st(pc->prepareStatement(
+                "UPDATE files SET status=2 WHERE uuid=? AND uploader_id=? AND status=1"));
+            st->setString(1, uuid);
+            st->setUInt64(2, uploader);
+            if (st->executeUpdate() == 0) {
+                err = "not found";   // 没更新到行：不是你的、已删或不存在（口径统一，防探测）
+            } else {
+                // 带回整行：HTTP 层需要 object_key 去调七牛物理删除。
+                // UPDATE 与 SELECT 之间同行被并发再删不影响本用途（key 不变）。
+                std::unique_ptr<sql::PreparedStatement> qs(pc->prepareStatement(
+                    std::string(kFileSelectCols) + "FROM files WHERE uuid=?"));
+                qs->setString(1, uuid);
+                std::unique_ptr<sql::ResultSet> rs(qs->executeQuery());
+                if (rs->next()) rec = readFileRow(*rs);
+                ok = true;
+            }
+        } catch (const std::exception& e) {
+            err = std::string("db error: ") + e.what();
+        }
+        postToIo([cb, ok, err, rec]() { cb(ok, err, rec); });
+    });
+}
+
+// 当日已用配额（字节）。按 status=1 行的 size 求和：
+// 已知口径——虚报 commit 失败/直传后从未 commit 的对象不计入，
+// 这是"无状态票据"设计的代价（不写签发表就没法统计未 commit 的申报量），
+// 孤儿对象由告警策略兜底（见规划"已知边界"）。
+void Db::fileQuotaToday(std::uint64_t uploader, BytesCb cb) {
+    submit([this, uploader, cb]() {
+        bool ok = false;
+        std::string err;
+        long long bytes = 0;
+        try {
+            PooledConn pc(*pool_);
+            if (!pc) throw std::runtime_error("db pool unavailable");
+            std::unique_ptr<sql::PreparedStatement> st(pc->prepareStatement(
+                "SELECT COALESCE(SUM(size),0) FROM files "
+                "WHERE uploader_id=? AND status=1 AND created_at >= CURDATE()"));
+            st->setUInt64(1, uploader);
+            std::unique_ptr<sql::ResultSet> rs(st->executeQuery());
+            if (rs->next()) {
+                // SUM(BIGINT) 返回 DECIMAL：getString 再转，比 getUInt64 兼容性好
+                // （Connector 对 DECIMAL 列直接 getUInt64 在部分版本会抛）。
+                const std::string v = sstr(rs->getString(1));
+                try { bytes = std::stoll(v); } catch (...) { bytes = 0; }
+            }
+            ok = true;
+        } catch (const std::exception& e) {
+            err = std::string("db error: ") + e.what();
+        }
+        postToIo([cb, ok, err, bytes]() { cb(ok, err, bytes); });
+    });
+}
+/*************图片文件功能（七牛云直传）：files DAO 结束***************/
+
 } // namespace kc

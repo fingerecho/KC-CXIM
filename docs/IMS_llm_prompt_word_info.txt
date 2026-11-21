@@ -462,3 +462,130 @@ listed          : 0/100
 deleted         : 0/100
 failed          : 1
 ============================
+
+请根据D:/FKC/KC-CXIM/dev/IMS/KC-CXIM-Svc/basic_service_20261107/的readme.md和该目录下的项目代码，总结一份通信协议文档，保存在D:/FKC/KC-CXIM/docs/IMS_communication_protocol.md。
+
+请问需要在这个D:/FKC/KC-CXIM/dev/IMS/KC-CXIM-Svc/basic_service_20261107/项目目录下新增一个单聊、群聊支持发送图片、文件的功能，具体需要怎么做，请将详细规划内容追加到D:/FKC/KC-CXIM/docs/IMS_llm_prompt_word_info.txt的末尾，注意不要修改其它的源码和文档。
+
+////
+注意需要加注释以及更新D:/FKC/KC-CXIM/docs/IMS_communication_protocol.md协议内容和D:/FKC/KC-CXIM/dev/IMS/KC-CXIM-Svc/basic_service_20261107/readme.md文档内容，
+////
+
+请问需要在这个D:/FKC/KC-CXIM/dev/IMS/KC-CXIM-Svc/basic_service_20261107/项目目录下新增一个单聊、群聊支持发送图片、文件的功能，具体需要怎么做，请将详细规划内容追加到D:/FKC/KC-CXIM/docs/IMS_llm_prompt_word_info.txt的末尾，注意不要修改其它的源码和文档。
+注意修改D:/FKC/KC-CXIM/docs/IMS_llm_prompt_word_info.txt文件的477行往后的图片、文件发送的规划内容，改为预留七牛云的对象存储的的接口，不需要直接将图片、文件落盘到本地服务器。
+
+以下为“单聊/群聊发送图片、文件”功能的详细规划与提示词（可直接复制使用；写法沿用本文件“角色/项目背景/目标/功能/约束/交付物/验收/工作方式”的结构，并基于 2026-11-20 对现有源码的实际调研结论）：
+
+# 现状调研结论（规划依据，均为现有代码事实）
+- 图片消息已有“半个占位”：MsgType::Image=2 已定义（message.h:26），session.cpp 里与 Text 共用 do_send/do_send_group，零特殊逻辑；但 content 放什么、URL 从哪来、如何下载，全都没有实现。
+- 全项目没有任何上传/下载/磁盘存储/对象存储代码（grep multipart/upload/ofstream/COS 均无命中）；“二进制放 COS”只存在于 schema.sql:232 与 frame.h:41 的注释意向。
+- HTTP 路由在 http_server.cpp handle_request()（约 L759-957）硬编码 if 链；请求体上限 64KB（HTTP_BODY_MAX，超限 413），无法直接塞大文件。
+- TCP 上行单帧 body 上限 4096 字节（frame.h MAX_BODY，仅在 session.cpp:133 上行读路径生效；下行由写队列预算 512KB/连接、64MB/全局控制）。元数据 JSON 放 4096 内绰绰有余，二进制绝对不进 TCP 帧。
+- messages.content 为 TEXT（物理上限 65535 字节），type 为 SMALLINT，表设计注释已明确“图片/文件存 URL，不塞数据库”；(conversation_id,sender_id,client_msg_id) 唯一键去重、SendAck=113、offline_messages 补推、历史 110/111、回执 112、群聊写扩散等机制全部现成、可直接复用。
+- type 编号占用：1,2,3,100,101,102,110~113,130~132,140~144；4~99 空闲。
+- 线程模型：TCP+HTTP 共用一个 io_context（2~8 线程）；Db 有 SQL worker 池与 bcrypt worker 池；纪律是 io 线程只做收包/解析/入队/回写，磁盘与慢 IO 必须进 worker。
+- 部署环境：2核2G、约 3MBps 上行带宽（≈375KB/s）——若文件落盘本地服务器，服务器既传又收是致命瓶颈（100MB 单份下载约 4~5 分钟）；改用七牛云对象存储+客户端直传后，服务器只走控制面（小 JSON+本地签名），带宽不再是约束，代价是新增外部依赖（七牛可用性、AK/SK 保管、存储与流量计费）。
+
+请阅读D:/FKC/KC-CXIM/docs/IMS_llm_prompt_word_info.txt文件的491行到573行的提示词，根据提示词完成项目代码的补充开发。
+
+# 角色
+你是熟悉 C++17、Boost.Asio / Boost.Beast、MariaDB 的即时通讯（IM）后端工程师。
+
+# 项目背景
+- 项目目录：dev/IMS/KC-CXIM-Svc/basic_service_20261107
+- 技术栈：C++17 + Boost.Asio（TCP 长连接）+ Boost.Beast（HTTP 短连接）+ MariaDB + RapidJSON + JWT(HS256)；单进程，TCP/HTTP 共用 io_context，重活一律进 worker 线程池
+- 设计原则（必须沿用，本轮延伸）：HTTP 负责“写事实”，TCP 负责“推事件/传元数据”；**大块二进制既不经过 TCP、也不经过本服务器 HTTP——由客户端持服务器签发的凭证直传七牛云**，服务器只留在控制面
+- 消息链路现状：do_send/do_send_group 在 DB worker 单事务内分配 seq、写 messages、离线写 offline_messages；在线直推、登录补推+ACK 删除、历史 keyset 分页、已读回执、群写扩散均已实现且与消息类型无关（type 原样透传）
+- 约束回顾：上行帧 body ≤ 4096（MAX_BODY）；HTTP body 默认上限 64KB（HTTP_BODY_MAX）；messages.content 是 TEXT
+
+# 目标
+让单聊和群聊都能发送图片与文件。核心思路一句话：**七牛云对象存储（Kodo）+ 客户端直传——图片/文件二进制一律不落本地服务器磁盘、不经过 IM 服务器；服务器只做控制面（签发上传凭证、传后校验登记、权属校验、URL 改写、下载签名签发），TCP 消息仍只携带一小段 JSON 元数据；投递/离线补推/历史/回执链路完全复用现状、零改动。**
+MVP 范围：上传凭证签发（uploadToken）、提交登记 commit（七牛 stat 校验存在性后入库）、图片消息（type=2 落地语义）、文件消息（新增 type=4）、服务端元数据校验与 URL 改写、下载换取（302 到私有空间签名 URL）、大小/类型/配额防护、验收脚本。
+本期不做：断点续传/分片上传（七牛 resumable v2 接口预留）、缩略图与图片压缩（七牛 fops imageView 参数位预留）、病毒扫描、消息撤回联动文件回收、按会话粒度的下载强权限（MVP 权限取舍如实写进注释与文档）。
+
+# 存储选型（按本轮要求改为七牛云，本地落盘方案整体废弃）
+- 采用：七牛云 Kodo 私有 Bucket + 客户端直传。上传时客户端拿服务器签发的 uploadToken 直接 PUT 到七牛 uphost；下载走私有空间签名 URL（带 deadline+sign）。省服务器带宽与磁盘、天然可水平扩展、免自建文件服务。
+- 接口化落地（“预留接口”的兑现方式）：存储操作收进 ObjectStorage 抽象接口（signUpload / stat / remove / signDownload），两个实现：QiniuObjectStore（真实对接）与 MockObjectStore（本地模拟七牛行为）。QINIU_ENABLED=0（默认）时全流程可用 mock 验收，不依赖七牛账号；配置真实 bucket 后置 1 切换——对接成本与风险都被这个开关隔离。
+- 不引入七牛 SDK：上传凭证签名（PUT policy：HMAC-SHA1 + URL-safe base64）、私有下载签名与管理 API 签名（q-sign 方案）、stat/rm 调用全部用现有 OpenSSL + Boost.Beast HTTP 客户端手写实现，符合“不引入新第三方库”约束；实现时在注释中给出七牛官方签名算法文档要点链接。
+- 弃选记录：本地磁盘直存方案（原方案 A）在 3MBps 带宽下上传下载互相挤占信令带宽，且磁盘增长、备份、跨机扩容全要自建——七牛方案以约 1~2 毛/GB/月的存储成本换掉这些，明确弃选。
+
+# 功能需求
+1. 数据库（修改 db/schema.sql，新增 files 表，带完整中文注释说明设计原理；不动现有表）：
+   - files：id BIGINT AUTO 主键；uuid CHAR(36) 唯一（对外文件标识，随机生成防枚举，出现在 object_key 与换取 URL 中）；uploader_id BIGINT；name VARCHAR(255)（原始文件名，仅展示用）；size BIGINT（**以七牛 stat 返回为准登记**，防客户端谎报）；mime VARCHAR(127)；qetag CHAR(32)（七牛对象校验和，stat 返回，用于完整性核对；注释中说明它与标准 sha256 算法不同，且服务器不中继字节、无法核验客户端自报 sha256——如实记录这一强度边界）；object_key VARCHAR(255)（七牛对象名，由**服务端**生成如 im/<yyyy-mm>/<uuid>.<ext>，上传凭证 policy 里锁定该 key，客户端写不了别人的路径，也替代了原方案的本地 storage_path）；bucket VARCHAR(63)；zone TINYINT（七牛区域编号）；status TINYINT（1=正常 2=已删除）；created_at DATETIME(3)
+   - 索引：uuid 唯一、(uploader_id, created_at)、(status, created_at) 供清理扫描
+   - messages 表不改：type 直接存 2/4，content 存元数据 JSON（远小于 TEXT 65535 与帧 4096 限制）
+2. 文件元数据 JSON 格式（TCP type=2/4 的 content，UTF-8，必须 < 4096 字节含帧开销）：
+   {"file_id":"<uuid>","url":"http://<服务器地址>:10002/api/files/<uuid>","name":"照片.png","size":345678,"mime":"image/png"}
+   - url 是**服务器换取入口**而非七牛直链：七牛私有空间的签名 URL 带 deadline，会把“历史消息里的图半年后打不开”变成必然事故，所以消息体只存稳定入口，访问时由服务器现场签一条短时效七牛 URL（见 3）；url 由服务端校验后改写生成，客户端自报的 url 一律不信、整体替换
+3. HTTP API（全部是控制面小 JSON，**没有任何字节中继路由**——HTTP_BODY_MAX=64KB 不改、不需要按路由放宽；沿用 /api 前缀、统一 {code,message,data} 响应、JWT Bearer 鉴权与现有错误码风格；新增路由加在 http_server.cpp handle_request 的 if 链中）：
+   - POST /api/files/upload-token：入参 JSON {name,mime,size}；服务器校验扩展名/mime 白名单、FILE_MAX_SIZE、每人每日配额（按声明 size 计数，超限 429）→ 生成 uuid/object_key → ObjectStorage::signUpload 签发七牛 uploadToken（PUT policy 绑定 key 与 fsize）→ 返回 {file_id,key,upload_url(七牛 uphost),uptoken,expires_in}。此时**不写 files 表**
+   - POST /api/files/commit：客户端直传成功后调用，{file_id}；服务器校验 file_id 归属本人（未过期签发记录）→ ObjectStorage::stat 外网调用核验对象真实存在、登记 size/qetag（不存在=虚报上传，400/404 拒绝）→ INSERT files(status=1) → 返回 {file_id,url}。没有 commit 成功就没有文件记录，后续带该 file_id 的消息会被发送校验拒绝——这就是“防虚报”的闭环
+   - GET /api/files/{uuid}：下载换取入口。需登录 JWT、files.status=1；ObjectStorage::signDownload 生成 FILE_URL_TTL_SEC（默认 600s）时效的七牛私有空间签名 URL，**302 Location 返回**。Electron/HTML 的 <img src> 天然跟随 302 且不需要带 Authorization 头——旧方案“img 带不了头”的难题由 302+短签名 URL 化解。MVP 权限取舍（如实写进注释与文档）：任何登录用户拿到 uuid 都可换取一次；更强权限（限引用过该文件の会话成员）需要文件-会话关联，列为后续项
+   - DELETE /api/files/{uuid}：仅上传者本人；标记 status=2 并调 ObjectStorage::remove 物理删除七牛对象（不同于本地盘 TTL 方案——七牛删除近零成本，立即删）
+   - 已知边界（写进注释与文档，不假装没这问题）：直传成功但从未 commit → 对象成了 files 表不可见的孤儿（七牛按量计费）→ MVP 只对超期未 commit 的签发记录打告警日志，自动 batch 删除列后续；消息删除而文件保留 → status=1 超过 FILE_RETENTION_DAYS=30 天仅告警，是否强删需我拍板（七牛存储省钱问题真实存在，别默认“先存着”无代价）
+4. 实现纪律（对应现有线程模型红线）：
+   - 本地签名计算（uploadToken 的 HMAC-SHA1、私有下载与管理 API 的 q-sign）是微秒级 CPU 活，可在 io 线程做（与 JWT HS256 同性质）
+   - **七牛管理 API（stat/rm）是外网 HTTP 调用，绝不在 io 线程同步做**：复用 Db worker（或独立 http-client worker，实现时说明取舍），完成后 post 回 io 回响应；3s 超时 + 退避重试 1 次，失败回 503 并限频告警日志——文件控制面故障不得拖累文本消息收发
+   - 数据面（文件字节）不经过服务器：不需要新增 file worker 线程池、不需要流式收发、不存在磁盘写满防护（原 507）——本地落盘方案的这三件套整体作废
+   - 防护重心移到控制面与七牛侧：uuid 随机防枚举；key 由服务端生成并锁进 uploadToken policy（fsize 上限由**七牛端强制执行**，超限上传被七牛拒绝，服务器连字节都看不到）；扩展名/mime 白名单（图片 jpg/png/gif/webp/bmp；文档 pdf/txt/doc/docx/xls/xlsx/ppt/pptx/zip/rar/7z/mp3/mp4；默认拒绝 exe/bat/cmd/sh/js/ps1 等可执行类型）在签发凭证时校验；私有空间 + 短签名 URL 防外链盗刷流量
+5. TCP 协议（新增编号不复用/不改变现有语义）：
+   - 新增 MsgType::File = 4（4~99 空闲区）；type=2 Image 保留并落地语义。is_group 机制原样区分单聊/群聊，群文件即 is_group=true 的 type=4
+   - session.cpp do_send/do_send_group 对 type∈{2,4} 增加元数据校验分支（进 DB worker，复用 sendChecked 的事务）：content 必须是合法 JSON、file_id 在 files 表存在且 status=1、**uploader_id 必须等于发送者**（防冒用他人 file_id、防把任意外链塞进 content 骗接收端打开——url 由服务端改写为自家换取入口后才入库/投递）；校验失败回 Error 帧，不断连接
+   - 接收端拿到的是服务端改写过的安全元数据；下行帧大小不变（元数据 <4096，MAX_BODY 维持现状）
+   - 投递、离线补推（offline_messages）、历史分页（110/111）、SendAck（113）、回执（112）、群写扩散：**全部零改动复用**（type 透传已天然支持）
+   - 明确写进文档：禁止把二进制 base64 塞 content（4096 帧上限 + TEXT 存储双重禁止）；禁止在消息里放七牛签名直链（deadline 语义会腐化历史消息）
+6. 配置项：
+   - QiniuConfig.json（项目根目录，风格与保密要求仿 JWTConfig.json/DBConfig.ini：AK/SK 不硬编码、不打日志、不分发客户端）：access_key / secret_key / bucket / zone / up_host / domain（七牛一级测试域名或自有 CDN 域名）/ private_space=true
+   - 环境变量（build.sh/readme 说明默认值）：QINIU_ENABLED=0（默认 0=MockObjectStore 模式，无七牛账号也能全流程验收，即“预留接口”的兑现）、FILE_MAX_SIZE=20MB、FILE_URL_TTL_SEC=600、FILE_USER_DAILY_QUOTA_MB=500（签发凭证时按声明 size 计；七牛流量计费，比本地盘方案收紧）、FILE_RETENTION_DAYS=30、FILE_TYPE_STRICT=1
+
+# 技术约束
+- 不改 TCP 分帧协议与现有 Message 字段语义（is_group 同款方式新增可选字段除外）；文件字节不经过服务器，HTTP_BODY_MAX=64KB 维持不变、无需任何按路由放宽
+- 图片/文件二进制**禁止落本地服务器磁盘**（本轮明确推翻本地盘方案）：存储只有七牛 Kodo（或 mock 模拟），服务器侧零文件落地
+- 不改 messages/conversations/offline_messages 等现有表；schema.sql 只新增 files 表
+- 复用现有 Db / ConnectionPool / http_server / session / session_manager / token_service / 限流与错误码风格，尽量少改现有代码
+- 不引入七牛 SDK 等新第三方库：上传/下载/管理 API 三类签名用现有 OpenSSL（HMAC-SHA1/HMAC-SHA256 + URL-safe base64）手写，七牛 HTTP 调用用现有 Boost.Beast 客户端；不新增进程；如遇缺库停止任务并报告
+- 七牛 AK/SK 只放 QiniuConfig.json，禁止硬编码、禁止打印日志、禁止随 uptoken 下发客户端（注释中说明“uptoken 只授权写指定 key、不含 SK，泄露后果受限”的原因）
+- 所有新增/修改代码加中文注释，解释原理、机制、功能（我是后端初学者）；关键代码块顶部加 "/*************图片文件功能（七牛云直传）：<模块名>*************" 分块注释
+- io 线程纪律不破：io 线程只做收包/解析/入队/回写与本地签名；外网调用（七牛 stat/rm）一律进 worker（Db worker 或独立 http-client worker）
+- 注意兼容：老客户端遇到未知 type=4 会判非法断线（fixme 中有先例），文档需明确“先发版客户端再上线 File=4”的部署顺序要求
+
+# 交付物
+- 新增/修改文件清单及职责：db/schema.sql（files 表）、QiniuConfig.json.example（仿 JWTConfig.json.example 的模板，不含真实密钥）、step1_tcp_echo/object_store.h/.cpp（ObjectStorage 抽象接口 + MockObjectStore 本地模拟 + 配置选择实现）、step1_tcp_echo/qiniu_signer.h/.cpp（三类签名：上传 uploadToken、私有下载 q-sign、管理 API HMAC；纯本地计算带单测）、step1_tcp_echo/qiniu_client.h/.cpp（Beast HTTP 客户端调 stat/rm，超时/重试，在 worker 执行）、http_server.cpp（upload-token/commit/{uuid} 302/delete 四路由）、message.h（File=4）、session.cpp do_send、do_send_group（元数据校验与 URL 改写）、db.h/db.cpp（files DAO：commit 登记/get/markDelete/配额统计）、main.cpp（QiniuConfig 读取与 ObjectStore 注入）
+- readme.md：§5 新增文件 API 四节（curl 示例：签凭证→commit→换取下载 302→删除，并给出“客户端拿 uptoken 直传七牛”的完整时序与 401/403/400/429/503 语义）、§6.2 类型表补 File=4、新增“媒体消息格式与七牛直传”小节（元数据 JSON 字段定义、示例、QINIU_ENABLED mock/真实切换说明、AK/SK 保密要求）
+- docs/IMS_communication_protocol.md：同步更新 type=2 语义、新增 type=4、HTTP 控制面 API、元数据 JSON 规范、302 换取 + 私有空间签名 URL 格式、直传时序图（本文件末尾注释的既有要求）
+- step2_test_client/test_file_client.cpp：签凭证→（mock 模式向 MockObjectStore 模拟端点/真实模式 PUT 七牛 uphost）直传→commit→单聊发图片/文件→接收端跟随 302 下载→群内同样流程的验收客户端
+- step3_verify/verify_file.sh：注册两个用户→登录→上传图片凭证→直传→commit→单聊 type=2→接收端 302 下载核对 size/qetag→上传文档→type=4 群聊→离线一方上线补推→历史拉取含元数据→超限/黑名单 mime/虚报 commit/冒用 file_id 负向用例→删除→登出
+- 关键调用链说明：凭证签发链（白名单/大小/配额校验→生成 key→signUpload 本地签名→返回 uptoken）、commit 链（归属核验→ObjectStorage::stat 外网调用[worker]→以 stat 结果登记 files 表→返回换取入口）、发送校验链（解析 JSON→files 权属/状态→url 改写→sendChecked 原事务入库）、下载换取链（鉴权→status 校验→signDownload→302）
+
+# 验收标准
+1. bash build.sh 编译通过（Release）；QINIU_ENABLED=0（默认 mock 模式）下 2~6 全部可跑通，不依赖七牛账号；qiniu_signer 三类签名有独立单测（对照七牛官方文档给的样例串逐字节断言）
+2. upload-token：>FILE_MAX_SIZE 或黑名单 mime 或超日配额被拒（400/429）；未登录 401/403；响应只含 file_id/key/uptoken/upload_url，任何响应与日志中不出现 AK/SK
+3. 直传+commit：拿凭证向（mock/真实）七牛 PUT 成功→commit 登记→A 向在线 B 发 type=2，B 收到服务端改写 URL 的元数据→GET /api/files/{uuid} 返回 302，跟随后取回字节与 files 登记的 size/qetag 一致；未上传就 commit（虚报）被 stat 核验拒绝；B 离线时消息入库、上线补推后同样可下载；重复 client_msg_id 不产生两条消息（复用现有去重）
+4. 群聊：成员 A 发 type=4 群文件，在线成员实时收到、离线成员补推收到；非成员发送被拒；已退群成员拉不到含文件的历史
+5. 冒用他人 file_id、content 携带任意外链 URL 或七牛签名直链、非 JSON 二进制塞 content：均回 Error 帧且不断连接；帧超 4096 按现有协议处理
+6. 七牛管理 API 打不通时（mock 提供“断连模式”）：commit/delete 返回 503 且日志限频；此期间文本消息、登录、群聊全部正常——控制面故障不拖累主链路；文件字节全程不经服务器（评审确认服务器无新增落盘代码、无大 body 路由）
+7. 现有 verify_tcp_http.sh、verify_friend.sh、verify_group.sh 全部不被破坏
+
+# 工作方式
+先阅读 readme.md、db/schema.sql、http_server.cpp、session.cpp、db.h/db.cpp、token_service.*、docs/IMS_communication_protocol.md，输出：现状分析 + 七牛直传方案确认（含 files 表 DDL、元数据 JSON 草案、三类签名的算法要点与官方文档出处、MockObjectStore 的模拟边界）+ 分步实施计划；
+分步建议（每步可独立编译、可验证）：① ObjectStorage 接口 + MockObjectStore + QiniuConfig.json(.example) + files 表与 DAO → ② qiniu_signer 三类签名（对照官方样例断言）+ upload-token/commit 路由 → ③ GET /api/files/{uuid} 302 换取 + DELETE（qiniu_client 外网调用进 worker）→ ④ message.h File=4 + do_send/do_send_group 元数据校验与 URL 改写 → ⑤ test_file_client.cpp + verify_file.sh（mock 模式全链路跑通）→ ⑥ 配置真实 bucket 打开 QINIU_ENABLED=1 联调 + 更新 readme.md 与 IMS_communication_protocol.md；
+我确认后再动手改代码；涉及以下需要产品拍板的点，先列问题再实现：bucket/区域/域名（一级测试域名有 30 天回收风险，正式域名需备案）、私有空间是否开启、下载换取的权限粒度（登录即可 vs 限会话成员）、日配额与保留期数值、孤儿对象与超期文件的清理策略（告警 vs 自动删除）；
+如果实现时七牛账号/网络不可用，请停止真实对接步骤，交付“接口+mock”形态（即预留接口已兑现）并明确告诉我剩下哪一步等待真实配置。
+
+我已经配置好QiniuConfig.json，请实现七牛云对接。如果对接出现问题，请立即停下，由我自己处理。
+请将QINIU_ENABLED=0改为1，然后运行测试。
+
+
+请结合D:\FKC\KC-CXIM\sdk\qiniu-c-sdk-master\c-sdk-master的七牛demo代码和D:/FKC/KC-CXIM/dev/IMS/KC-CXIM-Svc/basic_service_20261107/的文件发送相关功能，以及配置好的QiniuConfig.json，对接七牛文件存储服务，并在step2_test_client下增加一个test_Qiniu_file_client.cpp,并在step3_verify/下增加一个verify_Qiniu_file.sh用于验证。
+
+现在运行RUN_QINIU_REAL=1 bash step3_verify/verify_Qiniu_file.sh报错：
+[verify-qiniu-file] 排查提示：
+  * 表单直传失败(7xx/401)：确认 QiniuConfig 的 access_key/secret_key/bucket 与 up_host 区域一致；
+  * commit 报 503：管理 API(rs.qbox.me) 不可达或证书校验失败——按需设 QINIU_VERIFY_CERTS/QINIU_CA_BUNDLE；
+  * 跟随直链下载非 200：domain 是否绑定该 bucket、private_space 签名口径是否与配置一致；
+  * 本脚本仅跑真实模式；控制面负向的完整回归以 verify_file.sh（mock）为准。
+请在D:/FKC/KC-CXIM/dev/IMS/KC-CXIM-Svc/basic_service_20261107/step2_test_client/test_Qiniu_file_client.cpp中加上具体的报错错误码。
+
+请根据D:\FKC\KC-CXIM\sdk\qiniu-c-sdk-master\c-sdk-master\examples\up_multipart_sample.c这个成功上传文件的案例以及D:\FKC\KC-CXIM\sdk\qiniu-c-sdk-master\c-sdk-master\examples\的其它代码，修改本项目中的即时通信服务的D:/FKC/KC-CXIM/dev/IMS/KC-CXIM-Svc/basic_service_20261107/step2_test_client/test_Qiniu_file_client.cpp和D:/FKC/KC-CXIM/dev/IMS/KC-CXIM-Svc/basic_service_20261107/step3_verify/verify_Qiniu_file.sh，运行 RUN_QINIU_REAL=1 bash step3_verify/verify_Qiniu_file.sh测试。
+
+现在step3_verify/verify_Qiniu_file.sh已经测试通过，请根据代码完善D:\FKC\KC-CXIM\docs\IMS_communication_protocol.md协议文档和D:\FKC\KC-CXIM\dev\IMS\KC-CXIM-Svc\basic_service_20261107\readme.md说明，加上Qiniu的文件、图片发送的相关内容，注意只修改md文件不要动代码。

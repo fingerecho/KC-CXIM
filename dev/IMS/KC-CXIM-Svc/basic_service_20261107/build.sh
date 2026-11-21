@@ -25,6 +25,7 @@ DEB_PACKAGE_ARCH=""
 #    现在支持外部覆盖：OPEN_STRESS_TEST_DEV_MODE=False bash build.sh
 # ============================================================================
 OPEN_STRESS_TEST_DEV_MODE="${OPEN_STRESS_TEST_DEV_MODE:-True}"
+CLEAR_LOGS="${CLEAR_LOGS:-True}"
 
 if [[ "${OPEN_STRESS_TEST_DEV_MODE}" = "True" ]]; then
     # —— 认证限流：抬到远高于 2 核容量（~28 哈希/s @cost=10）——
@@ -38,6 +39,12 @@ if [[ "${OPEN_STRESS_TEST_DEV_MODE}" = "True" ]]; then
     TCP_MAX_OUTSTANDING=10000
     # —— 取证档必须留日志（见上面说明）——
     QUIET_LOG=0
+fi
+
+# 清楚所有systemd日志
+if [[ "${CLEAR_LOGS}" = "True" ]]; then
+    sudo journalctl --rotate
+    sudo journalctl --vacuum-time=1s -u cxim.service
 fi
 
 # ============================================================================
@@ -86,6 +93,21 @@ HTTP_PORT=10002
 # 这里无条件写 1 会把那一档吃掉，表现为"日志开关改了没反应"。
 QUIET_LOG="${QUIET_LOG:-1}"
 
+# /*************图片文件功能（七牛云直传）：部署档位默认值***************/
+# QINIU_ENABLED：0=MockObjectStore（联调/CI），1=真实七牛（生产必须为 1，
+#   且 /opt/CXIM/QiniuConfig.json 必须就位——缺文件服务直接启动失败，不静默降级）。
+# 与 DBConfig.ini 同理：QiniuConfig.json 含 AK/SK，**不打进 deb 包**，由部署方放置。
+QINIU_ENABLED="${QINIU_ENABLED:-1}"
+QINIU_CONFIG="${QINIU_CONFIG:-/opt/CXIM/QiniuConfig.json}"
+FILE_MAX_SIZE_MB="${FILE_MAX_SIZE_MB:-20}"
+FILE_URL_TTL_SEC="${FILE_URL_TTL_SEC:-600}"
+FILE_USER_DAILY_QUOTA_MB="${FILE_USER_DAILY_QUOTA_MB:-500}"
+# FILE_BASE_URL：媒体消息元数据 url 前缀，必须填**客户端可达**的公网 HTTP 地址，
+# 例如 http://110.40.206.253:${HTTP_PORT}——留空时服务端跟随 HTTP_PORT 默认回环
+# （开发可用、生产图片全裂），所以这里要求部署方显式给出。
+FILE_BASE_URL="${FILE_BASE_URL:-http://127.0.0.1:${HTTP_PORT}}"
+# /*************图片文件功能（七牛云直传）：部署档位默认值***************/
+
 # 构建类型（P0-5）：默认 Release，可 export CMAKE_BUILD_TYPE=RelWithDebInfo 覆盖。
 BUILD_TYPE="${CMAKE_BUILD_TYPE:-Release}"
 # 生成 systemd 用户级服务文件到项目当前目录。
@@ -122,8 +144,36 @@ Environment=TCP_MAX_SESSIONS=${TCP_MAX_SESSIONS}
 Environment=TCP_MAX_OUTSTANDING=${TCP_MAX_OUTSTANDING}
 Environment=IDLE_TIMEOUT_SEC=${IDLE_TIMEOUT_SEC}
 Environment=QUIET_LOG=${QUIET_LOG}
+# /*************图片文件功能（七牛云直传）：文件模块运行参数***************/
+Environment=QINIU_ENABLED=${QINIU_ENABLED}
+Environment=QINIU_CONFIG=${QINIU_CONFIG}
+Environment=FILE_MAX_SIZE_MB=${FILE_MAX_SIZE_MB}
+Environment=FILE_URL_TTL_SEC=${FILE_URL_TTL_SEC}
+Environment=FILE_USER_DAILY_QUOTA_MB=${FILE_USER_DAILY_QUOTA_MB}
+Environment=FILE_BASE_URL=${FILE_BASE_URL}
+# /*************图片文件功能（七牛云直传）：文件模块运行参数***************/
+# P0-7：500 并发 = 500 条 TCP 长连接 + 500 条 HTTP 短连接 + 若干 DB/binlog/日志 fd，
+# 不设限时默认值可能只有 1024，压测里 connect 超时(10060) 就有它一份。
+# 装好后请用 \`systemctl show CXIM -p LimitNOFILE\` 和 /proc/<pid>/limits 实证生效。
 LimitNOFILE=${LIMIT_NOFILE:-65535}
+# /*************core-dump 修复 ⑦：出事必须留下 core***************/
+# 这里原来是硬编码 LimitCORE=0：**内核不落盘 core**。于是 journal 里只有
+#     code=dumped, status=11/SEGV / Failed with result 'core-dump'.
+# 而 \`coredumpctl list\` 是空的 —— "SEGV 在哪一行"根本无从回答，只能靠读代码猜。
+# 默认改成 infinity（有 core 才能 gdb bt 看真实栈）；磁盘紧张的机器可以
+# 用 LIMIT_CORE=0 bash build.sh 关掉，但不要同时又抱怨"看不到崩溃现场"。
+# 配套：step1_tcp_echo/CMakeLists.txt 给服务端加了 -g -fno-omit-frame-pointer，
+#       main.cpp 装了信号处理器（没有 core 时 journal 里也有一份原生栈帧）。
 LimitCORE=${LIMIT_CORE:-infinity}
+# /*************core-dump 修复 ⑬：unit 里的注释必须独占一行***************/
+# systemd 的 unit 解析器**不支持行尾注释**：# 只有出现在行首（前面最多有空白）才算注释。
+# 原来这一行写成 Restart=always          # 原来的 on-failure 不覆盖…\`，
+# 于是整串 always          # 原来的… 都被当成 Restart 的取值 → 解析失败 →
+# **静默回落到默认值 no**。本轮实测证据：
+#     sudo systemctl show CXIM -p Restart  →  Restart=no
+#     15:15:09 SEGV 之后 journal 里没有任何 "Scheduled restart job" —— 服务就这么躺着。
+# 也就是说：上一轮"改成 Restart=always"的动作**实际上从未生效过**。
+# 装好后必须用 systemctl show CXIM -p Restart 验，而不是看 unit 文件写了什么。
 Restart=always
 RestartSec=3
 StandardOutput=journal
@@ -133,6 +183,7 @@ StandardError=journal
 WantedBy=default.target
 EOF
 }
+
 
 # 将 build/bin 打包为 .deb：
 #   安装时 build/bin 的内容 -> /opt/CXIM/bin/
@@ -346,6 +397,11 @@ if [[ -n "${OPENSSL_ROOT_DIR}" ]]; then
     CMAKE_ARGS+=(-DOPENSSL_ROOT_DIR="${OPENSSL_ROOT_DIR}")
 fi
 
+# 只有BUILD_TYPE为Release时，加上 -DCXIM_NO_DEBUG_INFO=ON
+if [[ "${OPENSSL_ROOT_DIR}" == "Release" ]]; then
+    CMAKE_ARGS+=(-DCXIM_NO_DEBUG_INFO=ON)
+fi
+
 cmake "${CMAKE_ARGS[@]}"
 
 if [[ "$(uname -s)" == Linux* ]]; then
@@ -360,5 +416,3 @@ fi
 if [[ "$(uname -s)" == Linux* ]]; then
     package_deb
 fi
-
-#bash step3_verify/verify_tcp.sh 8888 "$(pwd)/build"

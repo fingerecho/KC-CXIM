@@ -1,5 +1,7 @@
 logs
 DBConfig.ini
 JWTConfig.json
+QiniuConfig.json
 vcpkg_installed/
 build/
+build-asan/

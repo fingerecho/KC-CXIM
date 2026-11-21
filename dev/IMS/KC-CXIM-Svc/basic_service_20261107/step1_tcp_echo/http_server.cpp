@@ -6,6 +6,13 @@
 #include "session.h"                           // SessionManager::find 返回的 session::deliver
 #include "session_manager.h"                   // 按 userId 查找在线 TCP 连接
 #include "token_service.h"                     // TokenService：HTTP 接口鉴权
+/*************图片文件功能（七牛云直传）：控制面所需的模块***************/
+#include "file_types.h"                        // FileRuntime/uuid/元数据/白名单
+#include "object_store.h"                      // ObjectStorage（mock/七牛）+ MockObjectStore
+#include "qiniu_signer.h"                      // mock-object 校验需要复用签名实现
+#include <cstdio>                              // std::snprintf：object_key 的日期段
+#include <ctime>                               // gmtime：object_key 的 yyyy-mm 前缀
+/*************图片文件功能（七牛云直传）：控制面所需的模块***************/
 
 #include <boost/beast/core.hpp>                // Beast 核心：flat_buffer / error_code 等
 #include <boost/beast/http.hpp>                // Beast HTTP：request/response/async_read/write
@@ -344,6 +351,77 @@ std::string make_group_requests_ok(const std::vector<GroupRequestInfo>& reqs) {
 }
 /*************群聊功能：群相关响应构造结束***************/
 
+// ============================================================================
+// /*************图片文件功能（七牛云直传）：文件接口的响应构造***************/
+// ----------------------------------------------------------------------------
+// 响应里**只出现**：file_id / key / 上传地址 / uptoken / ticket / 换取 URL。
+// 绝不出现：七牛 AK/SK、ticket 密钥、真实 bucket 内部路径之外的任何秘密。
+// uptoken 本身只授权"往这一个 key 写不超过 fsizeLimit 的一次对象"，
+// 泄漏后果被 policy 限死——这是"凭证下发给客户端"安全性的全部依据（规划约束原文）。
+// ============================================================================
+std::string make_file_token_ok(const std::string& fileId, const std::string& key,
+                               const std::string& uploadUrl, const std::string& uptoken,
+                               long long expiresIn, const std::string& ticket) {
+    rapidjson::StringBuffer sb;
+    rapidjson::Writer<rapidjson::StringBuffer> w(sb);
+    w.StartObject();
+    w.Key("code");    w.Int(0);
+    w.Key("message"); w.String("ok");
+    w.Key("data");    w.StartObject();
+    w.Key("fileId");    w.String(fileId.c_str(), fileId.size());
+    w.Key("key");       w.String(key.c_str(), key.size());
+    w.Key("uploadUrl"); w.String(uploadUrl.c_str(), uploadUrl.size());
+    w.Key("uptoken");   w.String(uptoken.c_str(), uptoken.size());
+    w.Key("expiresIn"); w.Int64(expiresIn);
+    w.Key("ticket");    w.String(ticket.c_str(), ticket.size());
+    w.EndObject();
+    w.EndObject();
+    return std::string(sb.GetString(), sb.GetSize());
+}
+
+std::string make_file_commit_ok(const std::string& fileId, const std::string& url,
+                                long long size, const std::string& qetag) {
+    rapidjson::StringBuffer sb;
+    rapidjson::Writer<rapidjson::StringBuffer> w(sb);
+    w.StartObject();
+    w.Key("code");    w.Int(0);
+    w.Key("message"); w.String("ok");
+    w.Key("data");    w.StartObject();
+    w.Key("fileId"); w.String(fileId.c_str(), fileId.size());
+    w.Key("url");    w.String(url.c_str(), url.size());
+    w.Key("size");   w.Int64(size);
+    w.Key("qetag");  w.String(qetag.c_str(), qetag.size());
+    w.EndObject();
+    w.EndObject();
+    return std::string(sb.GetString(), sb.GetSize());
+}
+
+// 解析 /api/files/<uuid>（GET 下载 / DELETE 删除共用）。
+// uuid 形状由 isUuidLike 把关（36 位 [0-9a-f-]）：形状不对的 path 一律
+// 匹配失败，路由会继续往下落到 404——不给路径注入留缝隙。
+bool parse_file_uuid(const std::string& path, const std::string& prefix, std::string& uuidOut) {
+    if (path.size() != prefix.size() + 36) return false;
+    if (path.compare(0, prefix.size(), prefix) != 0) return false;
+    uuidOut = path.substr(prefix.size());
+    return isUuidLike(uuidOut);
+}
+
+// object_key 的日期段：UTC yyyy-mm。目录按月分片，
+// 单目录对象数可控（七牛单 bucket 对象数无硬上限，但运维扫描/清理按前缀更快）。
+std::string yyyymmUtc() {
+    char buf[8];
+    const std::time_t t = std::time(nullptr);
+    std::tm tmv{};
+#ifdef _WIN32
+    gmtime_s(&tmv, &t);          // MSVC：gmtime 非线程安全，必须用 _s 版本
+#else
+    gmtime_r(&t, &tmv);          // POSIX：线程安全版本
+#endif
+    std::snprintf(buf, sizeof(buf), "%04d-%02d", tmv.tm_year + 1900, tmv.tm_mon + 1);
+    return buf;
+}
+/*************图片文件功能（七牛云直传）：文件接口的响应构造结束***************/
+
 // 当前毫秒时间戳：只用于推送事件的展示时间，权威时间仍在数据库。
 std::uint64_t now_ms() {
     return static_cast<std::uint64_t>(
@@ -651,7 +729,8 @@ bool isBusyError(const std::string& err) {
 class http_session : public std::enable_shared_from_this<http_session> {
 public:
     http_session(tcp::socket socket, Db& db, TokenService& tokens,
-                 SessionManager& sessions)
+                 SessionManager& sessions,
+                 std::shared_ptr<ObjectStorage> store, FileRuntime fileRt)
         : socket_(std::move(socket)),
           /*************core-dump 修复 ⑤：HTTP 连接也要有自己的 strand***************/
           // TCP 侧每条连接一个 strand（session.h:strand_），HTTP 侧一直没有：
@@ -667,7 +746,10 @@ public:
           /*************core-dump 修复 ⑤：HTTP 连接也要有自己的 strand***************/
           db_(db),
           tokens_(tokens),
-          sessions_(sessions) {}
+          sessions_(sessions),
+          /*************图片文件功能（七牛云直传）：存储抽象与运行期参数注入***************/
+          store_(std::move(store)),
+          frt_(fileRt) {}
     // 注意：**不要**在这里给 inflight 计数 +1/-1。连接寿命由 keep-alive 空闲计时器
     // 决定（最长 60s），拿它当"在途请求数"会严重高估，见 inflightCount() 的说明。
 
@@ -748,10 +830,12 @@ private:
     //    客户端只看到一个被重置的连接。只关发送方向 = 正常 FIN，
     //    响应能被读完，剩余上行数据由内核丢弃。
     void close_socket() {
+        fileCrumb("close.begin");
         boost::system::error_code ignored;
         idle_timer_.cancel();
         socket_.shutdown(tcp::socket::shutdown_send, ignored);
         socket_.close(ignored);
+        fileCrumb("close.end");
     }
     /*************关闭连接：先取消空闲计时器，再只关发送方向***************/
 
@@ -795,6 +879,54 @@ private:
             return;
         }
         /*************P0-3：刷新接口——重连不再触发 bcrypt***************/
+
+        // ====================================================================
+        // /*************图片文件功能（七牛云直传）：公开区（无 Bearer 的入口）***************/
+        // --------------------------------------------------------------------
+        // 三条路由在统一鉴权之前处理：
+        //   1) GET /api/files/{uuid}?e=&vtoken=  —— <img>/浏览器标签带不了
+        //      Authorization 头，改用服务端签发的短时效签名入口（规划里
+        //      "302 + 私有空间签名 URL"难题的解法）。有 Authorization 时仍走 Bearer。
+        //   2) GET /api/files/mock-object/{key}  —— 仅 mock 模式：模拟七牛的
+        //      私有下载端点（同样靠签名 URL 访问，语义对齐真实模式）。
+        // 真实模式下访问任何 mock-* 路由一律 404：不给生产环境留旁路。
+        // ====================================================================
+        {
+            std::string fuuid;
+            // 2) mock-object：签名 URL 直取模拟字节（仅 mock 模式开放）。
+            static const std::string kMockObjPrefix = "/api/files/mock-object/";
+            if (method == http::verb::get &&
+                path.compare(0, kMockObjPrefix.size(), kMockObjPrefix) == 0 &&
+                path.size() > kMockObjPrefix.size()) {
+                if (!store_->isMock()) {
+                    send_json(http::status::not_found, make_error("mock endpoints disabled"));
+                    return;
+                }
+                do_mock_object_download(path, query);
+                return;
+            }
+            // 1) 下载换取入口：Bearer 或签名参数二选一。
+            if (method == http::verb::get && parse_file_uuid(path, "/api/files/", fuuid)) {
+                if (req_.count(http::field::authorization)) {
+                    std::uint64_t duid = 0;
+                    std::string dusername;
+                    if (!authenticate(duid, dusername)) return;   // 失败已回 401
+                    do_file_download(fuuid);
+                    return;
+                }
+                const std::string eStr  = query_value(query, "e");
+                const std::string vtok  = query_value(query, "vtoken");
+                if (!eStr.empty() && !vtok.empty() &&
+                    store_->verifyEntryQuery(path, eStr, vtok)) {
+                    do_file_download(fuuid);                      // 免 Bearer 的签名入口
+                    return;
+                }
+                send_json(http::status::unauthorized,
+                          make_error("missing authorization or valid signature"));
+                return;
+            }
+        }
+        // /*************图片文件功能（七牛云直传）：公开区结束***************/
 
         // ---- 以下接口统一要求 Bearer JWT --------------------------------
         std::uint64_t uid = 0;
@@ -952,6 +1084,41 @@ private:
             return method_not_allowed();
         }
         // /*************群聊功能：群聊路由结束***************/
+
+        // ====================================================================
+        // /*************图片文件功能（七牛云直传）：控制面路由（Bearer 鉴权后）***************/
+        // ====================================================================
+        // 路由顺序注意：具体路径（upload-token/commit/mock-put）必须在
+        // "{uuid}" 通配之前匹配——虽然 uuid 形状校验（parse_file_uuid）
+        // 本就不会把这些词误认成 uuid，但具体在前、通配在后是这套 if 链
+        // 的一贯纪律（群聊路由同理）。
+        if (path == "/api/files/upload-token") {
+            if (method != http::verb::post) return method_not_allowed();
+            do_file_upload_token(uid);
+            return;
+        }
+        if (path == "/api/files/commit") {
+            if (method != http::verb::post) return method_not_allowed();
+            do_file_commit(uid);
+            return;
+        }
+        if (path == "/api/files/mock-put") {
+            if (method != http::verb::post) return method_not_allowed();
+            do_file_mock_put(uid);          // 真实模式下内部回 404
+            return;
+        }
+        {
+            std::string fuuid;
+            if (parse_file_uuid(path, "/api/files/", fuuid)) {
+                // GET 已在公开区处理（那里支持双鉴权）；到这里说明是其它方法。
+                if (method == http::verb::delete_) {
+                    do_file_delete(uid, fuuid);
+                    return;
+                }
+                return method_not_allowed();
+            }
+        }
+        // /*************图片文件功能（七牛云直传）：控制面路由结束***************/
 
         send_json(http::status::not_found, make_error("not found"));
     }
@@ -1442,6 +1609,391 @@ private:
     }
 
     // ====================================================================
+    // /*************图片文件功能（七牛云直传）：HTTP 处理器（控制面）***************/
+    // ====================================================================
+    // 五个处理器 + 两个发送辅助，全部是"小 JSON + 本地签名 + 外网/DB 入队"：
+    // io 线程上没有任何字节搬运或阻塞外网调用（stat/rm 在 ObjectStorage
+    // 自己的线程里跑，DB 在 Db worker 里跑，结果统一回 strand 再发响应）。
+    // ====================================================================
+
+    // 302 跳转响应：Location 指向有时效的七牛（或 mock）签名下载 URL。
+    // 为什么必须是 302 而不是返回 JSON 让客户端二跳：
+    // <img src> / <video src> 这类浏览器原生加载路径只能"一个 URL 跟到底"，
+    // 不能解析 JSON 再跳——302 是唯一同时兼容 API 客户端和页面直链的形态。
+    void send_redirect(const std::string& location, bool closeAfter = false) {
+        // 与 send_json 同样的 strand 纪律：DB 回调可能来自任意 io 线程。
+        if (!strand_.running_in_this_thread()) {
+            auto self = shared_from_this();
+            net::post(strand_, [self, location, closeAfter]() mutable {
+                self->send_redirect(location, closeAfter);
+            });
+            return;
+        }
+
+        const bool wantKeepAlive =
+            !closeAfter &&
+            requestsHandled_ < kMaxRequestsPerConn &&
+            req_.version() >= 11 &&
+            req_.keep_alive();
+
+        auto self = shared_from_this();
+        auto res = std::make_shared<http::response<http::string_body>>(
+            http::status::found, req_.version());
+        res->set(http::field::server, "KC-CXIM");
+        res->set(http::field::location, location);
+        res->set(http::field::cache_control, "no-store");   // 签名 URL 有 deadline，绝不许缓存
+        res->keep_alive(wantKeepAlive);
+        res->prepare_payload();
+
+        inflightCount().fetch_add(1, std::memory_order_relaxed);
+        http::async_write(socket_, *res,
+            net::bind_executor(strand_,
+            [self, res, wantKeepAlive](beast::error_code ec, std::size_t) {
+                inflightCount().fetch_sub(1, std::memory_order_relaxed);
+                if (ec || !wantKeepAlive) { self->close_socket(); return; }
+                self->do_read();
+            }));
+    }
+
+    // mock-object 专用：返回合成字节 + 元信息头（Content-Type 固定 octet-stream，
+    // 真实大小/校验和放在 X-Mock-Size / X-Mock-Qetag 头里，验收脚本据此核对）。
+    void send_bytes(http::status status, const std::string& body,
+                    const std::vector<std::pair<std::string, std::string>>& extraHeaders,
+                    bool closeAfter = false) {
+        if (!strand_.running_in_this_thread()) {
+            auto self = shared_from_this();
+            net::post(strand_, [self, status, body, extraHeaders, closeAfter]() mutable {
+                self->send_bytes(status, body, extraHeaders, closeAfter);
+            });
+            return;
+        }
+        const bool wantKeepAlive =
+            !closeAfter &&
+            requestsHandled_ < kMaxRequestsPerConn &&
+            req_.version() >= 11 &&
+            req_.keep_alive();
+
+        auto self = shared_from_this();
+        auto res = std::make_shared<http::response<http::string_body>>(status, req_.version());
+        res->set(http::field::server, "KC-CXIM");
+        res->set(http::field::content_type, "application/octet-stream");
+        for (const auto& h : extraHeaders) res->set(h.first, h.second);
+        res->keep_alive(wantKeepAlive);
+        res->body() = body;
+        res->prepare_payload();
+
+        inflightCount().fetch_add(1, std::memory_order_relaxed);
+        http::async_write(socket_, *res,
+            net::bind_executor(strand_,
+            [self, res, wantKeepAlive](beast::error_code ec, std::size_t) {
+                inflightCount().fetch_sub(1, std::memory_order_relaxed);
+                if (ec || !wantKeepAlive) { self->close_socket(); return; }
+                self->do_read();
+            }));
+    }
+
+    // ---- POST /api/files/upload-token ------------------------------------
+    // 签发上传凭证。校验链：白名单 → 单文件大小 → 日配额（DB 查当日已用）
+    // → 服务端生成 uuid/object_key → 签 uptoken + 无状态 ticket。
+    // 注意此步**不写 files 表**（规划红线）：没有 commit 的文件在业务上不存在。
+    void do_file_upload_token(std::uint64_t uid) {
+        fileCrumb("token.enter");
+        rapidjson::Document doc;
+        if (!read_json(doc)) return;
+
+        // ---- 入参解析 ------------------------------------------------------
+        if (!doc.HasMember("name") || !doc["name"].IsString()) {
+            send_json(http::status::bad_request, make_error("missing name"));
+            return;
+        }
+        std::string rawName(doc["name"].GetString(), doc["name"].GetStringLength());
+        std::string mime;
+        if (doc.HasMember("mime") && doc["mime"].IsString())
+            mime.assign(doc["mime"].GetString(), doc["mime"].GetStringLength());
+
+        std::int64_t declared = 0;
+        if (doc.HasMember("size")) {
+            if (doc["size"].IsInt64())       declared = doc["size"].GetInt64();
+            else if (doc["size"].IsUint64()) declared = static_cast<std::int64_t>(doc["size"].GetUint64());
+        }
+        if (declared <= 0) {
+            send_json(http::status::bad_request, make_error("missing or invalid size"));
+            return;
+        }
+        // 单文件上限：这里挡的是"申报超限"；真实模式下七牛还会按 policy 的
+        // fsizeLimit 强制拦截实际上传超限的对象——两道闸互为冗余，不是重复。
+        if (declared > frt_.maxSize) {
+            send_json(http::status::bad_request,
+                      make_error("file too large (limit " +
+                                 std::to_string(frt_.maxSize / 1024 / 1024) + "MB)"));
+            return;
+        }
+
+        const std::string name = sanitizeFileName(rawName);
+        if (name.empty()) {
+            send_json(http::status::bad_request, make_error("invalid name"));
+            return;
+        }
+        std::string normMime;
+        if (!mediaTypeAllowed(name, mime, frt_.typeStrict, normMime)) {
+            // 黑名单类型（exe/sh/js...）与未知扩展名都落在这里。
+            send_json(http::status::bad_request, make_error("file type not allowed"));
+            return;
+        }
+
+        // ---- 日配额（DB worker 查询，不阻塞 io）---------------------------
+        auto self = shared_from_this();
+        fileCrumb("token.quota-submit");
+        db_.fileQuotaToday(uid,
+            [self, uid, name, normMime, declared](bool ok, const std::string& err, long long used) {
+                if (!ok) { self->send_db_error(http::status::bad_request, err); return; }
+                if (used + declared > self->frt_.quotaBytes) {
+                    // 429 + Retry-After：与现有过载语义一致（客户端按退避重试）。
+                    self->send_json(http::status::too_many_requests,
+                                    make_error("daily upload quota exceeded"),
+                                    /*retryAfterSec=*/3600, /*closeAfter=*/false);
+                    return;
+                }
+                self->finish_upload_token(uid, name, normMime, declared);
+            });
+    }
+
+    // 凭证签发的"后半段"：生成 uuid/key、签 uptoken 与 ticket（全本地计算）。
+    void finish_upload_token(std::uint64_t uid, const std::string& name,
+                             const std::string& mime, std::int64_t declared) {
+        fileCrumb("token.finish");
+        const std::string uuid = generateUuidV4();
+        if (uuid.empty()) {
+            // CSPRNG 不可用：宁可失败也不退回弱随机（可枚举=可拖库）。
+            send_json(http::status::service_unavailable, make_error("entropy failure"));
+            return;
+        }
+        // key 完全由服务端生成：im/<yyyy-mm>/<uuid>.<ext>
+        // uuid 锁进 uptoken 的 policy scope，客户端物理上写不了别人的路径。
+        const std::string key = "im/" + yyyymmUtc() + "/" + uuid + "." + extensionOf(name);
+
+        // 上传凭证有效期：1 小时。凭证只授权单 key 单对象，宁短勿长。
+        static constexpr long long kTokenTtl   = 3600;
+        // ticket（commit 的"签发记录"证明）：2 小时——覆盖"大文件传完再 commit"。
+        static constexpr long long kTicketTtl  = 7200;
+
+        const std::string uptoken =
+            store_->signUploadToken(key, declared, nowUnix() + kTokenTtl);
+        const std::string ticket =
+            store_->makeTicket(uuid, uid, key, declared, name, mime, kTicketTtl);
+
+        send_json(http::status::ok,
+                  make_file_token_ok(uuid, key, store_->uploadUrlForClient(),
+                                     uptoken, kTokenTtl, ticket));
+        fileCrumb("token.sent");
+    }
+
+    // ---- POST /api/files/commit -------------------------------------------
+    // 入参 {file_id, ticket}。闭环：验票据 → 七牛 stat 核验对象真实存在 →
+    // 以 stat 权威值登记 files 表。没 commit 成功 = files 表没记录 =
+    // 这个 file_id 永远发不出去消息（TCP 侧 do_send_media 会拒绝）。
+    void do_file_commit(std::uint64_t uid) {
+        fileCrumb("commit.enter");
+        rapidjson::Document doc;
+        if (!read_json(doc)) return;
+
+        std::string fileId, ticket;
+        if (doc.HasMember("file_id") && doc["file_id"].IsString())
+            fileId.assign(doc["file_id"].GetString(), doc["file_id"].GetStringLength());
+        if (doc.HasMember("ticket") && doc["ticket"].IsString())
+            ticket.assign(doc["ticket"].GetString(), doc["ticket"].GetStringLength());
+
+        if (!isUuidLike(fileId) || ticket.empty()) {
+            send_json(http::status::bad_request, make_error("missing file_id/ticket"));
+            return;
+        }
+
+        // 票据校验：归属本人 + 未过期 + key/大小/name/mime 都是签发时那份。
+        std::string key, name, mime;
+        long long declared = 0;
+        if (!store_->verifyTicket(ticket, fileId, uid, key, declared, name, mime)) {
+            send_json(http::status::forbidden, make_error("invalid or expired upload ticket"));
+            return;
+        }
+
+        auto self = shared_from_this();
+        fileCrumb("commit.ticket-ok, stat-call");
+        // stat 是外网调用：回调在 QiniuHttpAgent 线程触发，send_json/send_db_error
+        // 内部都会切回 strand，这里不需要再手动 post（与 Db 回调同纪律）。
+        store_->stat(key, [self, uid, fileId, key, name, mime, declared]
+                     (bool transportOk, const std::string& err, bool exists,
+                      long long size, const std::string& qetag) {
+            if (!transportOk) {
+                // 验收 6：七牛打不通 => 503 + Retry-After，文本链路不受影响。
+                self->send_json(http::status::service_unavailable,
+                                make_error(err.empty() ? "storage unavailable" : err),
+                                /*retryAfterSec=*/2, /*closeAfter=*/false);
+                return;
+            }
+            if (!exists) {
+                // 虚报：没传过对象就 commit。400 而不是 404——请求本身不合法。
+                self->send_json(http::status::bad_request, make_error("object not uploaded"));
+                return;
+            }
+            // 真实上传的大小以 stat 为准；再次校验上限——
+            // mock 模式没有七牛那道 fsizeLimit 闸，这里是唯一防线；
+            // 真实模式则是"客户端传了小于申报的值"也能如实登记。
+            if (size > self->frt_.maxSize) {
+                self->send_json(http::status::bad_request, make_error("object exceeds size limit"));
+                return;
+            }
+
+            fileCrumb("commit.stat-cb");
+            FileRecord rec;
+            rec.uuid        = fileId;
+            rec.uploader_id = uid;
+            rec.name        = name;
+            rec.mime        = mime;
+            rec.size        = size;
+            rec.qetag       = qetag;
+            rec.object_key  = key;
+            rec.bucket      = self->store_->bucketName();
+            rec.zone        = self->store_->zoneId();
+            rec.status      = 1;
+
+            fileCrumb("commit.commitFile-call");
+            self->db_.commitFile(rec, [self, fileId, size, qetag]
+                                 (bool ok, const std::string& err, std::uint64_t) {
+                if (!ok) { self->send_db_error(http::status::bad_request, err); return; }
+                const std::string url = mediaBaseUrl() + "/api/files/" + fileId;
+                fileCrumb("commit.done-cb");
+                self->send_json(http::status::ok, make_file_commit_ok(fileId, url, size, qetag));
+            });
+        });
+    }
+
+    // ---- GET /api/files/{uuid}：302 换取下载 --------------------------------
+    // 权限口径（MVP，规划已确认的取舍）：登录用户（或持有服务端签发的
+    // 短时效 vtoken）拿到 uuid 即可换取。"限引用过该文件的会话成员"需要
+    // 文件-会话关联表，是后续项——注释留痕，不假装已经做了。
+    void do_file_download(const std::string& uuid) {
+        fileCrumb("dl.enter");
+        auto self = shared_from_this();
+        db_.getFileByUuid(uuid,
+            [self, uuid](bool ok, const std::string& err, const FileRecord& rec) {
+                if (!ok) { self->send_db_error(http::status::bad_request, err); return; }
+                if (!rec.found || rec.status != 1) {
+                    self->send_json(http::status::not_found, make_error("file not found"));
+                    return;
+                }
+                // 每次访问都现场签一条短时效 URL（FILE_URL_TTL_SEC），
+                // 所以消息体里存的永远是稳定的换取入口，签名永远不会过期腐化。
+                self->send_redirect(self->store_->makeDownloadUrl(rec, self->frt_.urlTtlSec));
+            });
+    }
+
+    // ---- DELETE /api/files/{uuid}：仅上传者本人 ------------------------------
+    void do_file_delete(std::uint64_t uid, const std::string& uuid) {
+        auto self = shared_from_this();
+        db_.deleteFileByUuid(uuid, uid,
+            [self, uuid](bool ok, const std::string& err, const FileRecord& rec) {
+                if (!ok) { self->send_db_error(http::status::not_found, err); return; }
+                // 物理删除七牛对象：先标库再删对象（顺序反了会出现
+                // "对象没了但库还说正常"的窗口期——那时消息里的文件点开是
+                // 七牛 612，比这里 302 到不存在的 key 更难排查）。
+                // remove 失败只记日志：files 行已 status=2，业务侧不可见；
+                // 对象成为孤儿由"超期告警+人工/定时 batch 清理"兜底（规划口径）。
+                self->store_->remove(rec.object_key, [](bool ok2, const std::string& err2) {
+                    if (!ok2) {
+                        std::cerr << "[file] storage remove failed (row already marked deleted): "
+                                  << err2 << std::endl;
+                    }
+                });
+                self->send_json(http::status::ok, make_ok());
+            });
+    }
+
+    // ---- POST /api/files/mock-put：mock 模式的"直传"端点 --------------------
+    // 真实模式 404。语义：把 (key -> size) 登记进 MockObjectStore，
+    // 之后 stat 才能"存在"、mock-object 才有字节可取——commit 防虚报的
+    // 负向用例（不 mock-put 直接 commit 必须被拒）依赖的就是这一步。
+    void do_file_mock_put(std::uint64_t uid) {
+        fileCrumb("put.enter");
+        if (!store_->isMock()) {
+            send_json(http::status::not_found, make_error("mock endpoints disabled"));
+            return;
+        }
+        rapidjson::Document doc;
+        if (!read_json(doc)) return;
+
+        std::string fileId, ticket;
+        if (doc.HasMember("file_id") && doc["file_id"].IsString())
+            fileId.assign(doc["file_id"].GetString(), doc["file_id"].GetStringLength());
+        if (doc.HasMember("ticket") && doc["ticket"].IsString())
+            ticket.assign(doc["ticket"].GetString(), doc["ticket"].GetStringLength());
+        if (!isUuidLike(fileId) || ticket.empty()) {
+            send_json(http::status::bad_request, make_error("missing file_id/ticket"));
+            return;
+        }
+        std::string key, name, mime;
+        long long declared = 0;
+        if (!store_->verifyTicket(ticket, fileId, uid, key, declared, name, mime)) {
+            send_json(http::status::forbidden, make_error("invalid or expired upload ticket"));
+            return;
+        }
+        // isMock() 为真才走到这里，static_cast 安全（工厂只造这两种实现）。
+        static_cast<MockObjectStore*>(store_.get())->mockPut(key, declared);
+        fileCrumb("put.mocked");
+        send_json(http::status::ok, make_ok());
+    }
+
+    // ---- GET /api/files/mock-object/{key}：mock 模式的"私有下载"端点 ---------
+    // 与七牛私有空间同构：URL 必须带 ?e=<deadline>&token=<ak>:<sign>，
+    // 签名过期/伪造一律 403；字节是合成的（上限 64KB），真实大小在头里。
+    void do_mock_object_download(const std::string& path, const std::string& query) {
+        static const std::string kPrefix = "/api/files/mock-object/";
+
+        const std::string eStr = query_value(query, "e");
+        const std::string tok  = query_value(query, "token");
+        long long deadline = 0;
+        try { deadline = std::stoll(eStr); } catch (...) { deadline = 0; }
+        if (eStr.empty() || tok.empty() || deadline < nowUnix()) {
+            send_json(http::status::forbidden, make_error("missing or expired signature"));
+            return;
+        }
+
+        auto* mock = static_cast<MockObjectStore*>(store_.get());
+        // 待签串 = "<path>?e=<deadline>"（与 makeDownloadUrl 的生成口径一致，
+        // 少一个字符都会验签失败——这正是签名 URL 防篡改的性质本身）。
+        if (!mock->verifyObjectToken(path + "?e=" + eStr, tok)) {
+            send_json(http::status::forbidden, make_error("bad signature"));
+            return;
+        }
+
+        // key 在 path 里是 URL 编码过的（urlEncode(key, keepSlash=true)），
+        // 解码还原；url_decode 复用上面搜索接口那个实现（对 '+' 的语义在
+        // key 场景无影响：object_key 由服务端生成，只含 [a-z0-9/._-]）。
+        const std::string key = url_decode(path.substr(kPrefix.size()));
+
+        long long size = 0;
+        std::string qetag;
+        if (!mock->mockGet(key, size, qetag)) {
+            send_json(http::status::not_found, make_error("object not found"));
+            return;
+        }
+
+        // 合成字节：min(size, 64KB)。真实场景 20MB 的文件在 mock 里没必要
+        // 真占 20MB 内存——验收核对的是 X-Mock-Size/X-Mock-Qetag 与登记值一致。
+        const std::size_t n = static_cast<std::size_t>(
+            std::min<long long>(size, 64 * 1024));
+        std::string body;
+        body.reserve(n);
+        static const char* pattern = "MOCKQINIU-DATA;";
+        for (std::size_t i = 0; i < n; ++i) body.push_back(pattern[i % 15]);
+
+        send_bytes(http::status::ok, body,
+                   { {"X-Mock-Size", std::to_string(size)},
+                     {"X-Mock-Qetag", qetag},
+                     {"X-Mock-Key", key} });
+    }
+    // /*************图片文件功能（七牛云直传）：HTTP 处理器结束***************/
+
+    // ====================================================================
     // /*************群聊功能：HTTP 处理器（BE-GROUP-01~08）***************/
     // ====================================================================
     // 约定与好友模块一致：
@@ -1880,6 +2432,7 @@ private:
         http::async_write(socket_, *res,
             net::bind_executor(strand_,
             [self, res, wantKeepAlive](beast::error_code ec, std::size_t /*bytes*/) {
+                fileCrumb("wrcb");
                 inflightCount().fetch_sub(1, std::memory_order_relaxed);
                 if (ec || !wantKeepAlive) {
                     self->close_socket();
@@ -1910,6 +2463,9 @@ private:
     Db&             db_;
     TokenService&   tokens_;
     SessionManager& sessions_;
+    /*************图片文件功能（七牛云直传）：shared_ptr 保证 session 比 store 活得久也安全***************/
+    std::shared_ptr<ObjectStorage> store_;
+    FileRuntime     frt_;
 
     static constexpr int         kKeepAliveIdleSec   = 60;   // 空闲 60s 关闭
     static constexpr std::size_t kMaxRequestsPerConn = 256;  // 单连接请求数上限
@@ -1922,11 +2478,15 @@ private:
 // http_server
 // ---------------------------------------------------------------------------
 http_server::http_server(boost::asio::io_context& io, unsigned short port,
-                         Db& db, TokenService& tokens, SessionManager& sessions)
+                         Db& db, TokenService& tokens, SessionManager& sessions,
+                         std::shared_ptr<ObjectStorage> store, const FileRuntime& fileRt)
     : acceptor_(io, tcp::endpoint(tcp::v4(), port)),
       db_(db),
       tokens_(tokens),
-      sessions_(sessions) {
+      sessions_(sessions),
+      /*************图片文件功能（七牛云直传）：存储抽象与文件参数注入***************/
+      store_(std::move(store)),
+      fileRt_(fileRt) {
     do_accept();
 }
 
@@ -1944,6 +2504,18 @@ void http_server::run() {
               << ", auth_rate=" << c.authPerSec << "/s burst=" << c.authBurst
               << ", per_ip=" << c.ipPerSec << "/s (ip burst=" << c.ipBurst << ")"
               << std::endl;
+    /*************图片文件功能（七牛云直传）：启动自述——跑的是 mock 还是真七牛必须一眼可见***************/
+    // 验收/排障第一步是确认"连的是哪套存储"：mock 模式下所有文件 API 都会
+    // "成功"，却不知道七牛根本没参与——启动日志里不写明，就是给自己埋一颗
+    // "为什么线上没有文件"的雷。这里同样只打非敏感参数，AK/SK 永不出现。
+    std::cout << "[file] storage=" << (store_ ? store_->kind() : "none")
+              << ", max_size=" << (fileRt_.maxSize / 1024 / 1024) << "MB"
+              << ", url_ttl=" << fileRt_.urlTtlSec << "s"
+              << ", daily_quota=" << (fileRt_.quotaBytes / 1024 / 1024) << "MB"
+              << ", type_strict=" << (fileRt_.typeStrict ? 1 : 0)
+              << ", base_url=" << mediaBaseUrl()
+              << std::endl;
+    /*************图片文件功能（七牛云直传）：启动自述***************/
 }
 
 void http_server::do_accept() {
@@ -1951,7 +2523,8 @@ void http_server::do_accept() {
         [this](beast::error_code ec, tcp::socket socket) {
             if (!ec) {
                 std::make_shared<http_session>(std::move(socket), db_, tokens_,
-                                               sessions_)->run();
+                                               sessions_,
+                                               store_, fileRt_)->run();
             }
             if (acceptor_.is_open()) do_accept();
         });

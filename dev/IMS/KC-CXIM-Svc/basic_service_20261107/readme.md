@@ -103,11 +103,17 @@ QUIET_LOG=0 ./build/bin/Release/cxim-server
 | `AUTH_RATE_PER_SEC` | `20` | 注册/登录/刷新的全局令牌补充速率（P0-4）。这是**机器容量闸门** |
 | `AUTH_RATE_BURST` | `40` | 上述全局桶容量（允许的突发） |
 | `AUTH_IP_PER_SEC` | `30` | 单 IP 每秒令牌（反滥用）。刻意**宽于**全局值：反过来配会让共享出口 IP 的真实用户与单机压测在服务器空闲时被大面积 429 |
-| `AUTH_IP_PER_SEC` | `5` | 单 IP 每秒令牌，挡住单机刷注册/密码爆破 |
 | `TCP_MAX_SESSIONS` | `2000` | TCP 并发连接上限，超过直接关闭新连接（P0-4） |
 | `TCP_MAX_OUTSTANDING` | `64` | 单条 TCP 连接未完成的 DB 任务上限（P0-4） |
 | `IDLE_TIMEOUT_SEC` | `60` | 长连接空闲踢人秒数，**必须大于客户端心跳间隔** |
 | `QUIET_LOG` | 未设置=打印 | `1` 丢弃 stdout/stderr（生产建议开；每条消息都 `std::endl` 刷 journald 会拖慢 io 线程） |
+| `QINIU_ENABLED` | `0` | 文件模块（§5.17）：`0`=MockObjectStore（内存模拟七牛，验收/开发用）；`1`=真实七牛，必须提供 `QiniuConfig.json`，缺文件启动失败、**不静默降级** |
+| `QINIU_CONFIG` | `QiniuConfig.json` | 七牛配置路径（AK/SK/bucket/up_host/domain 等，模板见 `QiniuConfig.json.example`） |
+| `FILE_MAX_SIZE_MB` | `20` | 单文件上限；同时写进 uploadToken policy 由七牛强制执行 |
+| `FILE_URL_TTL_SEC` | `600` | 下载换取入口 302 出去的签名 URL 时效 |
+| `FILE_USER_DAILY_QUOTA_MB` | `500` | 每人每日上传配额（按已 commit 字节累计；七牛按流量计费，收紧比放宽划算） |
+| `FILE_BASE_URL` | `http://127.0.0.1:$HTTP_PORT` | 媒体消息元数据里 `url` 的前缀。**必须设为客户端可达地址**，生产忘配的表现是"图片全打不开" |
+| `FILE_TYPE_STRICT` | `1` | 上传类型一致性校验（mime 与扩展名互证）；`0` 只是逃生阀，不建议 |
 
 启动成功后会看到类似输出：
 
@@ -1034,6 +1040,186 @@ POST /api/friends/batch-delete
 
 ---
 
+### 5.17 文件模块：图片/文件七牛云直传
+
+单聊与群聊的图片（TCP `type=2`）/ 文件（TCP `type=4`）功能。**二进制不经过
+IM 服务器、不落本地磁盘**：客户端持服务器签发的凭证直传七牛云对象存储，
+服务器只做控制面——签凭证、传后核验登记（commit）、发送时校验权属并重建
+元数据、下载时签发短时效 URL。
+
+```
+客户端                     IM 服务器(10002)                七牛云 Kodo
+   │ POST /api/files/upload-token │                            │
+   │  {name,mime,size}            │ 白名单/大小/日配额校验       │
+   │◄── {fileId,key,uploadUrl,    │ uploadToken=AK:sign:policy │
+   │      uptoken,ticket}         │                            │
+   │────── 直传字节（分片 V2 或表单）────────────────────────────►│  ← 数据面不经过服务器
+   │ POST /api/files/commit       │                            │
+   │  {file_id,ticket}            │ GET /stat/<entry> 核验存在  │
+   │◄── {fileId,url,size,qetag} ──│ INSERT files(status=1)     │
+   │ TCP type=2/4 {"file_id":…}   │                            │
+   │◄══ 接收端收到服务端重建的元数据（url=服务器换取入口）═══════ │
+   │ GET /api/files/{uuid}        │                            │
+   │◄── 302 Location: 签名直链(时效 FILE_URL_TTL_SEC) ─────────►│  ← 浏览器/桌面端可直接跟随
+```
+
+**完整 curl 时序**（mock 模式，`QINIU_ENABLED=0` 默认；真实模式只把第 2 步
+"mock-put"换成向 `uploadUrl` 的**真实直传**（分片 V2 或表单，见下），
+其余四步一字不改）：
+
+```bash
+BASE=http://127.0.0.1:10002; TOK=<§4.1 登录拿到的 access token>
+# 1) 签发上传凭证（图片 png，申报 4096 字节）
+R=$(curl -s -X POST "$BASE/api/files/upload-token" -H "Authorization: Bearer $TOK" \
+     -H "Content-Type: application/json" -d '{"name":"照片.png","mime":"image/png","size":4096}')
+FID=$(echo "$R" | sed -n 's/.*"fileId":"\([^"]*\)".*/\1/p')
+TKT=$(echo "$R" | sed -n 's/.*"ticket":"\([^"]*\)".*/\1/p')
+# 2) 直传：真实模式=表单 POST 到 uploadUrl（uptoken+key+file）；mock 模式：
+curl -s -X POST "$BASE/api/files/mock-put" -H "Authorization: Bearer $TOK" \
+     -d "{\"file_id\":\"$FID\",\"ticket\":\"$TKT\"}"
+# 3) 提交登记（服务器向存储 stat 核验后才写 files 表）
+curl -s -X POST "$BASE/api/files/commit" -H "Authorization: Bearer $TOK" \
+     -d "{\"file_id\":\"$FID\",\"ticket\":\"$TKT\"}"
+# 4) 下载换取（302 到带时效的签名 URL；也可用 ?e=&vtoken= 形式免 Bearer）
+curl -s -o /dev/null -D - "$BASE/api/files/$FID" -H "Authorization: Bearer $TOK" | grep -i location
+# 5) 删除（仅上传者；标记 status=2 并物理删除存储对象）
+curl -s -X DELETE "$BASE/api/files/$FID" -H "Authorization: Bearer $TOK"
+```
+
+**真实模式的第 2 步（直传）有两种官方方式**，对服务器完全等价（服务器只在 commit 时 `stat` 核验），客户端可按大小自选：
+
+**A. 分片上传 V2（推荐；与官方 C SDK `up_multipart_sample.c` 逐请求同构）**
+
+```bash
+# UP/TOKEN/KEY 取自上面第 1 步的返回（uploadUrl / uptoken / key）；
+# BUCKET 则从 uptoken 第三段（urlsafe base64 的 policy）解出：
+#   policy.scope = "<bucket>:<key>"   —— 客户端不需要任何额外的七牛配置
+UP=https://up-z2.qiniup.com; TOKEN=*** upload-token 返回的 uptoken>
+B64KEY=$(python3 -c "import base64,sys;print(base64.urlsafe_b64encode(sys.argv[1].encode()).decode())" "$KEY")
+OBJ="$UP/buckets/$BUCKET/objects/$B64KEY"          # key 走 urlsafe base64（保留 = 填充）
+# 1) init → uploadId
+UI=$(curl -s -X POST "$OBJ/uploads" -H "Authorization: UpToken $TOKEN" \
+        -H "Content-Type: application/octet-stream" | sed -n 's/.*"uploadId":"\([^"]*\)".*/\1/p')
+# 2) 逐片 PUT（partNumber 从 1 起；片大小 1MB~1GB，SDK 默认 4MB；总片数 ≤10000）
+ET=$(curl -s -X PUT "$OBJ/uploads/$UI/1" -H "Authorization: UpToken $TOKEN" \
+        -H "Content-Type: application/octet-stream" --data-binary @part1.bin \
+     | sed -n 's/.*"etag":"\([^"]*\)".*/\1/p')
+# 3) complete → {"key":…,"hash":<qetag>}，这个 hash 必须与 commit 回来的 qetag 一致
+curl -s -X POST "$OBJ/uploads/$UI" -H "Authorization: UpToken $TOKEN" \
+     -H "Content-Type: application/json" \
+     -d "{\"parts\":[{\"etag\":\"$ET\",\"partNumber\":1}],\"mimeType\":\"image/png\",\"fname\":\"照片.png\"}"
+```
+
+**B. 表单直传（小文件省一次往返；与官方 `up_form_upload.c` 同构）**
+
+```bash
+curl -s -X POST "$UP/$KEY" \
+     --form-string "token=$TOKEN" --form-string "key=$KEY" \
+     -F "file=@照片.png;type=image/png"
+# → {"key":"…","hash":"<qetag>"}；用 --form-string 而不是 -F 传 token/key，
+#   避免值里出现 ';' / '@' / 开头空白时被 curl 当成分隔符或文件名解释。
+```
+
+三步的鉴权头都是 `Authorization: UpToken <uptoken>`（表单方式则是表单字段 `token`）。
+真机参考实现见 `step2_test_client/test_Qiniu_file_client.cpp`（V2 单片 + 两片
+1.5MB 样本都跑），分片大小的口径校验、etag 汇总、失败定位（`step=init/part#N/complete`）
+都在里面。
+
+**七牛侧三处签名的口径（都已真机定案，改动前务必读）**
+
+| 用途 | 待签串 | 症状（写错时） |
+| --- | --- | --- |
+| 上传凭证 | 只有 `encodedPolicy`（**不含** URL path）；policy 有效期字段必须叫 **`deadline`** | 401 `bad token` / 恒 401 `expired token`（签名却是好的） |
+| 私有下载 | **整条绝对 URL**（含 `scheme://host/path`）+ `?e=<deadline>` | 401 `download token auth failed` |
+| 管理 API(stat/delete) | `"<METHOD> <Path>\nHost: <host>\n[Content-Type: …\n][X-Qiniu-Date: …\n]\n[Body]"`，头与 body 之间那个**空行必须有**，且"发的头"与"签的头"成对 | commit 503 `qiniu stat http=401 … BadToken` |
+
+另两条坑位：管理 API 的 entry 是 `urlsafe_b64("<bucket>:<key>")`（**bucket 在前**，
+写反只会被当"查无此对象"612，不会报鉴权错）；`scheme` 参与下载签名，所以
+`QiniuConfig.json` 的 `domain` 用什么协议，客户端就必须用什么协议去请求。
+
+**区域 / 下载域名 / CDN 缓存（2026-11-21 真机联调记录）**
+
+- `zone`、`up_host`、`domain` 三者必须同区。配错的表现很迷惑人：**直传 200、
+  commit 通过、下载 403/404**（字节确实进了 A 区，域名指向 B 区）。
+- **一级测试域名 `*-bkt.clouddn.com` 只在 http 上服务**：走 https 会被边缘节点判
+  `421 Misdirected Request`（tengine 的 HTML 页，根本没到七牛业务层）；它还带
+  QPS/带宽限制（反复自动化下载会吃 **429**）、约 30 天回收。测试期可以把
+  `domain` 写成 `http://<测试域名>`（注意：这会让私有空间的时效签名 token 走明文，
+  属 knowingly 降级，仅限本地测试）；生产必须绑**已备案自有域名**并配 HTTPS 证书。
+- **CDN"忽略查询参数"缓存会架空时效签名**：对象一旦被带 token 取回过，同 path
+  不带 token 也可能命中缓存直接 200。生产要给下载域名配**保留查询参数**或开私有
+  空间回源鉴权。验收脚本里那条"裸直链必须被拒"因此专门用**一个从未被签名访问过的
+  新对象**来测，已下载过的对象只打印 `[观察]`，不拿缓存结果当鉴权结论。
+- 三类连接（上传/下载/管理）**都要发 SNI**：这些端点多租户共用接入 IP，不发
+  `server_name` 会落到默认站点，看起来就像"证书不对/鉴权 401"。
+
+**错误语义**（沿用 §5.0 约定）：
+
+| 状态 | 场景 |
+| --- | --- |
+| 400 | 缺参 / 超 `FILE_MAX_SIZE_MB` / 类型不在白名单 / 虚报 commit（对象不存在）/ 对象超上限 |
+| 401 | 换取入口既无 Bearer 也无有效 `e/vtoken` 签名 |
+| 403 | ticket 无效或过期（不是本人签发的那次上传）/ 签名 URL 过期或伪造 |
+| 404 | 文件不存在或已删除（换取入口与删除他人文件）|
+| 429 | **本服务器**：超过每日上传配额 `FILE_USER_DAILY_QUOTA_MB`，或认证接口限流（都带 `Retry-After`，响应体分别是 `daily upload quota exceeded` / `too many auth requests`）。⚠ 客户端在**下载**阶段也可能看到 429——那是七牛测试域名的 QPS 限制，响应体是 nginx/tengine 的 HTML，与本服务器无关 |
+| 503 | 存储管理 API 调用失败（commit/delete 核验失败；**不影响文本消息收发**）。`message` 里带七牛原话与 `X-Reqid`，形如 `qiniu stat http=401 @rs.qbox.me X-Reqid=… resp={"error":"bad token",…}`——照 §5.17 的签名口径表比对即可定位 |
+
+**配置**：
+
+| 项 | 说明 |
+| --- | --- |
+| `QINIU_ENABLED` | `0`（默认）= MockObjectStore：内存模拟七牛语义，验收/开发不依赖七牛账号；`1` = 真实七牛，必须提供 `QiniuConfig.json`（模板 `QiniuConfig.json.example`），缺文件直接启动失败，**不会静默退回 mock** |
+| `QINIU_CONFIG` | 配置文件路径覆盖（默认项目根 `QiniuConfig.json`） |
+| `FILE_MAX_SIZE_MB` | 单文件上限，默认 20MB（同时写进 uploadToken policy 由七牛强制） |
+| `FILE_URL_TTL_SEC` | 下载签名 URL 时效，默认 600s |
+| `FILE_USER_DAILY_QUOTA_MB` | 每人每日配额（按已 commit 字节累计），默认 500MB——七牛按流量计费，别放宽 |
+| `FILE_BASE_URL` | 消息元数据里换取入口的前缀；**必须设为客户端可达的 HTTP 地址**（默认跟随 `HTTP_PORT` 指回环） |
+| `FILE_TYPE_STRICT` | 1=图片/非图片 mime 与扩展名一致性校验（默认开） |
+
+`QiniuConfig.json`（`QINIU_ENABLED=1` 时必读，含密钥**禁止提交仓库**）的字段：
+
+| 字段 | 说明 |
+| --- | --- |
+| `access_key` / `secret_key` | 七牛 AK/SK。**绝不打印日志、绝不下发客户端**；两者必须是同一账号的一对 |
+| `ticket_secret` | 可选：票据/入口签名专用密钥（与 SK 分域，泄漏时拿不到 bucket 管理权）；留空复用 `secret_key` |
+| `bucket` / `zone` | 空间名与区域：0=z0 华东，1=z1 华北，2=z2 华南，3=na0 北美，4=as0 东南亚 |
+| `up_host` | 直传域名，**必须与 bucket 同区**（z2 用 `https://up-z2.qiniup.com`） |
+| `domain` | 下载域名（含协议前缀）。绑定到本 bucket，且**协议要与客户端实际使用的一致**——下载签名把 scheme 也签进去了；一级测试域名只能写 `http://`（见上） |
+| `private_space` | `true`（默认，规划口径）：下载 URL 必须带时效签名；`false` 则返回裸直链 |
+| `rs_scheme` / `rs_host` | 管理 API 端点（stat/delete），默认 `https` + `rs.qbox.me`；区域专用端点如 `rs-z2.qbox.me` 亦可 |
+| `ca_bundle` | 校验管理 API 证书用的 CA 文件路径。留空 = 不校验并启动告警（Windows OpenSSL 不读系统证书库），**生产必填** |
+
+验收期的客户端侧开关（不参与服务端行为）：`QINIU_UPLOAD_MODE=v2|form`、
+`QINIU_PART_SIZE_MB=1..1024`、`QINIU_PRIVATE_SPACE=1|0`、
+`QINIU_VERIFY_CERTS=1` + `QINIU_CA_BUNDLE=<cacert.pem>`。
+
+**安全与保密纪律**：七牛 AK/SK 只放 `QiniuConfig.json`，不硬编码、不打日志、
+不下发客户端。下发给客户端的 `uptoken` 只授权"往这一个 key 写不超过
+fsizeLimit 的一次对象"（policy 锁死 scope），泄漏后果被凭证粒度限死；
+`ticket` 是无状态签发记录（HMAC-SHA256），改任何字段都会验签失败。
+
+**已知限制（如实）**：
+- 真实模式**已端到端联调通过**（2026-11-21：分片 V2 单片/两片直传 → stat 核验
+  commit → 302 换签名直链 → 逐字节回验 → 删除，见 §8 的真机验收脚本与输出）。
+  但它当时跑在**一级测试域名 + http** 上：`ca_bundle` 未配置时管理 API 跳过证书
+  校验并在启动日志告警，下载域名的 HTTPS 站点也不存在（https 直取会拿 421）。
+  生产上线前必须换成已备案自有域名 + 七牛侧证书 + 配 `ca_bundle`，并把 CDN 的
+  "忽略查询参数"关掉（否则时效签名被缓存架空，见上）。
+- 直传成功但从未 commit 的对象在 files 表不可见（孤儿），真实模式建议给 bucket
+  配置生命周期规则自动清理碎片/未引用对象。
+- 换取入口的下载权限口径 = **登录用户 + 持有 uuid 即可换一次**（MVP 取舍，
+  限制到"引用过该文件的会话成员"需要文件-会话关联表，是后续项）。
+- **部署顺序红线**：老客户端遇到未知 type=4 会判非法断线——必须**先发版所有
+  客户端**（能解析 type=4），再上线启用文件功能的服务端。
+
+验收：`bash step3_verify/verify_file.sh`（签名单测 + mock 模式全链路 + 负向用例，
+CI 默认跑这个，不碰外网）；`RUN_QINIU_REAL=1 bash step3_verify/verify_Qiniu_file.sh`
+（真实七牛端到端，见 §8）。**mock 全绿不等于真机能通**——凡是与七牛对齐口径的东西
+（三处签名的待签串、entry 顺序、区域/域名/证书）只有真机能定案，这次联调就是靠它
+揭穿了三个"自洽但错"的实现。
+
+---
+
 ## 6. TCP 接口
 
 ### 6.1 Message 字段
@@ -1070,8 +1256,9 @@ POST /api/friends/batch-delete
 | 值 | 类型 | 方向 | 说明 |
 | --- | --- | --- | --- |
 | 1 | Text | 双向 | 文本消息 |
-| 2 | Image | 双向 | 图片消息，`content` 建议放 URL |
+| 2 | Image | 双向 | 图片消息，`content` 为媒体元数据 JSON（见 §6.6） |
 | 3 | Heartbeat | 客户端 -> 服务端 | 心跳，刷新空闲计时 |
+| 4 | File | 双向 | 文件消息，`content` 为媒体元数据 JSON（见 §6.6；⚠ 客户端需先支持 type=4 再上线服务端，见 §5.17） |
 | 100 | Login | 客户端 -> 服务端 | 登录，`content` 放 JWT |
 | 101 | LoginAck | 服务端 -> 客户端 | 登录成功 |
 | 102 | Error | 服务端 -> 客户端 | 错误通知 |
@@ -1214,9 +1401,13 @@ POST /api/friends/batch-delete
 
 ---
 
-### 6.6 发送图片消息
+### 6.6 发送图片 / 文件消息（媒体元数据规范）
 
-`type=2`，`content` 建议存图片 URL，不要把二进制塞进消息体：
+`type=2`（图片）与 `type=4`（文件）的 `content` 是一段**媒体元数据 JSON**。
+二进制既不塞 TCP 帧（上行帧 body ≤ 4096），也不经过本服务器——文件走
+**七牛云直传**（流程与时序见 §5.17），消息只携带元数据。
+
+发送时客户端**只需要带 `file_id`**（上传 commit 后拿到的 uuid）：
 
 ```json
 {
@@ -1224,9 +1415,46 @@ POST /api/friends/batch-delete
   "to": 1002,
   "type": 2,
   "msg_id": 10002,
-  "content": "https://example.com/images/a.png"
+  "content": "{\"file_id\":\"cc50e658-fc97-4f61-b6b5-7976ccbbf375\"}"
 }
 ```
+
+群文件把 `to` 填 groupId、加 `"is_group": true`、`type` 用 4（或图片 2）。
+
+服务端在 `do_send_media` 里完成**权属校验 + 元数据权威重建**（见 session.cpp）：
+`content` 必须是合法 JSON、`file_id` 必须在 files 表存在且 `status=1`、
+上传者必须是发送者本人——三个条件都通过后，服务端用数据库行**整体重建**
+`content` 再入库/投递。因此接收端收到的是：
+
+```json
+{
+  "from": 1001,
+  "to": 1002,
+  "type": 2,
+  "msg_id": 88,
+  "conversation_id": 5,
+  "seq": 7,
+  "ts": 1760000000000,
+  "content": "{\"file_id\":\"cc50e658-…\",\"url\":\"http://<服务器>:10002/api/files/cc50e658-…\",\"name\":\"照片.png\",\"size\":4096,\"mime\":\"image/png\",\"qetag\":\"28f0…\"}"
+}
+```
+
+字段口径：
+
+| 字段 | 来源 | 说明 |
+| --- | --- | --- |
+| `file_id` | files.uuid | 对外文件标识（服务端生成的随机 v4） |
+| `url` | 服务端重建 | **服务器换取入口**（GET 302 到有时效的存储签名 URL，见 §5.17）。客户端自报的 url 一律被替换——防"消息里塞钓鱼外链" |
+| `name/size/mime/qetag` | files 行（commit 时七牛 stat 的权威值） | 客户端谎报无效 |
+
+硬性禁止：
+- 往 `content` 塞 base64 二进制（帧上限 4096 + messages.content TEXT 双重禁止）；
+- 把七牛**签名直链**写进任何消息/配置（带 deadline，会随过期腐化历史消息——
+  消息里永远只存服务器换取入口）。
+
+校验失败（非法 JSON / 冒用他人 file_id / 文件不存在或已删）回 `type=102`
+Error 帧，**不断连接**；重复 `msg_id` 去重沿用现有机制（SendAck content 为
+`"duplicate"`）。
 
 ---
 
@@ -1624,6 +1852,17 @@ bash step3_verify/verify_friend.sh 8888 "$(pwd)/build" 8080
 # 群聊模块：建群 / 邀请 / 任命 / 移出 / 转让 / 解散 / 入群申请 + 群消息在线投递
 #           / 离线写扩散补推 / client_msg_id 去重 / 群历史分页 + TCP 群事件
 bash step3_verify/verify_group.sh 8888 "$(pwd)/build" 8080
+
+# 文件/图片模块（mock，QINIU_ENABLED=0）：签名单测 + 凭证→直传→commit→
+# 单聊/群聊→302 下载→删除 全链路 + 负向（未登录/超限/黑名单/虚报 commit/存储不可达）
+bash step3_verify/verify_file.sh 8888 "$(pwd)/build" 8080
+
+# 文件/图片模块（**真实七牛**，需已配好 QiniuConfig.json）：字节真的出网，
+# 分片 V2 单片+两片直传 → stat 核验 → 跟签名直链下载逐字节比对 → 删除。
+# 刻意要显式开开关：避免 CI 误打外网、或拿模板假密钥空跑给出误导性结论。
+RUN_QINIU_REAL=1 bash step3_verify/verify_Qiniu_file.sh 8888 "$(pwd)/build" 8080
+#   可调：QINIU_UPLOAD_MODE=form 交叉验证表单直传；QINIU_PART_SIZE_MB=1 让几 MB
+#   的样本真的走多片；VERIFY_QINIU_TIMEOUT=600 放宽慢链路的整体超时。
 ```
 
 `verify_friend.sh` 会自动应用最新 `db/schema.sql`，并运行
@@ -1669,6 +1908,7 @@ bash step3_verify/verify_group.sh 8888 "$(pwd)/build" 8080
 | `groups` | 群资料：群名/公告/简介/头像/群主/状态/人数上限，关联一个 `type=2` 会话 |
 | `group_members` | 群成员与角色（1=群主，2=管理员，3=成员）、群内昵称；`(group_id,user_id)` 主键 |
 | `group_requests` | 入群申请（单向，带状态机与 `result_notified` 离线补偿），风格同 `friend_requests` |
+| `files` | 媒体文件的**控制面登记**（二进制在七牛，本表不存字节）：`uuid` 对外标识、`uploader_id` 权属（发送媒体时校验"只能发自己上传的"）、`object_key`/`bucket`/`zone` 存储定位、`size`/`qetag` **以七牛 stat 权威值登记**、`name`/`mime` 取凭证时已过白名单的那份、`status` 1=正常 2=已删除（软删后再物理删对象）、`created_at` 供日配额 SUM 与孤儿清理扫描 |
 
 完整建表语句与字段注释见 [`db/schema.sql`](db/schema.sql)。
 

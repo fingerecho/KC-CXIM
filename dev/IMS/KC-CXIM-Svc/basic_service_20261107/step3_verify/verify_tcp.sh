@@ -116,9 +116,9 @@ if [[ "$(uname -s)" == Linux* ]]; then
     CLIENT_BIN="${BUILD_DIR}/bin/test_client"
     SEED_BIN="${BUILD_DIR}/bin/seed_db"
 elif [[ "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* || "$(uname -s)" == CYGWIN* ]]; then
-    SERVER_BIN="${BUILD_DIR}/bin/Debug/cxim-server.exe"
-    CLIENT_BIN="${BUILD_DIR}/bin/Debug/test_client.exe"
-    SEED_BIN="${BUILD_DIR}/bin/Debug/seed_db.exe"
+    SERVER_BIN="${BUILD_DIR}/bin/Release/cxim-server.exe"
+    CLIENT_BIN="${BUILD_DIR}/bin/Release/test_client.exe"
+    SEED_BIN="${BUILD_DIR}/bin/Release/seed_db.exe"
 fi
 
 if [[ ! -x "$SERVER_BIN" || ! -x "$CLIENT_BIN" ]]; then

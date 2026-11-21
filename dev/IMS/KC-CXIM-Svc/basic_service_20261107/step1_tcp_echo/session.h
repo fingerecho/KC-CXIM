@@ -73,6 +73,20 @@ private:
     void do_send_group(const Message& msg); // 发群消息：写扩散落库 + 在线成员直推
     void do_history_group(const Message& msg); // 群历史分页（校验群成员身份）
     /*************群聊功能：TCP 群消息与群历史入口***************/
+
+    /*************图片文件功能（七牛云直传）：媒体消息的校验入口***************/
+    // type=2/4 的发送比文本多一步"文件权属校验 + 元数据权威重建"：
+    //   do_send_media → Db::getFileByUuid（worker）→ strand 内校验
+    //   （存在/status=1/uploader==sender）→ buildMediaMetaJson 重建 content
+    //   → 汇入文本消息的同一条落库投递路径（finish_*）。
+    // 拆出 finish_* 是为了让文本/媒体两条入口**共享**投递逻辑，
+    // 而不是复制两份 sendChecked 回调（两份实现迟早漂移，教训见 db.h areFriends）。
+    void do_send_media(const Message& msg, bool group);
+    void finish_send(std::uint64_t sender, std::uint64_t to, int type,
+                     const std::string& content, std::uint64_t clientMsgId);
+    void finish_send_group(std::uint64_t sender, std::uint64_t groupId, int type,
+                           const std::string& content, std::uint64_t clientMsgId);
+    /*************图片文件功能（七牛云直传）：媒体消息的校验入口***************/
     void do_history(const Message& msg);    // 历史分页
     void do_ack(const Message& msg);        // 投递/已读回执
 
