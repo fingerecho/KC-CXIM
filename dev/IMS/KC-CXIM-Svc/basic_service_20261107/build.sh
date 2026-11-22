@@ -105,7 +105,7 @@ FILE_USER_DAILY_QUOTA_MB="${FILE_USER_DAILY_QUOTA_MB:-500}"
 # FILE_BASE_URL：媒体消息元数据 url 前缀，必须填**客户端可达**的公网 HTTP 地址，
 # 例如 http://110.40.206.253:${HTTP_PORT}——留空时服务端跟随 HTTP_PORT 默认回环
 # （开发可用、生产图片全裂），所以这里要求部署方显式给出。
-FILE_BASE_URL="${FILE_BASE_URL:-http://127.0.0.1:${HTTP_PORT}}"
+FILE_BASE_URL="${FILE_BASE_URL:-http://110.40.206.253:${HTTP_PORT}}"
 # /*************图片文件功能（七牛云直传）：部署档位默认值***************/
 
 # 构建类型（P0-5）：默认 Release，可 export CMAKE_BUILD_TYPE=RelWithDebInfo 覆盖。

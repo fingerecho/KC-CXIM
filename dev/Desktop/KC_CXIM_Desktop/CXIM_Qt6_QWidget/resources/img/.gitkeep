@@ -1,0 +1,1 @@
+# 位图资源目录(PNG/JPG)。放入文件后需在 ../resources.qrc 的 /img 前缀下登记一行 <file>。

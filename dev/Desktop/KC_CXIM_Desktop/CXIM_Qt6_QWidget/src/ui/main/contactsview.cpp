@@ -27,10 +27,27 @@ QListWidgetItem *makeRow(QListWidget *list, const QString &iconText,
     auto *item = new QListWidgetItem(list);
     auto *row = new QWidget(list);
     auto *h = new QHBoxLayout(row);
-    h->setContentsMargins(8, 8, 8, 8);
+    // 左右 12px 原先靠 QSS 的 ::item{padding} 留白, 但那会一并扣掉行高把头像和
+    // 文字裁掉(见 theme.cpp 中 listPanel::item 的注释), 所以留白改由行布局承担。
+    h->setContentsMargins(12, 8, 12, 8);
     h->setSpacing(12);
 
-    if (groupAvatar) {
+    // 左侧三种形态, 优先级: 功能入口字符 > 群头像 > 个人头像
+    if (!iconText.isEmpty()) {
+        // 功能入口("新朋友"/"入群申请"): 40px 圆形品牌蓝徽标 + 一个表意字符,
+        // 与旁边的个人头像同规格, 视觉上是一列而不是混进来的图标。
+        // 必须走这个分支而不是 AvatarWidget: 后者取 nameOrId.left(1) 当首字符,
+        // 而 emoji(🤝/📨)在 QString 里是代理对, left(1) 只截到前半个码元 → 豆腐块。
+        auto *glyph = new QLabel(iconText, row);
+        glyph->setFixedSize(40, 40);
+        glyph->setAlignment(Qt::AlignCenter);
+        glyph->setStyleSheet(QStringLiteral(
+            "QLabel { color: white; font-size: 18px; border-radius: 20px;"
+            " background: qlineargradient(x1:0, y1:0, x2:1, y2:1,"
+            " stop:0 %1, stop:1 %2); }")
+            .arg(Theme::brandTop().name(), Theme::brandBottom().name()));
+        h->addWidget(glyph);
+    } else if (groupAvatar) {
         auto *g = new QLabel(QStringLiteral("👥"), row);   // 群图标: 原生 emoji, 免资源
         g->setStyleSheet(QStringLiteral("font-size:26px; color:#5a7fa6;"));
         g->setFixedWidth(40);
@@ -236,8 +253,10 @@ void ContactsView::renderFriends()
         m_friendsList->clear();
 
         // 新朋友入口常驻列表顶部(与旧版一致), 待处理数实时体现在副标题
-        auto *banner = makeRow(m_friendsList, QString(),
-                               QStringLiteral("🔔 新朋友"),
+        // 徽标字符用 🤝(握手=结为新友), 不再写成 "🔔 新朋友" 塞进标题:
+        // 那样标题带 emoji、左侧头像还会因代理对被截半而显示成方块。
+        auto *banner = makeRow(m_friendsList, QStringLiteral("🤝"),
+                               QStringLiteral("新朋友"),
                                m_pendingFriendReqs > 0
                                    ? QStringLiteral("%1 条待处理申请").arg(m_pendingFriendReqs)
                                    : QStringLiteral("暂无新申请"),
@@ -274,8 +293,9 @@ void ContactsView::renderGroups()
 
         if (m_pendingGroupReqs > 0) {
             // 点击处理在 buildUi 的常驻 itemClicked 连接里, 这里只负责渲染
-            auto *banner = makeRow(m_groupsList, QString(),
-                                   QStringLiteral("🔔 入群申请"),
+            // 徽标字符用 📨(收到待办申请), 与"新朋友"的 🤝 同一套圆形蓝底规格
+            auto *banner = makeRow(m_groupsList, QStringLiteral("📨"),
+                                   QStringLiteral("入群申请"),
                                    QStringLiteral("%1 条待审批").arg(m_pendingGroupReqs), 0);
             banner->setData(Qt::UserRole, 0);
         }

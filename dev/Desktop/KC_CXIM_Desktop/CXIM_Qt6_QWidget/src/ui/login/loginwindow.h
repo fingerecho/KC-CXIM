@@ -14,7 +14,7 @@ class ImService;
  *  - 顶部居中: 白色圆盘 + 品牌 logo 圆标(可用 Theme 色自绘, 无需图片资源);
  *  - 两个白底圆角输入框(objectName=cardInput): 占位文本"输入账号"/"输入密码"
  *    (密码框 setEchoMode(Password)), 文字居中;
- *  - 输入框下方左右: 圆形勾选(18px, objectName=circleCheck)"自动登录"/"记住密码";
+ *  - 输入框下方左右: 圆形勾选(14px, objectName=circleCheck)"自动登录"/"记住密码";
  *  - 主按钮"登录"(objectName=primaryButton, 渐变蓝, 高约 52px);
  *  - 其下居中一行: circleCheck "已阅读并同意" + 两个 linkButton "服务协议"/"隐私政策";
  *  - 底部居中 linkButton "注册账号"。
@@ -40,9 +40,13 @@ signals:
 protected:
     /// 绘制 loginGradTop→loginGradBottom 纵向渐变 + 8px 圆角卡片背景
     void paintEvent(QPaintEvent *event) override;
+    /// 每次显示都重新同步两个偏好勾选框(见 cpp 内注释: 退出登录后 autoLogin 已被清)
+    void showEvent(QShowEvent *event) override;
 
 private:
     void doLogin(const QString &username, const QString &password);
+    /// 把"记住密码/自动登录"勾选框刷成 Session 里的真实值
+    void syncPreferenceChecks();
 
     ImService *m_im;
     class QLineEdit *m_userEdit = nullptr;

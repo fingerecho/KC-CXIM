@@ -2,11 +2,22 @@
 
 #include <QEvent>
 #include <QMouseEvent>
+#include <QShowEvent>
 #include <QWindow>
 
 #ifdef Q_OS_WIN
 #include <qt_windows.h>
 #include <windowsx.h>   // GET_X_LPARAM / GET_Y_LPARAM
+#include <dwmapi.h>     // DwmSetWindowAttribute: Win11 圆角/阴影(需链接 dwmapi)
+
+// 下面三个取值来自微软文档的 DWMWINDOWATTRIBUTE / DWM_WINDOW_CORNER_PREFERENCE。
+// 这里用本地常量而不是头文件里的枚举名, 是因为 DWMWA_WINDOW_CORNER_PREFERENCE
+// 只有较新的 Windows SDK 头才定义, 直接引用会让本文件在旧 SDK 上编译失败。
+namespace {
+constexpr DWORD kAttrCornerPreference = 33;  // DWMWA_WINDOW_CORNER_PREFERENCE
+constexpr DWORD kCornerRound          = 2;   // DWMWCP_ROUND(系统标准圆角, Win11 为 8px)
+constexpr DWORD kAttrNcCreation       = 2;   // DWMWA_NCREATION_ATTRIBUTES(打开系统阴影)
+} // namespace
 #endif
 
 FramelessWindow::FramelessWindow(QWidget *parent) : QWidget(parent)
@@ -41,6 +52,46 @@ bool FramelessWindow::eventFilter(QObject *watched, QEvent *event)
         return true;
     }
     return QWidget::eventFilter(watched, event);
+}
+
+// ---------------------------------------------------------------------------
+// Win11 原生外观: 圆角 + 阴影
+//   只在窗口显示时应用(showEvent): 此时 HWND 一定已创建, 既不必在构造期调用
+//   winId() 强制提前创建原生窗口, 也能在 hide→show 复用同一实例时重新生效。
+// ---------------------------------------------------------------------------
+void FramelessWindow::setNativeFrameStyle(bool rounded, bool shadowed)
+{
+    m_nativeRounded = rounded;
+    m_nativeShadowed = shadowed;
+}
+
+void FramelessWindow::showEvent(QShowEvent *event)
+{
+    QWidget::showEvent(event);
+    applyNativeFrameStyle();
+}
+
+void FramelessWindow::applyNativeFrameStyle()
+{
+#ifdef Q_OS_WIN
+    if (!m_nativeRounded && !m_nativeShadowed)
+        return;                             // 未开启的窗口(如登录卡片)完全不受影响
+
+    HWND hwnd = reinterpret_cast<HWND>(winId());
+    if (!hwnd)
+        return;
+
+    if (m_nativeRounded) {
+        const DWORD pref = kCornerRound;
+        // Win10 上该属性不被支持, 返回 E_INVALIDARG 即静默保持直角
+        DwmSetWindowAttribute(hwnd, kAttrCornerPreference, &pref, sizeof(pref));
+    }
+    if (m_nativeShadowed) {
+        const BOOL enabled = TRUE;
+        // 打开非客户区渲染 → 系统补上原生投影(FramelessWindowHint 下默认没有)
+        DwmSetWindowAttribute(hwnd, kAttrNcCreation, &enabled, sizeof(enabled));
+    }
+#endif
 }
 
 #ifdef Q_OS_WIN

@@ -14,7 +14,7 @@ class ContactsView;
  *
  * 布局:
  *  ┌ headerBar: logo+铖信 | 我的头像 用户名 ID | 最小化/最大化/关闭 ┐
- *  ├ railPanel: 💬消息  👤通讯录 (两个 checkable 图标按钮)          │
+ *  ├ railPanel: 消息 / 通讯录 (两个 checkable 图标按钮, 双态 SVG 见 resources/icons) │
  *  ├ Page0 消息: ConversationListView(280px) + ChatView            │
  *  └ Page1 通讯录: ContactsView(搜索/+/好友|群聊/列表/新建群聊)     │
  *
@@ -34,6 +34,10 @@ public:
 signals:
     void logoutRequested();
 
+protected:
+    /// 窗口状态变化(最大化↔还原)时同步最大化按钮的字形与提示
+    void changeEvent(QEvent *event) override;
+
 private slots:
     void openConversation(quint64 peerId, bool isGroup, const QString &title);
     void onSessionExpired();
@@ -52,6 +56,7 @@ private:
     class QStackedWidget *m_pages = nullptr;
     class QToolButton *m_railChat = nullptr;
     class QToolButton *m_railContacts = nullptr;
+    class QPushButton *m_maxBtn = nullptr;   // 标题栏最大化按钮(字形随窗口状态切换)
 };
 
 #endif // CXIM_MAINWINDOW_H

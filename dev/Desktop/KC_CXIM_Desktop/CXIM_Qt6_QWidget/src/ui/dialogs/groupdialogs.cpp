@@ -90,7 +90,8 @@ CreateGroupDialog::CreateGroupDialog(ImService *im, QWidget *parent)
     auto *pickCap = new QLabel(QStringLiteral("选择好友(至少1人)"), this);
     v->addWidget(pickCap);
     m_friendList = new QListWidget(this);
-    m_friendList->setObjectName(QStringLiteral("listPanel"));
+    // 纯文本项列表 → listPanelText(留白由 ::item{padding} 给, 不会被裁)
+    m_friendList->setObjectName(QStringLiteral("listPanelText"));
     m_friendList->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     v->addWidget(m_friendList, 1);
 
@@ -397,7 +398,9 @@ void GroupManageDialog::reload()
             auto *item = new QListWidgetItem(self->m_memberList);
             auto *row = new QWidget(self->m_memberList);
             auto *h = new QHBoxLayout(row);
-            h->setContentsMargins(8, 4, 8, 4);
+            // 行内留白全部由布局给(原 QSS ::item{padding} 会把行高扣掉 20px,
+            // 32px 的头像就显示不全 —— 见 theme.cpp 中 listPanel::item 的注释)
+            h->setContentsMargins(12, 6, 12, 6);
             h->setSpacing(8);
 
             auto *ava = new AvatarWidget(row);
@@ -537,7 +540,8 @@ void GroupManageDialog::inviteMembers()
     v->setSpacing(8);
     v->addWidget(new QLabel(QStringLiteral("选择要邀请的好友(已在群内的不可选)"), &dlg));
     auto *list = new QListWidget(&dlg);
-    list->setObjectName(QStringLiteral("listPanel"));
+    // 纯文本项列表 → listPanelText(理由同 m_friendList)
+    list->setObjectName(QStringLiteral("listPanelText"));
     list->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     v->addWidget(list, 1);
     auto *st = new QLabel(&dlg);

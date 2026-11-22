@@ -15,7 +15,9 @@ QWidget *makeRowWidget(const QString &title, const QString &preview,
 {
     auto *row = new QWidget(parent);
     auto *h = new QHBoxLayout(row);
-    h->setContentsMargins(4, 6, 4, 6);
+    // 左右 12px 的呼吸空间原先由 QSS 的 ::item{padding} 提供, 但那会连带扣掉行高
+    // 导致头像/文字被裁(详见 theme.cpp 中 listPanel::item 的注释), 故移到行布局里。
+    h->setContentsMargins(12, 6, 12, 6);
     h->setSpacing(10);
 
     auto *avatar = new AvatarWidget(row);

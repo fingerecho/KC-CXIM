@@ -29,6 +29,11 @@ int main(int argc, char *argv[])
     auto backToLogin = [&]() {
         im.shutdownDataPlane();
         im.account()->logout();
+        // 走到这里说明是"用户主动退出"(点主窗口✕)或"会话过期", 两种情况都不该
+        // 在下次启动时再自动登录: 否则自动登录会把登录页一闪而过, 用户永远没机会
+        // 取消那个勾选 —— 表现就是"一启动直接进聊天主界面"。
+        // 只清 autoLogin, 记住的账号密码保留(Session::disableAutoLogin 内有说明)。
+        im.session()->disableAutoLogin();
         if (mainWin)
             mainWin->close();           // WA_DeleteOnClose 下真正销毁
         login.show();

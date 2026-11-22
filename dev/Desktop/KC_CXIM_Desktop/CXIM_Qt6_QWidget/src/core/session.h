@@ -50,6 +50,13 @@ public:
     bool autoLogin() const { return m_autoLogin; }
     void setLoginPreferences(bool remember, bool autoLogin,
                              const QString &username, const QString &password);
+    /**
+     * @brief 只关闭"自动登录", 保留"记住密码"与已存账号密码
+     *
+     * 用在用户主动退出登录/关闭主窗口的路径上: 自动登录会把登录页一闪而过,
+     * 用户再也没有机会取消那个勾选, 表现为"每次一启动就进主界面"。
+     */
+    void disableAutoLogin();
     QString savedUsername() const { return m_savedUsername; }
     QString savedPassword() const { return m_savedPassword; }   // 本地明文, 与旧客户端一致
 

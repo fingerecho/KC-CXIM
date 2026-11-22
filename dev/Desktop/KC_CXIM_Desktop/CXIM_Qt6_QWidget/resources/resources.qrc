@@ -1,0 +1,42 @@
+<!DOCTYPE RCC>
+<!--
+    CXIM 桌面端资源清单(Qt 资源系统)
+
+    路径约定: 本文件里的 <file> 路径都**相对于 resources/ 目录**, 编译后由 rcc
+    嵌入可执行文件, 运行时用 ":/前缀/文件名" 访问, 不依赖磁盘上的文件是否存在,
+    因此 windeployqt 打包时无需额外拷贝图片。
+
+    前缀分工(与 resources/ 下的子目录一一对应):
+        :/icons/...   →  resources/icons/   矢量图标(SVG), 单色/可缩放图形
+        :/img/...     →  resources/img/     位图(PNG/JPG), 照片/背景等不适合矢量的图
+
+    新增一个资源的步骤:
+      1. 把文件放进对应子目录(新类别可另建子目录并加一个 <qresource prefix="/xxx">);
+      2. 在下面的 <qresource> 里加一行 <file alias="规范文件名">相对路径/文件名</file>;
+      3. 代码里引用: QIcon icon(QStringLiteral(":/icons/app_logo.svg"));
+         (alias 的作用是把带路径的文件挂到前缀根下, 避免代码里写成 ":/icons/icons/xxx")
+
+    当前登记的图标:
+      :/icons/app_logo.svg               应用 logo(白圆盘+品牌蓝圆+链环)
+      :/icons/cxim_nav_chat.svg          左侧导航·消息   —— 选中态(蓝色实心)
+      :/icons/cxim_nav_chat_off.svg      左侧导航·消息   —— 未选中态(灰色描边)
+      :/icons/cxim_nav_contacts_on.svg   左侧导航·通讯录 —— 选中态(蓝色描边)
+      :/icons/cxim_nav_contacts.svg      左侧导航·通讯录 —— 未选中态(灰色描边)
+    ⚠ 注意命名并不对称: 消息的选中图不带后缀, 通讯录的未选中图不带后缀。
+      接线处见 src/ui/main/mainwindow.cpp 的 navIcon(), 只按 (off, on) 顺序传参。
+
+    ⚠ SVG 运行时解码依赖 Qt6::Svg 的 svgicon 插件 —— 已在 CMakeLists.txt 里
+      find_package 加 Svg 组件并 target_link_libraries Qt6::Svg, 所以可以直接
+      QIcon(":/icons/xxx.svg") 使用; 若去掉该链接, 图标会静默变成空白。
+-->
+<RCC version="1.0">
+    <qresource prefix="/icons">
+        <!-- 应用 logo: 白圆盘 + 品牌蓝渐变圆 + 白色链环, 与 loginwindow.cpp 里
+             brandLogoPixmap() 的自绘结果同一套视觉, 供窗口图标/关于页使用 -->
+        <file alias="app_logo.svg">icons/app_logo.svg</file>
+        <file alias="cxim_nav_contacts.svg">icons/cxim_nav_contacts.svg</file>
+        <file alias="cxim_nav_contacts_on.svg">icons/cxim_nav_contacts_on.svg</file>
+        <file alias="cxim_nav_chat.svg">icons/cxim_nav_chat.svg</file>
+        <file alias="cxim_nav_chat_off.svg">icons/cxim_nav_chat_off.svg</file>
+    </qresource>
+</RCC>

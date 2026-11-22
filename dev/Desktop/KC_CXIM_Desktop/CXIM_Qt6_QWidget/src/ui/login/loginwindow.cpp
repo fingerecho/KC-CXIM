@@ -25,6 +25,7 @@
 #include <QPen>
 #include <QPixmap>
 #include <QPointer>
+#include <QShowEvent>
 #include <QPushButton>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -107,13 +108,18 @@ QLineEdit *cardInput(const QString &placeholder, QWidget *parent, bool secret)
     return edit;
 }
 
-/// 圆形勾选框(objectName=circleCheck, 样式由全局 QSS 提供)
+/**
+ * 圆形勾选框(objectName=circleCheck)
+ *
+ * 尺寸/圆角/选中态/字号全部由 theme.cpp 的全局 QSS 统一提供, 这里**不再**调用
+ * setStyleSheet: 控件级样式表会与 app 级规则叠加并抢占优先级, 之前字号写在此处、
+ * indicator 尺寸写在全局, 两处口径不一致正是勾选框显得又大又笨的原因之一。
+ */
 QCheckBox *circleCheck(const QString &text, QWidget *parent)
 {
     auto *cb = new QCheckBox(text, parent);
     cb->setObjectName(QStringLiteral("circleCheck"));
     cb->setCursor(Qt::PointingHandCursor);
-    cb->setStyleSheet(QStringLiteral("QCheckBox { font-size: 12px; }"));
     return cb;
 }
 
@@ -305,8 +311,7 @@ LoginWindow::LoginWindow(ImService *im, QWidget *parent)
     // ---- 回填本地偏好(QSettings 持久化) ----
     if (m_im) {
         Session *s = m_im->session();
-        m_remember->setChecked(s->rememberPassword());
-        m_autoLogin->setChecked(s->autoLogin());
+        syncPreferenceChecks();             // 勾选框 = Session 里的真实值
         if (s->rememberPassword()) {
             m_userEdit->setText(s->savedUsername());
             m_passEdit->setText(s->savedPassword());
@@ -359,6 +364,27 @@ void LoginWindow::doLogin(const QString &username, const QString &password)
         self->m_im->startDataPlane();
         emit self->loginSucceeded();
     });
+}
+
+// ---------------------------------------------------------------------------
+/// 勾选框状态 = Session 的真实偏好值(两者只能由本函数单向同步, 避免界面与实际不一致)
+void LoginWindow::syncPreferenceChecks()
+{
+    if (!m_im)
+        return;
+    Session *s = m_im->session();
+    m_remember->setChecked(s->rememberPassword());
+    m_autoLogin->setChecked(s->autoLogin());
+}
+
+// ---------------------------------------------------------------------------
+/// 每次显示登录页都重新拉一次偏好: 退出登录回到这里时, 控制器已经调用过
+/// Session::disableAutoLogin(), 若不同步, 界面上"自动登录"仍显示为勾上的,
+/// 与实际"下次启动不会自动登录"自相矛盾(也让人以为无法取消)。
+void LoginWindow::showEvent(QShowEvent *event)
+{
+    FramelessWindow::showEvent(event);      // 基类负责 DWM 原生外观(本页未开启, 仅透传)
+    syncPreferenceChecks();
 }
 
 // ---------------------------------------------------------------------------

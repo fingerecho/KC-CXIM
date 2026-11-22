@@ -349,25 +349,32 @@ ChatView::MessageRow *ChatView::buildRowShell(bool outgoing, quint64 senderId,
     r->row = new QWidget(m_msgContainer);
     auto *h = new QHBoxLayout(r->row);
     h->setContentsMargins(0, 0, 0, 0);
-    h->setSpacing(8);
+    h->setSpacing(6);   // 头像与气泡的间距: 8 会让左侧看起来空出一列
 
-    // 气泡: 圆角 8px, 最大宽 480, 只换行不省略。
-    // ⚠ 内边距用 QLabel::setMargin 而不是样式表 padding: QLabel 的
-    // heightForWidth() 不计入样式表 padding, 多行文本最后一行会被裁掉(实测)。
+    // 气泡: 圆角 8px + 1px 同色系描边(浅灰底在白色聊天区几乎看不出边界, 描边才像气泡)。
+    // ⚠ 内边距用 QLabel::setMargin 而不是样式表 padding: QLabel 的尺寸计算不计入样式表
+    //    padding, 多行文本最后一行会被裁掉(实测)。BubbleLabel 侧的公式同样按 margin 反推。
     r->bubble = new BubbleLabel(r->row);
     r->bubble->setWordWrap(true);
     r->bubble->setTextFormat(Qt::PlainText);
-    r->bubble->setMaximumWidth(bubbleMaxWidth(m_scroll ? m_scroll->viewport() : nullptr));
-    r->bubble->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Minimum);
-    r->bubble->setMargin(9);
-    r->bubble->setIndent(3);
+    // 垂直 Fixed: Minimum/Preferred 会让布局把 widget 拉高, 出现"气泡一大块、文字只占
+    // 中间一条"的观感。水平 Maximum = 不超过尺寸上限, 短消息不会撑满整行。
+    r->bubble->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
+    r->bubble->setMargin(8);
+    // 不设 setIndent: 聊天气泡不需要首行缩进, 而 BubbleLabel 的宽高公式里没有 indent
+    // 这一项, 加上会让"外框宽"和"排版内框宽"两个口径不一致(凭空多一行高)。
     QFont bf = r->bubble->font();
     bf.setPixelSize(14);
     r->bubble->setFont(bf);
     const QColor bg = outgoing ? Theme::bubbleOut() : Theme::bubbleIn();
+    const QColor border = outgoing ? QColor(0xb9, 0xdc, 0xf5) : QColor(0xe2, 0xe6, 0xea);
     r->bubble->setStyleSheet(QStringLiteral(
-        "QLabel { background:%1; border-radius:%2px; color:%3; }")
-        .arg(bg.name()).arg(Theme::radius()).arg(Theme::textPrimary().name()));
+        "QLabel { background:%1; border:1px solid %4; border-radius:%2px; color:%3; }")
+        .arg(bg.name()).arg(Theme::radius()).arg(Theme::textPrimary().name()).arg(border.name()));
+    // ⚠ 必须放在字体/margin 都设好之后: setMaxBubbleWidth 内部会 refit() 按当前字体与
+    //    内边距锁定自身尺寸, 放前面会按默认 13px 字体算出偏小的气泡。
+    //    文本是之后才 setText 的, 那里还会再 refit 一次(见 appendMessage)。
+    r->bubble->setMaxBubbleWidth(bubbleMaxWidth(m_scroll ? m_scroll->viewport() : nullptr));
 
     if (!outgoing) {
         // 气泡布局(incoming): 头像 32px | [群聊发送者名] + 气泡, 整体左对齐
@@ -383,14 +390,15 @@ ChatView::MessageRow *ChatView::buildRowShell(bool outgoing, quint64 senderId,
                                             .arg(Theme::textSecondary().name()));
             col->addWidget(r->nameLabel, 0, Qt::AlignLeft);
         }
-        // ⚠ 气泡不能带 alignment 参数加入布局: 带对齐的 addWidget 会让布局按
-        // sizeHint 固定尺寸, 忽略 wordWrap 的 heightForWidth → 多行文本被裁
-        col->addWidget(r->bubble);
+        // 靠左对齐。可以安全带上 alignment: 之前"带 alignment 会裁掉多行文本"是因为
+        // QLabel 的 sizeHint 不含 heightForWidth, 现在 BubbleLabel 两个都重写了,
+        // 布局拿到的就是"该宽度换行后的真实尺寸"。
+        col->addWidget(r->bubble, 0, Qt::AlignLeft);
         h->addLayout(col, 1);
     } else {
         // 气泡布局(outgoing): 右对齐气泡 + 右侧灰色状态标签
         h->addStretch(1);
-        h->addWidget(r->bubble);
+        h->addWidget(r->bubble, 0, Qt::AlignRight);
         r->statusLabel = new QLabel(r->row);
         r->statusLabel->setStyleSheet(QStringLiteral("color:%1; font-size:12px;")
                                           .arg(Theme::textSecondary().name()));
@@ -415,7 +423,7 @@ void ChatView::resizeEvent(QResizeEvent *event)
     const int maxW = bubbleMaxWidth(m_scroll->viewport());
     for (MessageRow *r : m_rows) {
         if (r && r->bubble)
-            r->bubble->setMaximumWidth(maxW);
+            r->bubble->setMaxBubbleWidth(maxW);   // 内部会 updateGeometry 触发重排
     }
 }
 
@@ -451,6 +459,9 @@ void ChatView::appendMessage(const ChatMessage &m)
         r->bubble->setText(m.content);
     else
         showBubbleMedia(r, m);
+
+    // 文本落地后必须重算并锁死气泡尺寸(BubbleLabel::refit 的机制说明)
+    r->bubble->refit();
 
     if (r->statusLabel)
         r->statusLabel->setText(statusTextFor(m.status, QString()));
@@ -544,11 +555,13 @@ void ChatView::showBubbleMedia(MessageRow *row, const ChatMessage &m)
         const QPixmap pix = QPixmap::fromImage(img);
         if (status != 200 || pix.isNull()) {
             guard->setText(QStringLiteral("🖼 %1 (点击另存)").arg(name));
+            guard->refit();                 // 异步落地: 外层那次 refit 早跑完了
             return;
         }
         guard->setText(QString());
         guard->setPixmap(pix.scaled(kThumbMaxSize, kThumbMaxSize,
                                     Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        guard->refit();                     // 缩略图尺寸由 pixmap 决定, 需重新锁定
     });
 }
 
@@ -651,6 +664,7 @@ void ChatView::startMediaUpload(const QString &filePath, int msgType)
     r->bubble->setText((msgType == MsgType::Image ? QStringLiteral("🖼 ")
                                                   : QStringLiteral("📄 "))
                        + info.fileName());
+    r->bubble->refit();     // 占位行不走 appendMessage, 要自己锁一次尺寸
     r->statusLabel->setText(QStringLiteral("上传中 0%"));
     insertRow(r);
     QTimer::singleShot(0, this, &ChatView::scrollToBottom);

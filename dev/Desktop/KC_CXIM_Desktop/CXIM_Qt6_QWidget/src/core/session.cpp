@@ -65,6 +65,17 @@ void Session::setLoginPreferences(bool remember, bool autoLogin,
     persistPrefs();
 }
 
+void Session::disableAutoLogin()
+{
+    // 没开过就不写盘, 避免每次退出都产生一次无意义的 ini 写入
+    if (!m_autoLogin)
+        return;
+    m_autoLogin = false;
+    // m_rememberPassword / m_savedUsername / m_savedPassword 一律不动:
+    // 用户只是不想再"启动即登录", 不是要忘掉账号密码。
+    persistPrefs();
+}
+
 void Session::persistPrefs()
 {
     QSettings &s = settings();
