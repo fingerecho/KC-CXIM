@@ -12,6 +12,48 @@
   padding: 14rpx 32rpx;
 }
 
+.group-bar {
+  display: flex;
+  align-items: center;
+  background: #fff;
+  padding: 18rpx 24rpx;
+  border-bottom: 1rpx solid var(--line);
+}
+.group-bar-hover { background: #f7f8fa; }
+.group-badge {
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 16rpx;
+  background: #8e6bf1;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28rpx;
+  flex-shrink: 0;
+}
+.group-bar-main {
+  flex: 1;
+  min-width: 0;
+  margin-left: 20rpx;
+}
+.group-bar-name {
+  font-size: 28rpx;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.group-bar-sub {
+  color: var(--text-sub);
+  font-size: 22rpx;
+  margin-top: 4rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.group-bar-arrow { color: #c4c9d0; font-size: 36rpx; margin-left: 12rpx; }
+
 .msg-list {
   flex: 1;
   min-height: 0;
@@ -31,15 +73,25 @@
   align-items: flex-start;
   padding: 12rpx 24rpx;
 }
-.row-in {
-  flex-direction: row;
+.row-in { flex-direction: row; }
+.row-out { flex-direction: row-reverse; }
+
+.msg-content {
+  max-width: 62%;
+  display: flex;
+  flex-direction: column;
 }
-.row-out {
-  flex-direction: row-reverse;
+.row-in .msg-content { align-items: flex-start; }
+.row-out .msg-content { align-items: flex-end; }
+
+.sender-name {
+  font-size: 22rpx;
+  color: var(--text-sub);
+  margin: 0 16rpx 8rpx;
 }
 
 .bubble {
-  max-width: 60%;
+  max-width: 100%;
   padding: 18rpx 26rpx;
   border-radius: 16rpx;
   font-size: 30rpx;
@@ -57,6 +109,60 @@
   color: #fff;
   border-top-right-radius: 4rpx;
 }
+.bubble-media { padding: 8rpx; }
+.msg-image {
+  width: 320rpx;
+  max-width: 100%;
+  border-radius: 10rpx;
+  display: block;
+}
+.media-placeholder {
+  width: 240rpx;
+  height: 100rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
+  font-size: 26rpx;
+  opacity: 0.8;
+}
+
+.file-card {
+  display: flex;
+  align-items: center;
+  background: #fff;
+  border: 1rpx solid var(--line);
+  border-radius: 16rpx;
+  padding: 18rpx;
+  margin: 0 16rpx;
+  max-width: 440rpx;
+}
+.file-card-out { background: var(--primary); border-color: var(--primary); }
+.file-card-hover { opacity: 0.75; }
+.file-icon {
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 12rpx;
+  background: #e8f0ff;
+  color: var(--primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32rpx;
+  flex-shrink: 0;
+}
+.file-card-out .file-icon { background: rgba(255,255,255,0.25); color: #fff; }
+.file-info { margin-left: 18rpx; min-width: 0; }
+.file-name {
+  font-size: 28rpx;
+  color: var(--text-main);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-card-out .file-name { color: #fff; }
+.file-size { font-size: 22rpx; color: var(--text-sub); margin-top: 8rpx; }
+.file-card-out .file-size { color: rgba(255,255,255,0.8); }
 
 .msg-status {
   align-self: center;
@@ -64,9 +170,7 @@
   color: var(--text-sub);
   flex-shrink: 0;
 }
-.status-failed {
-  color: var(--danger);
-}
+.status-failed { color: var(--danger); }
 
 .input-bar {
   display: flex;
@@ -76,6 +180,22 @@
   padding-bottom: calc(16rpx + env(safe-area-inset-bottom));
   border-top: 1rpx solid var(--line);
 }
+.add-btn {
+  width: 60rpx;
+  height: 60rpx;
+  border-radius: 50%;
+  background: var(--bg);
+  color: var(--text-sub);
+  font-size: 40rpx;
+  line-height: 1;
+  text-align: center;
+  margin-right: 16rpx;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.add-btn-hover { background: #e3e5e9; }
 .chat-input {
   flex: 1;
   height: 72rpx;
@@ -84,16 +204,17 @@
   padding: 0 24rpx;
   font-size: 30rpx;
 }
-.ph {
-  color: #c0c5cc;
-}
+.ph { color: #c0c5cc; }
 .send-btn {
   margin-left: 20rpx;
   background: var(--primary);
   color: #fff;
   font-size: 28rpx;
+  height: 64rpx;
+  padding: 0 28rpx;
+  line-height: 1.2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
-.send-btn[disabled] {
-  background: #a8c3ff;
-  color: #fff;
-}
+.send-btn[disabled] { background: #a8c3ff; color: #fff; }

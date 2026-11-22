@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/act_add_friend"
+        android:icon="@drawable/ic_person_add"
+        android:title="@string/add_friend" />
+    <item
+        android:id="@+id/act_create_group"
+        android:icon="@drawable/ic_groups"
+        android:title="@string/create_group" />
+    <item
+        android:id="@+id/act_join_group"
+        android:icon="@drawable/ic_mail_outline"
+        android:title="@string/main_join_group" />
+    <item
+        android:id="@+id/act_multi_send"
+        android:icon="@drawable/ic_send"
+        android:title="@string/main_multi_send" />
+</menu>

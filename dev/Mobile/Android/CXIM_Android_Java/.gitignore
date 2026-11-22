@@ -1,0 +1,13 @@
+.gradle/
+build/
+app/build/
+local.properties
+*.iml
+.idea/
+.DS_Store
+.gradle-dist
+
+# 发布签名：签名库本体与密码文件都不能入库
+keystore.properties
+*.jks
+*.keystore

@@ -4,7 +4,10 @@
     "pages/chat-list/chat-list",
     "pages/chat/chat",
     "pages/contacts/contacts",
-    "pages/me/me"
+    "pages/me/me",
+    "pages/group-list/group-list",
+    "pages/create-group/create-group",
+    "pages/group-info/group-info"
   ],
   "window": {
     "navigationBarBackgroundColor": "#ffffff",

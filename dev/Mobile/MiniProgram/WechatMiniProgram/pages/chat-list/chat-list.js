@@ -13,16 +13,17 @@ Page({
   onLoad() {
     this._offMsg = emitter.on('msg', () => this.refresh());
     this._offSessions = emitter.on('sessions', () => this.refresh());
+    this._offGroup = emitter.on('group-list', () => this.refresh());
+    this._offGroupChg = emitter.on('group-member-changed', () => this.refresh());
+    this._offDismiss = emitter.on('group-dismissed', () => this.refresh());
     this._offState = emitter.on('state', (s) => {
       const connected = s === 'connected';
-      // 事件可能在别的 setData 周期内触发，延迟一帧避免递归更新
       wx.nextTick(() => {
         this.setData({ connected, connectedShow: this.data.sessions.length > 0 });
       });
     });
     this._offAuth = emitter.on('auth', (res) => {
-      if (!res.ok && this.data.ready) {
-        // token 失效等情况，回登录页
+      if (!res.ok && !res.reason && this.data.ready) {
         wx.reLaunch({ url: '/pages/login/login' });
       }
     });
@@ -31,7 +32,6 @@ Page({
   onShow() {
     this.setData({ ready: true, connected: im.isConnected(), connectedShow: true });
     this.refresh();
-    // 未登录被踢到登录页
     if (!im.currentUser()) {
       wx.reLaunch({ url: '/pages/login/login' });
     }
@@ -40,6 +40,9 @@ Page({
   onUnload() {
     this._offMsg && this._offMsg();
     this._offSessions && this._offSessions();
+    this._offGroup && this._offGroup();
+    this._offGroupChg && this._offGroupChg();
+    this._offDismiss && this._offDismiss();
     this._offState && this._offState();
     this._offAuth && this._offAuth();
   },
@@ -48,20 +51,30 @@ Page({
     const sessions = im.getSessions().map((s) => ({
       id: s.id,
       name: s.name,
+      isGroup: !!s.isGroup,
       lastMsg: s.lastMsg,
       unread: s.unread,
       time: format.formatChatListTime(s.ts),
-      avatarChar: (s.name || s.id)[0],
-      avatarCls: format.avatarClass(s.id),
+      avatarChar: s.isGroup ? '群' : (s.name || s.id)[0],
+      avatarCls: s.isGroup ? 'avatar-purple' : format.avatarClass(s.id),
     }));
-    // 避免在别的 setData 周期内触发递归更新
     wx.nextTick(() => {
       this.setData({ sessions, connectedShow: this.data.connected && sessions.length >= 0 });
     });
   },
 
   openChat(e) {
-    const { id, name } = e.currentTarget.dataset;
-    wx.navigateTo({ url: '/pages/chat/chat?peerId=' + id + '&name=' + encodeURIComponent(name || id) });
+    const { id, name, isgroup } = e.currentTarget.dataset;
+    let url = '/pages/chat/chat?peerId=' + encodeURIComponent(id) + '&name=' + encodeURIComponent(name || id);
+    if (isgroup) url += '&isGroup=1';
+    wx.navigateTo({ url });
+  },
+
+  goGroupList() {
+    wx.navigateTo({ url: '/pages/group-list/group-list' });
+  },
+
+  goCreateGroup() {
+    wx.navigateTo({ url: '/pages/create-group/create-group' });
   },
 });

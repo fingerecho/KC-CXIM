@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 白色圆角卡片 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="@color/panel_bg" />
+    <corners android:radius="@dimen/radius_card" />
+</shape>

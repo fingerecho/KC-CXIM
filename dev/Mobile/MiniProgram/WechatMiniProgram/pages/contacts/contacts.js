@@ -130,6 +130,12 @@ Page({
     }
   },
 
+  // ---------- 群聊 ----------
+
+  goGroupList() {
+    wx.navigateTo({ url: '/pages/group-list/group-list' });
+  },
+
   // ---------- 联系人操作 ----------
 
   openChat(e) {

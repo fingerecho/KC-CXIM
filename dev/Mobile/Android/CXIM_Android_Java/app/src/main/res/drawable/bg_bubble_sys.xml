@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 居中系统提示 / 时间分隔胶囊 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="#66808589" />
+    <corners android:radius="9dp" />
+</shape>

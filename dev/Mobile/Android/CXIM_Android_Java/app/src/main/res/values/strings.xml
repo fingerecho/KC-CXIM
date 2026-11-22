@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">铖信</string>
+    <string name="hello_world">HelloWorld</string>
+
+    <!-- ===== 通用 ===== -->
+    <string name="ok">确定</string>
+    <string name="cancel">取消</string>
+    <string name="close">关闭</string>
+    <string name="save">保存</string>
+    <string name="back">返回</string>
+    <string name="loading">加载中…</string>
+    <string name="submitting">提交中…</string>
+    <string name="retry">重试</string>
+    <string name="search">搜索</string>
+    <string name="empty_friend">还没有好友，点击右上角添加</string>
+    <string name="empty_group">还没有加入任何群聊</string>
+    <string name="empty_conversation">暂无会话，去通讯录找朋友聊聊吧</string>
+    <string name="channel_name">铖信消息</string>
+    <string name="channel_desc">用于接收即时消息与好友、群聊通知</string>
+    <string name="notif_running">铖信正在后台保持连接</string>
+
+    <!-- ===== 登录 / 注册 ===== -->
+    <string name="login_slogan">连接每一次对话</string>
+    <string name="login_hint_account">输入账号</string>
+    <string name="login_hint_password">输入密码</string>
+    <string name="login_auto">自动登录</string>
+    <string name="login_remember">记住密码</string>
+    <string name="login_action">登录</string>
+    <string name="login_ing">登录中…</string>
+    <string name="login_agree">已阅读并同意</string>
+    <string name="login_term">服务协议</string>
+    <string name="login_privacy">隐私政策</string>
+    <string name="login_and"> 和 </string>
+    <string name="login_register">注册账号</string>
+    <string name="register_title">注册账号</string>
+    <string name="register_rule">用户名不超过 64 字节，密码 6~72 字节</string>
+    <string name="register_hint_username">输入用户名</string>
+    <string name="register_hint_password">输入密码</string>
+    <string name="register_hint_confirm">确认密码</string>
+    <string name="register_done">完成</string>
+    <string name="server_setting">服务器设置</string>
+    <string name="server_http">HTTP 控制面（注册 / 登录 / 好友 / 群 / 文件）</string>
+    <string name="server_tcp">TCP 数据面（登录鉴权 / 消息 / 事件推送）</string>
+    <string name="server_client">客户端参数</string>
+    <string name="server_host">服务器地址</string>
+    <string name="server_http_port">HTTP 端口</string>
+    <string name="server_tcp_port">TCP 端口</string>
+    <string name="server_heartbeat">心跳间隔（毫秒，需显著小于服务端 60 秒空闲超时）</string>
+    <string name="server_history_page">历史消息每页条数（上限 100）</string>
+    <string name="server_reset">恢复默认值</string>
+    <string name="server_hint">说明：服务端未启用 TLS，地址为 http 明文；修改后需要重新登录才会用新地址建立长连接。</string>
+
+    <!-- ===== 底部导航 ===== -->
+    <string name="nav_conversation">消息</string>
+    <string name="nav_contacts">通讯录</string>
+    <string name="nav_me">我的</string>
+
+    <!-- ===== 主界面 ===== -->
+    <string name="main_join_group">申请加群</string>
+    <string name="main_multi_send">群发消息</string>
+    <string name="status_online">在线</string>
+    <string name="status_connecting">连接中…</string>
+    <string name="status_offline">离线</string>
+    <string name="status_fatal">登录失效</string>
+
+    <!-- ===== 通讯录 ===== -->
+    <string name="tab_friends">好友</string>
+    <string name="tab_groups">群聊</string>
+    <string name="new_friends">新朋友</string>
+    <string name="group_requests_title">入群申请</string>
+    <string name="add_friend">添加好友</string>
+    <string name="create_group">新建群聊</string>
+
+    <!-- ===== 聊天 ===== -->
+    <string name="chat_hint_input">输入消息，点击发送</string>
+    <string name="chat_send">发送</string>
+    <string name="chat_image">图片</string>
+    <string name="chat_file">文件</string>
+    <string name="chat_empty">开始聊天吧</string>
+
+    <!-- ===== 我的 ===== -->
+    <string name="me_logout">退出登录</string>
+    <string name="me_user_id">用户 ID</string>
+    <string name="me_connection">连接状态</string>
+    <string name="me_pending">待处理</string>
+    <string name="me_tip">提示：好友关系与群成员变更以服务端为准，客户端在 TCP 登录成功后会自动全量对齐一次。应用退到后台后长连接可能被系统冻结，回到前台会自动重连。</string>
+    <string name="me_logout_confirm">确定退出当前账号吗？</string>
+</resources>

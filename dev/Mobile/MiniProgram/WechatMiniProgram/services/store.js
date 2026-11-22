@@ -1,18 +1,21 @@
 /**
  * 本地数据仓库（基于 wx.setStorageSync）
  *
- * 持久化：会话列表、每个会话最近的消息、未读数、当前用户与 token
+ * 持久化：会话列表、每个会话最近的消息、未读数、当前用户、好友/群缓存
  */
 const STORE_KEY = 'chengxin_store_v1';
 const MAX_MESSAGES_PER_SESSION = 200;
 
 function defaultData() {
   return {
-    user: null,      // { uid, name, token }
-    sessions: {},    // peerId -> { id, name, lastMsg: { content, ts, direction }, ts }
-    messages: {},    // peerId -> [ { id, msgId, peerId, direction, content, ts, status } ]（按时间升序）
+    user: null,      // { uid, name, username, token, refreshToken }
+    sessions: {},    // peerId -> { id, name, isGroup, lastMsg, ts }
+    messages: {},    // peerId -> [ { id, msgId, peerId, direction, content, ts, status, msgType } ]（按时间升序）
     unread: {},      // peerId -> number
     contacts: [],    // [{ id, name }]
+    groups: [],      // [{ groupId, conversationId, name, ownerId, myRole, memberCount, ... }]
+    groupMembers: {},// groupId -> [{ userId, nickname, groupNickname, role, ... }]
+    groupRequests: { incoming: [], outgoing: [] }, // 入群申请缓存
   };
 }
 
@@ -59,9 +62,10 @@ function getSession(peerId) {
   return data.sessions[peerId] || null;
 }
 
-function touchSession(peerId, name, lastMsg) {
-  const s = data.sessions[peerId] || { id: peerId, name: name || peerId, lastMsg: null, ts: 0 };
+function touchSession(peerId, name, lastMsg, isGroup) {
+  const s = data.sessions[peerId] || { id: peerId, name: name || peerId, isGroup: !!isGroup, lastMsg: null, ts: 0 };
   if (name) s.name = name;
+  if (isGroup !== undefined) s.isGroup = !!isGroup;
   if (lastMsg) s.lastMsg = lastMsg;
   s.ts = lastMsg ? lastMsg.ts : Date.now();
   data.sessions[peerId] = s;
@@ -74,6 +78,13 @@ function renameSession(peerId, name) {
     data.sessions[peerId].name = name;
     save();
   }
+}
+
+function removeSession(peerId) {
+  delete data.sessions[peerId];
+  delete data.messages[peerId];
+  delete data.unread[peerId];
+  save();
 }
 
 function getMessages(peerId) {
@@ -131,6 +142,46 @@ function setContacts(contacts) {
   save();
 }
 
+// ---------- 群缓存 ----------
+
+function setGroups(groups) {
+  data.groups = groups || [];
+  save();
+}
+
+function getGroups() {
+  return data.groups || [];
+}
+
+function getGroup(groupId) {
+  return (data.groups || []).find((g) => String(g.groupId) === String(groupId)) || null;
+}
+
+function removeGroup(groupId) {
+  data.groups = (data.groups || []).filter((g) => String(g.groupId) !== String(groupId));
+  delete data.groupMembers[groupId];
+  save();
+}
+
+function setGroupMembers(groupId, members) {
+  data.groupMembers[groupId] = members || [];
+  save();
+}
+
+function getGroupMembers(groupId) {
+  return data.groupMembers[groupId] || [];
+}
+
+function setGroupRequests(direction, requests) {
+  data.groupRequests = data.groupRequests || { incoming: [], outgoing: [] };
+  data.groupRequests[direction] = requests || [];
+  save();
+}
+
+function getGroupRequests(direction) {
+  return (data.groupRequests && data.groupRequests[direction]) || [];
+}
+
 function clearAll() {
   data = defaultData();
   try { wx.removeStorageSync(STORE_KEY); } catch (e) { /* ignore */ }
@@ -144,6 +195,7 @@ module.exports = {
   getSession,
   touchSession,
   renameSession,
+  removeSession,
   getMessages,
   appendMessage,
   updateMessage,
@@ -153,5 +205,13 @@ module.exports = {
   incrUnread,
   clearUnread,
   setContacts,
+  setGroups,
+  getGroups,
+  getGroup,
+  removeGroup,
+  setGroupMembers,
+  getGroupMembers,
+  setGroupRequests,
+  getGroupRequests,
   clearAll,
 };

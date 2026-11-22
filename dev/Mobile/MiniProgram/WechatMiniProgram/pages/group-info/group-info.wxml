@@ -1,0 +1,59 @@
+<view class="page">
+  <!-- 群资料 -->
+  <view class="profile">
+    <view class="group-avatar">群</view>
+    <view class="profile-info">
+      <view class="profile-name">{{group.name || '加载中...'}}</view>
+      <view class="profile-sub">{{group.memberCount || members.length}} 位成员 · {{group.ownerId ? '群主 ID ' + group.ownerId : ''}}</view>
+    </view>
+    <view class="chat-entry" bindtap="openChat" hover-class="chat-entry-hover">发消息</view>
+  </view>
+
+  <view class="group">
+    <view class="cell" bindtap="editName" hover-class="cell-hover">
+      <text class="cell-title">群名称</text>
+      <text class="cell-sub">{{group.name || ''}}</text>
+      <text class="cell-arrow" wx:if="{{canManage}}">›</text>
+    </view>
+    <view class="cell" bindtap="editAnnouncement" hover-class="cell-hover">
+      <text class="cell-title">群公告</text>
+      <text class="cell-sub cell-sub-ellipsis">{{group.announcement || '未设置'}}</text>
+      <text class="cell-arrow" wx:if="{{canManage}}">›</text>
+    </view>
+    <view class="cell" bindtap="editIntro" hover-class="cell-hover">
+      <text class="cell-title">群简介</text>
+      <text class="cell-sub cell-sub-ellipsis">{{group.intro || '未设置'}}</text>
+      <text class="cell-arrow" wx:if="{{canManage}}">›</text>
+    </view>
+  </view>
+
+  <!-- 成员 -->
+  <view class="section-title">
+    群成员（{{members.length}}）
+    <text class="invite-link" wx:if="{{canManage}}" bindtap="invite">+ 邀请</text>
+  </view>
+  <view class="member-list">
+    <view
+      class="member-row"
+      wx:for="{{members}}"
+      wx:key="userId"
+      data-userid="{{item.userId}}"
+      bindtap="onMemberTap"
+      hover-class="{{canManage ? 'member-row-hover' : ''}}"
+    >
+      <view class="avatar avatar-sm {{item.avatarCls}}">{{item.name[0]}}</view>
+      <view class="member-name">{{item.name}}<text class="me-tag" wx:if="{{item.isMe}}">(我)</text></view>
+      <view class="role-tag role-{{item.role}}">{{item.roleText}}</view>
+    </view>
+  </view>
+
+  <!-- 危险操作 -->
+  <view class="group danger-group" wx:if="{{myRole > 0}}">
+    <view class="cell" wx:if="{{!isOwner}}" bindtap="quit" hover-class="cell-hover">
+      <text class="cell-title danger-text">退出群聊</text>
+    </view>
+    <view class="cell" wx:if="{{isOwner}}" bindtap="dismiss" hover-class="cell-hover">
+      <text class="cell-title danger-text">解散群聊</text>
+    </view>
+  </view>
+</view>

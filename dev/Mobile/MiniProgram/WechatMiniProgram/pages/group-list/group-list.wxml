@@ -1,0 +1,61 @@
+<view class="page">
+  <!-- 顶部：tab + 操作 -->
+  <view class="header">
+    <view class="tabs">
+      <view class="tab {{tab === 'groups' ? 'tab-active' : ''}}" data-tab="groups" bindtap="switchTab">我的群</view>
+      <view class="tab {{tab === 'requests' ? 'tab-active' : ''}}" data-tab="requests" bindtap="switchTab">
+        入群申请<text class="tab-badge" wx:if="{{badge > 0}}">{{badge > 9 ? '9+' : badge}}</text>
+      </view>
+    </view>
+    <view class="actions">
+      <view class="action" bindtap="onJoinGroup" hover-class="action-hover">加入</view>
+      <view class="action action-primary" bindtap="goCreate" hover-class="action-hover">创建</view>
+    </view>
+  </view>
+
+  <!-- 我的群 -->
+  <block wx:if="{{tab === 'groups'}}">
+    <view wx:if="{{groups.length === 0}}" class="empty">暂无群聊，点击右上角「创建」发起一个吧</view>
+    <view class="group-item" wx:for="{{groups}}" wx:key="groupId">
+      <view
+        class="group-row"
+        data-groupid="{{item.groupId}}"
+        data-name="{{item.name}}"
+        bindtap="openChat"
+        hover-class="group-row-hover"
+      >
+        <view class="avatar avatar-md {{item.avatarCls}}">群</view>
+        <view class="group-main">
+          <view class="group-name">{{item.name}}</view>
+          <view class="group-sub">{{item.memberCount}} 位成员</view>
+        </view>
+        <view class="role-tag">{{item.roleText}}</view>
+      </view>
+      <view class="group-info-entry" data-groupid="{{item.groupId}}" bindtap="openInfo">群管理 ›</view>
+    </view>
+  </block>
+
+  <!-- 入群申请 -->
+  <block wx:else>
+    <view class="section-title">待我审批</view>
+    <view wx:if="{{incoming.length === 0}}" class="empty-empty">暂无待处理的入群申请</view>
+    <view class="cell" wx:for="{{incoming}}" wx:key="requestId">
+      <view class="avatar avatar-sm {{item.avatarCls}}">{{item.name[0]}}</view>
+      <view class="contact-main">
+        <view class="contact-name">{{item.name}} 申请加入「{{item.groupName}}」</view>
+        <view class="contact-msg" wx:if="{{item.message}}">{{item.message}}</view>
+      </view>
+      <view class="req-btn req-accept" data-requestid="{{item.requestId}}" bindtap="onAccept">同意</view>
+      <view class="req-btn req-reject" data-requestid="{{item.requestId}}" bindtap="onReject">拒绝</view>
+    </view>
+
+    <view class="divider"></view>
+    <view class="section-title">我发出的</view>
+    <view wx:if="{{outgoing.length === 0}}" class="empty-empty">暂无发出的入群申请</view>
+    <view class="cell" wx:for="{{outgoing}}" wx:key="requestId">
+      <view class="avatar avatar-sm avatar-purple">群</view>
+      <view class="contact-name">{{item.groupName}}</view>
+      <view class="status-text">{{item.statusText}}</view>
+    </view>
+  </block>
+</view>

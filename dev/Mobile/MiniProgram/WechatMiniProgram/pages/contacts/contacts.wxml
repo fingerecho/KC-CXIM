@@ -1,4 +1,11 @@
 <view class="page">
+  <!-- 群聊入口 -->
+  <view class="group-entry" bindtap="goGroupList" hover-class="group-entry-hover">
+    <view class="group-entry-icon">群</view>
+    <view class="group-entry-text">我的群聊</view>
+    <text class="cell-arrow">›</text>
+  </view>
+
   <!-- 搜索添加好友 -->
   <view class="search-bar">
     <input

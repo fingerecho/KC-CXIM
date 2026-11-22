@@ -1,0 +1,66 @@
+.name-area {
+  display: flex;
+  align-items: center;
+  background: #fff;
+  padding: 24rpx 32rpx;
+  border-bottom: 1rpx solid var(--line);
+}
+.name-label { font-size: 30rpx; width: 140rpx; }
+.name-input {
+  flex: 1;
+  height: 64rpx;
+  background: var(--bg);
+  border-radius: 10rpx;
+  padding: 0 20rpx;
+  font-size: 30rpx;
+}
+.ph { color: #c0c5cc; }
+.tip {
+  color: var(--text-sub);
+  font-size: 24rpx;
+  padding: 20rpx 32rpx 12rpx;
+}
+.friend-list { padding-bottom: 160rpx; }
+.friend-row {
+  display: flex;
+  align-items: center;
+  background: #fff;
+  padding: 20rpx 32rpx;
+  border-bottom: 1rpx solid var(--line);
+}
+.friend-row-hover { background: #f7f8fa; }
+.friend-name { flex: 1; margin-left: 24rpx; font-size: 30rpx; }
+.checkbox {
+  width: 40rpx;
+  height: 40rpx;
+  border-radius: 50%;
+  border: 2rpx solid #c4c9d0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 26rpx;
+}
+.checkbox-on { background: var(--primary); border-color: var(--primary); }
+.footer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #fff;
+  padding: 16rpx 32rpx calc(16rpx + env(safe-area-inset-bottom));
+  border-top: 1rpx solid var(--line);
+}
+.submit-btn {
+  background: var(--primary);
+  color: #fff;
+  text-align: center;
+  height: 88rpx;
+  line-height: 1.2;
+  border-radius: 16rpx;
+  font-size: 32rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.submit-disabled { opacity: 0.6; }

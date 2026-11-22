@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 通用顶栏：返回 + 标题 + 右侧文字/图标动作 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/header"
+    android:layout_width="match_parent"
+    android:layout_height="@dimen/header_height"
+    android:background="@drawable/bg_header_gradient"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingStart="4dp"
+    android:paddingEnd="8dp">
+
+    <!-- 返回按钮：44dp 见按不准，整体放大 35% → 59dp 触摸区，图标也从 24dp 放大到约 33dp
+         （fitCenter + 13dp 内边距：59 - 13*2 = 33） -->
+    <ImageButton
+        android:id="@+id/btn_back"
+        android:layout_width="59dp"
+        android:layout_height="59dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/back"
+        android:padding="13dp"
+        android:scaleType="fitCenter"
+        android:src="@drawable/ic_back" />
+
+    <TextView
+        android:id="@+id/tv_title"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:paddingStart="6dp"
+        android:paddingEnd="6dp"
+        android:textColor="@color/white"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        tools:ignore="RtlSymmetry"
+        tools:text="标题" />
+
+    <TextView
+        android:id="@+id/tv_action"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:background="?attr/selectableItemBackground"
+        android:padding="10dp"
+        android:textColor="@color/white"
+        android:textSize="15sp"
+        android:visibility="gone"
+        tools:text="操作"
+        tools:visibility="visible" />
+
+    <ImageButton
+        android:id="@+id/btn_action"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/ok"
+        android:scaleType="centerInside"
+        android:src="@drawable/ic_more"
+        android:visibility="gone"
+        tools:visibility="visible" />
+</LinearLayout>

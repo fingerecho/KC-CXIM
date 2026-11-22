@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 自己发出的消息气泡：浅蓝 + 淡蓝描边，右下小圆角形成指向感 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="@color/bubble_out" />
+    <stroke android:width="1dp" android:color="@color/bubble_out_border" />
+    <corners
+        android:topLeftRadius="@dimen/radius_card"
+        android:topRightRadius="@dimen/radius_card"
+        android:bottomLeftRadius="@dimen/radius_card"
+        android:bottomRightRadius="3dp" />
+</shape>

@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 聊天与文件收发模块专用文案（名字统一 chat_ 前缀，避免与其他模块冲突） -->
+<resources>
+
+    <!-- ===== 连接状态条 ===== -->
+    <string name="chat_conn_connecting">正在连接服务器…</string>
+    <string name="chat_conn_connected">已连接，正在登录…</string>
+    <string name="chat_conn_logged_in">已连接</string>
+    <string name="chat_conn_disconnected">连接已断开，正在重连</string>
+    <string name="chat_conn_fatal">连接失败，点击重试</string>
+
+    <!-- ===== 公告条 ===== -->
+    <string name="chat_announce">公告: %1$s</string>
+    <string name="chat_announce_expand">（点击展开）</string>
+    <string name="chat_announce_desc">群公告</string>
+
+    <!-- ===== 历史消息 ===== -->
+    <string name="chat_history_loading">正在加载更早的消息…</string>
+    <string name="chat_history_end">没有更多消息了</string>
+    <string name="chat_new_messages">%1$d 条新消息</string>
+    <string name="chat_new_messages_title">新消息</string>
+    <string name="chat_empty_hint">还没有消息，发一条打个招呼吧</string>
+
+    <!-- ===== 输入区 ===== -->
+    <string name="chat_more_actions">更多</string>
+    <string name="chat_pick_image">图片</string>
+    <string name="chat_pick_file">文件</string>
+    <string name="chat_uploading">上传中 %1$d%%</string>
+    <string name="chat_uploading_title">上传中…</string>
+    <string name="chat_upload_wait">正在上传，请稍候…</string>
+    <string name="chat_send_failed_toast">发送失败：%1$s</string>
+    <string name="chat_not_connected">连接尚未就绪，消息已标记为失败，可点击红点重发</string>
+
+    <!-- ===== 气泡状态 ===== -->
+    <string name="chat_status_sending">发送中</string>
+    <string name="chat_status_sent">已发送</string>
+    <string name="chat_status_failed">发送失败</string>
+    <string name="chat_status_failed_with">发送失败：%1$s</string>
+    <string name="chat_fail_mark">!</string>
+    <string name="chat_resend">重新发送</string>
+
+    <!-- ===== 气泡长按菜单 ===== -->
+    <string name="chat_menu_copy">复制文本</string>
+    <string name="chat_menu_resend">重发</string>
+    <string name="chat_menu_delete">删除本地</string>
+    <string name="chat_menu_title">消息操作</string>
+    <string name="chat_copied">已复制到剪贴板</string>
+    <string name="chat_deleted_local">已从本机移除</string>
+
+    <!-- ===== 图片气泡 ===== -->
+    <string name="chat_image_loading">图片加载中…</string>
+    <string name="chat_image_broken">🖼 %1$s（点击查看）</string>
+    <string name="chat_image_failed">图片加载失败，点击查看</string>
+    <string name="chat_image_no_url">图片地址尚未就绪</string>
+
+    <!-- ===== 文件气泡 ===== -->
+    <string name="chat_file_download">点击下载</string>
+    <string name="chat_file_no_url">文件地址尚未就绪</string>
+
+    <!-- ===== 群事件提示 ===== -->
+    <string name="chat_sys_member_changed">群成员有变动</string>
+    <string name="chat_sys_member_added">%1$s 加入了群聊</string>
+    <string name="chat_sys_member_removed">%1$s 退出了群聊</string>
+    <string name="chat_sys_group_dismissed">本群已被解散</string>
+    <string name="chat_sys_group_renamed">群名已更新为「%1$s」</string>
+
+    <!-- ===== 文件查看页 ===== -->
+    <string name="chat_viewer_downloading">下载中…</string>
+    <string name="chat_viewer_progress">%1$d%%</string>
+    <string name="chat_viewer_progress_size">已下载 %1$s / %2$s</string>
+    <string name="chat_viewer_done">下载完成</string>
+    <string name="chat_viewer_failed">下载失败：%1$s</string>
+    <string name="chat_viewer_saved">已保存到：%1$s</string>
+    <string name="chat_viewer_open_with">用其他应用打开</string>
+    <string name="chat_viewer_retry">重新下载</string>
+    <string name="chat_viewer_no_app">没有可以打开该文件的应用，文件已保存在本地</string>
+    <string name="chat_viewer_size">大小：%1$s</string>
+    <string name="chat_viewer_preview_fail">图片预览失败</string>
+
+    <!-- ===== 群发页 ===== -->
+    <string name="chat_multi_title">群发消息</string>
+    <string name="chat_multi_friends">选择好友</string>
+    <string name="chat_multi_groups">选择群聊</string>
+    <string name="chat_multi_selected">已选 %1$d</string>
+    <string name="chat_multi_send">发送</string>
+    <string name="chat_multi_hint">输入要群发的消息</string>
+    <string name="chat_multi_no_target">请先选择发送对象</string>
+    <string name="chat_multi_no_text">请输入要群发的内容</string>
+    <string name="chat_multi_progress">已发送 %1$d/%2$d</string>
+    <string name="chat_multi_done">群发完成</string>
+    <string name="chat_multi_empty_list">通讯录还没有内容</string>
+    <string name="chat_multi_sending">群发中，请勿离开…</string>
+
+    <!-- ===== 其他 ===== -->
+    <string name="chat_group_detail_title">群设置</string>
+    <string name="chat_group_detail_missing">群设置页面尚未就绪</string>
+    <string name="chat_open_failed">无法打开该页面</string>
+    <string name="chat_read_failed">读取所选文件失败</string>
+    <string name="chat_desc_avatar">头像</string>
+    <string name="chat_desc_file_icon">文件</string>
+</resources>

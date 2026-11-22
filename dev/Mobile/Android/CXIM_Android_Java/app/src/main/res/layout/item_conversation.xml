@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 会话列表行：头像 + 标题/摘要 + 时间/未读角标（对齐桌面端 250x62 的行构成） -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_row_clickable"
+    android:gravity="center_vertical"
+    android:minHeight="@dimen/row_height"
+    android:orientation="horizontal"
+    android:paddingStart="14dp"
+    android:paddingTop="11dp"
+    android:paddingEnd="14dp"
+    android:paddingBottom="11dp">
+
+    <FrameLayout
+        android:layout_width="@dimen/avatar_conversation"
+        android:layout_height="@dimen/avatar_conversation">
+
+        <com.example.helloworld.ui.widget.AvatarView
+            android:id="@+id/iv_avatar"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <ImageView
+            android:id="@+id/iv_group_mark"
+            android:layout_width="16dp"
+            android:layout_height="16dp"
+            android:layout_gravity="bottom|end"
+            android:background="@drawable/bg_circle_white"
+            android:contentDescription="@string/tab_groups"
+            android:padding="2dp"
+            android:src="@drawable/ic_groups"
+            android:visibility="gone"
+            tools:visibility="visible" />
+    </FrameLayout>
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="12dp"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/tv_title"
+            style="@style/Text.CXIM.Title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="16sp"
+            tools:text="项目讨论组" />
+
+        <TextView
+            android:id="@+id/tv_preview"
+            style="@style/Text.CXIM.Subtitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:textSize="13sp"
+            tools:text="张三：周五例会改到下午三点" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="8dp"
+        android:gravity="end"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/tv_time"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="@color/text_time"
+            android:textSize="@dimen/text_time"
+            tools:text="14:26" />
+
+        <TextView
+            android:id="@+id/tv_badge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="end"
+            android:layout_marginTop="6dp"
+            android:background="@drawable/bg_badge_unread"
+            android:gravity="center"
+            android:minWidth="18dp"
+            android:textColor="@color/white"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:visibility="gone"
+            tools:text="9"
+            tools:visibility="visible" />
+    </LinearLayout>
+</LinearLayout>

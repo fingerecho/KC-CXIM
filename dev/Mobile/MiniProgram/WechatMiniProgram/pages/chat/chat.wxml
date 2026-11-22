@@ -2,6 +2,16 @@
   <!-- 断线提示条 -->
   <view class="state-bar" wx:if="{{!connected}}">连接已断开，消息将在重连后送达...</view>
 
+  <!-- 群信息入口 -->
+  <view class="group-bar" wx:if="{{isGroup}}" bindtap="goGroupInfo" hover-class="group-bar-hover">
+    <view class="group-badge">群</view>
+    <view class="group-bar-main">
+      <view class="group-bar-name">{{groupInfo.name || '群聊'}}</view>
+      <view class="group-bar-sub">{{groupInfo.memberCount}} 位成员{{groupInfo.announcement ? ' · ' + groupInfo.announcement : ''}}</view>
+    </view>
+    <text class="group-bar-arrow">›</text>
+  </view>
+
   <scroll-view
     class="msg-list"
     scroll-y
@@ -14,8 +24,41 @@
 
       <!-- 消息气泡 -->
       <view wx:else class="msg-row {{item.direction === 'out' ? 'row-out' : 'row-in'}}" id="anchor-{{index}}">
-        <view class="avatar avatar-sm {{item.direction === 'out' ? 'avatar-blue' : 'avatar-green'}}">{{item.direction === 'out' ? item.avatarChar : ''}}{{item.direction === 'in' ? peerId[0] : ''}}</view>
-        <view class="bubble {{item.direction === 'out' ? 'bubble-out' : 'bubble-in'}}">{{item.content}}</view>
+        <view class="avatar avatar-sm {{item.direction === 'out' ? 'avatar-blue' : (isGroup ? 'avatar-purple' : 'avatar-green')}}">
+          {{item.direction === 'out' ? '我' : (isGroup ? item.senderChar : peerId[0])}}
+        </view>
+        <view class="msg-content">
+          <view class="sender-name" wx:if="{{isGroup && item.direction === 'in' && item.senderName}}">{{item.senderName}}</view>
+
+          <!-- 文本 -->
+          <view class="bubble {{item.direction === 'out' ? 'bubble-out' : 'bubble-in'}}" wx:if="{{item.msgType === 1}}">{{item.content}}</view>
+
+          <!-- 图片 -->
+          <view
+            class="bubble bubble-media {{item.direction === 'out' ? 'bubble-out' : 'bubble-in'}}"
+            wx:elif="{{item.msgType === 2}}"
+            data-msgid="{{item.msgId}}"
+            bindtap="onOpenFile"
+          >
+            <image wx:if="{{item.thumbPath && item.thumbPath !== 'loading'}}" class="msg-image" src="{{item.thumbPath}}" mode="widthFix" />
+            <view wx:else class="media-placeholder">[图片] 点击预览</view>
+          </view>
+
+          <!-- 文件 -->
+          <view
+            class="file-card {{item.direction === 'out' ? 'file-card-out' : ''}}"
+            wx:elif="{{item.msgType === 4}}"
+            data-msgid="{{item.msgId}}"
+            bindtap="onOpenFile"
+            hover-class="file-card-hover"
+          >
+            <view class="file-icon">文</view>
+            <view class="file-info">
+              <view class="file-name">{{item.fileName}}</view>
+              <view class="file-size">{{item.fileSizeText}} · 点击打开</view>
+            </view>
+          </view>
+        </view>
         <view class="msg-status" wx:if="{{item.direction === 'out' && item.status === 'sending'}}">发送中</view>
         <view
           class="msg-status status-failed"
@@ -30,6 +73,7 @@
 
   <!-- 输入区 -->
   <view class="input-bar">
+    <view class="add-btn" bindtap="onAdd" hover-class="add-btn-hover">+</view>
     <input
       class="chat-input"
       value="{{input}}"

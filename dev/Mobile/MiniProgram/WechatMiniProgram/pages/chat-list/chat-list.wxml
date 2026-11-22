@@ -4,8 +4,21 @@
     连接已断开，正在自动重连...
   </view>
 
+  <!-- 群聊快捷入口 -->
+  <view class="quick-bar">
+    <view class="quick-item" bindtap="goGroupList" hover-class="quick-hover">
+      <view class="quick-icon quick-icon-group">群</view>
+      <text class="quick-text">我的群</text>
+    </view>
+    <view class="quick-divider"></view>
+    <view class="quick-item" bindtap="goCreateGroup" hover-class="quick-hover">
+      <view class="quick-icon quick-icon-plus">+</view>
+      <text class="quick-text">发起群聊</text>
+    </view>
+  </view>
+
   <view wx:if="{{sessions.length === 0}}" class="empty">
-    暂无会话，快去联系人页面发起聊天吧
+    暂无会话，去联系人页面发起聊天或创建一个群吧
   </view>
 
   <view
@@ -14,6 +27,7 @@
     wx:key="id"
     data-id="{{item.id}}"
     data-name="{{item.name}}"
+    data-isgroup="{{item.isGroup ? 1 : 0}}"
     bindtap="openChat"
     hover-class="session-hover"
   >

@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 自己发出的消息气泡：右侧浅蓝气泡 + 状态小字，失败时左边红色「!」可点重发 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:gravity="end|bottom"
+    android:orientation="horizontal"
+    android:paddingTop="6dp"
+    android:paddingBottom="6dp">
+
+    <TextView
+        android:id="@+id/tv_fail"
+        android:layout_width="18dp"
+        android:layout_height="18dp"
+        android:layout_gravity="bottom"
+        android:layout_marginEnd="6dp"
+        android:background="@drawable/chat_bg_fail_dot"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center"
+        android:text="@string/chat_fail_mark"
+        android:textColor="@color/white"
+        android:textSize="12sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
+
+    <LinearLayout
+        android:id="@+id/bubble"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:background="@drawable/bg_bubble_out"
+        android:clipToOutline="true"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/tv_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:maxWidth="240dp"
+            android:padding="10dp"
+            android:textColor="@color/text_primary"
+            android:textSize="15sp"
+            android:textIsSelectable="false" />
+
+        <FrameLayout
+            android:id="@+id/fl_image"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:visibility="gone">
+
+            <ImageView
+                android:id="@+id/iv_image"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:adjustViewBounds="true"
+                android:contentDescription="@string/chat_pick_image"
+                android:scaleType="fitCenter"
+                android:visibility="invisible" />
+
+            <TextView
+                android:id="@+id/tv_media_hint"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/chat_bg_image_holder"
+                android:gravity="center"
+                android:minWidth="120dp"
+                android:padding="16dp"
+                android:text="@string/chat_image_loading"
+                android:textColor="@color/text_secondary"
+                android:textSize="12sp" />
+        </FrameLayout>
+
+        <LinearLayout
+            android:id="@+id/ll_file"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_margin="8dp"
+            android:background="@drawable/bg_card_elevated"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:padding="8dp"
+            android:visibility="gone">
+
+            <ImageView
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:contentDescription="@string/chat_desc_file_icon"
+                android:src="@drawable/ic_file" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/tv_file_name"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="middle"
+                    android:maxLines="1"
+                    android:maxWidth="150dp"
+                    android:textColor="@color/text_primary"
+                    android:textSize="15sp" />
+
+                <TextView
+                    android:id="@+id/tv_file_size"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/tv_file_action"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:text="@string/chat_file_download"
+                android:textColor="@color/brand_accent"
+                android:textSize="12sp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/tv_status"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:layout_marginStart="6dp"
+        android:gravity="end"
+        android:text="@string/chat_status_sent"
+        android:textColor="@color/text_secondary"
+        android:textSize="12sp" />
+</LinearLayout>

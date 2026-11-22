@@ -1,0 +1,36 @@
+<view class="page">
+  <view class="name-area" wx:if="{{mode === 'create'}}">
+    <text class="name-label">群名称</text>
+    <input
+      class="name-input"
+      value="{{groupName}}"
+      maxlength="40"
+      placeholder="给群聊起个名字"
+      placeholder-class="ph"
+      bindinput="onNameInput"
+    />
+  </view>
+  <view class="tip">{{mode === 'create' ? '选择好友加入群聊（至少 1 位）' : '选择要邀请的好友'}}</view>
+
+  <view class="friend-list">
+    <view
+      class="friend-row"
+      wx:for="{{friends}}"
+      wx:key="id"
+      data-id="{{item.id}}"
+      bindtap="onToggle"
+      hover-class="friend-row-hover"
+    >
+      <view class="avatar avatar-sm {{item.avatarCls}}">{{item.avatarChar}}</view>
+      <view class="friend-name">{{item.name}}</view>
+      <view class="checkbox {{item.checked ? 'checkbox-on' : ''}}">{{item.checked ? '✓' : ''}}</view>
+    </view>
+    <view wx:if="{{friends.length === 0}}" class="empty">暂无可选好友，先去联系人页面添加好友吧</view>
+  </view>
+
+  <view class="footer">
+    <view class="submit-btn {{submitting ? 'submit-disabled' : ''}}" bindtap="onSubmit">
+      {{mode === 'create' ? '创建群聊' : '发送邀请'}}{{selected.length ? ' (' + selected.length + ')' : ''}}
+    </view>
+  </view>
+</view>

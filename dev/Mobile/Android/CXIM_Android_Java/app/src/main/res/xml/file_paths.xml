@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- 下载的文件优先存放在 getExternalFilesDir("Downloads") -->
+    <external-files-path
+        name="cxim_downloads"
+        path="Downloads" />
+    <!-- 没有外置存储时 FileViewerActivity 会退回 filesDir("Downloads")，
+         这条目录也必须在白名单里，否则 getUriForFile 抛异常、分享/打开直接失败 -->
+    <files-path
+        name="cxim_internal_downloads"
+        path="Downloads" />
+    <cache-path
+        name="cxim_cache"
+        path="images" />
+</paths>

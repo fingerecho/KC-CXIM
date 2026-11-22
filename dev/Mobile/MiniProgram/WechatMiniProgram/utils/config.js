@@ -26,7 +26,8 @@ module.exports = {
   heartbeat: {
     enabled: true,
     intervalMs: 30000,
-    payload: { type: 3 },
+    // from/type 为协议必填字段（docs/IMS_communication_protocol.md §5.2/§5.6）
+    payload: { from: 0, to: 0, type: 3 },
   },
 
   // 断线重连：指数退避 base * 2^n + 随机抖动，封顶 maxDelayMs
@@ -35,11 +36,12 @@ module.exports = {
     maxDelayMs: 30000,
   },
 
-  // TCP Message type 常量（见 docs/IMS_readme.md 6.2）
+  // TCP Message type 常量（见 docs/IMS_communication_protocol.md 5.3）
   tcpTypes: {
     TEXT: 1,                  // 文本消息（双向）
-    IMAGE: 2,                 // 图片消息（双向），content 为 URL
+    IMAGE: 2,                 // 图片消息（双向），content 为媒体元数据 JSON
     HEARTBEAT: 3,             // 心跳
+    FILE: 4,                  // 文件消息（双向），content 为媒体元数据 JSON
     LOGIN: 100,               // 客户端 -> 服务端，content = JWT
     LOGIN_ACK: 101,           // 登录成功
     ERROR: 102,               // 错误通知
@@ -50,10 +52,25 @@ module.exports = {
     FRIEND_REQUEST: 130,      // 好友申请事件
     FRIEND_REQUEST_RESULT: 131, // 申请处理结果事件
     FRIEND_LIST_CHANGED: 132, // 好友列表变化事件
+    GROUP_MEMBER_CHANGED: 140,// 群成员变化事件
+    GROUP_DISMISSED: 141,     // 群被解散
+    GROUP_INFO_CHANGED: 142,  // 群资料变化
+    GROUP_REQUEST: 143,       // 入群申请事件
+    GROUP_REQUEST_RESULT: 144,// 入群申请处理结果
   },
 
   // 历史消息
   history: {
     pageSize: 20,
+  },
+
+  // 文件模块（见 docs/IMS_communication_protocol.md 4.15）
+  file: {
+    maxSizeMB: 20,            // 与服务端 FILE_MAX_SIZE_MB 对齐，前端提前拦截
+    // 白名单与服务端一致：图片/文档/压缩包/音视频
+    allowedExt: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp',
+      'pdf', 'txt', 'md', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
+      'zip', 'rar', '7z', 'mp3', 'mp4', 'wav'],
+    imageExt: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'],
   },
 };

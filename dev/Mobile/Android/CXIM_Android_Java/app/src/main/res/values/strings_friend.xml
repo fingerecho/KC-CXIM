@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 通讯录 / 好友管理模块文案（资源名统一 friend_ 前缀） -->
+<resources>
+
+    <!-- ===== 通讯录页 ===== -->
+    <string name="friend_search_hint">🔍 搜索好友</string>
+    <string name="friend_more">更多操作</string>
+    <string name="friend_menu_title">通讯录</string>
+    <string name="friend_menu_add_friend">添加好友</string>
+    <string name="friend_menu_create_group">新建群聊</string>
+    <string name="friend_menu_join_group">申请加群</string>
+    <string name="friend_menu_multi_send">群发消息</string>
+    <string name="friend_pending_fmt">%1$d 条待处理申请</string>
+    <string name="friend_no_pending">暂无新申请</string>
+    <string name="friend_group_pending_fmt">%1$d 条待审批</string>
+    <string name="friend_group_no_pending">暂无待审批</string>
+    <string name="friend_id_fmt">ID:%1$d</string>
+    <string name="friend_member_count_fmt">%1$d 人</string>
+    <string name="friend_create_group_btn">＋ 新建群聊</string>
+
+    <!-- ===== 好友长按菜单 ===== -->
+    <string name="friend_action_title">好友操作</string>
+    <string name="friend_action_send_msg">发消息</string>
+    <string name="friend_action_remark">设置备注</string>
+    <string name="friend_action_remove">删除好友</string>
+    <string name="friend_action_block">加入黑名单</string>
+    <string name="friend_remark_title">设置备注</string>
+    <string name="friend_remark_hint">备注（≤64 字节）</string>
+    <string name="friend_remark_saved">备注已保存</string>
+    <string name="friend_remark_fail">备注保存失败</string>
+    <string name="friend_remove_title">删除好友</string>
+    <string name="friend_remove_confirm_fmt">确定删除好友 %1$s 吗？</string>
+    <string name="friend_remove_done">已删除好友</string>
+    <string name="friend_remove_fail">删除失败</string>
+    <string name="friend_block_title">加入黑名单</string>
+    <string name="friend_block_confirm">拉黑后好友关系将被删除，确定吗？</string>
+    <string name="friend_block_done">已加入黑名单</string>
+    <string name="friend_block_fail">拉黑失败</string>
+
+    <!-- ===== 群聊长按菜单 ===== -->
+    <string name="friend_group_manage">管理群聊</string>
+
+    <!-- ===== 添加好友页 ===== -->
+    <string name="friend_add_title">添加好友</string>
+    <string name="friend_search_user_hint">输入用户 ID 或用户名</string>
+    <string name="friend_status_init">输入关键字后回车或点击搜索</string>
+    <string name="friend_status_searching">搜索中…</string>
+    <string name="friend_status_empty">未找到用户</string>
+    <string name="friend_status_fail">搜索失败</string>
+    <string name="friend_status_result_fmt">找到 %1$d 个用户</string>
+    <string name="friend_keyword_empty">请输入用户 ID 或用户名</string>
+    <string name="friend_btn_add">添加</string>
+    <string name="friend_btn_adding">发送中…</string>
+    <string name="friend_btn_added">已添加</string>
+    <string name="friend_status_sent">申请已发送，等待对方通过</string>
+    <string name="friend_status_already">对方已经是你的好友</string>
+    <string name="friend_status_add_fail">发送失败</string>
+    <string name="friend_id_label_fmt">ID: %1$d</string>
+    <string name="friend_name_id_fmt">%1$s（ID:%2$d）</string>
+
+    <!-- ===== 新朋友（好友申请）页 ===== -->
+    <string name="friend_req_incoming">收到的</string>
+    <string name="friend_req_outgoing">发出的</string>
+    <string name="friend_req_message_fmt">附言: %1$s</string>
+    <string name="friend_req_message_none">附言: （无）</string>
+    <string name="friend_req_waiting">等待验证</string>
+    <string name="friend_req_accept">通过</string>
+    <string name="friend_req_reject">拒绝</string>
+    <string name="friend_req_accepted">已添加</string>
+    <string name="friend_req_empty">暂无新的好友申请</string>
+    <string name="friend_req_fail">加载失败</string>
+    <string name="friend_req_accepting">处理中…</string>
+    <string name="friend_req_accept_done">已通过</string>
+    <string name="friend_req_accept_fail">通过失败</string>
+    <string name="friend_req_reject_done">已拒绝</string>
+    <string name="friend_req_reject_fail">拒绝失败</string>
+</resources>

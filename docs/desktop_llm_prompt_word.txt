@@ -265,3 +265,23 @@ UI界面修复：整个窗口设置圆角8px且设置边缘抗锯齿，设置主
 修复界面：修改最大化按钮，使用一个Unicode字符表示最大化按钮；修改通讯录->好友->新朋友->左侧的头像中的内容，请同样使用一个带有新朋友含义的Unicode字符表示。
 
 修复界面UI：修复聊天窗口，左侧好友发送的消息，头像占用的宽度太宽，另外好友发送的历史消息没有气泡，请改进代码使界面UI更加美观。修改显示逻辑，当消息内容长度超过聊天窗口宽度的四分之三时才换行显示，否则分别靠左和靠右对齐即可。
+
+报错：src\ui\chat\messagebubble.cpp:43:15: error: could not convert 'QLabel::pixmap() const()' from 'QPixmap' to 'bool'
+   43 |     if (pixmap())
+      |         ~~~~~~^~
+      messagebubble.cpp:28:21: error: no match for 'operator==' (operand types are 'QPixmap' and 'std::nullptr_t')
+   28 |     return pixmap() == nullptr;
+
+
+   报错：messagebubble.cpp:30:13: error: 'hasPixmap' was not declared in this scope; did you mean 'setPixmap'?
+   30 |     return !hasPixmap();
+   messagebubble.cpp:66:9: error: 'hasPixmap' was not declared in this scope; did you mean 'setPixmap'?
+   66 |     if (hasPixmap())
+
+   好友发送的历史消息气泡中，第一行和最后一行字体被截断，请修复。
+
+   请根据docs/IMS_readme.md和docs/IMS_communication_protocol.md补充完成这个即时通信软件的小程序移动端的功能，需要补充完成群聊、群操作、互发文件的功能，请设计合理的UI界面和对接功能；
+
+   请根据docs/IMS_readme.md和docs/IMS_communication_protocol.md补充完成这个即时通信软件的Android移动端的UI界面以及功能,包括注册登录、添加好友、互发消息、群操作、群发消息、互发文件等，遇到问题，请参考D:\FKC\KC-CXIM\dev\Desktop\KC_CXIM_Desktop\CXIM_Qt6_QWidget的桌面客户端的设计，请尽量将界面设计的好看一些。
+
+   进入聊天界面之后，左上角的返回按钮不太好按，不太好用手点，似乎与系统顶部任务栏重合了，请将界面中所有与顶部任务栏重合的部分强制往下挪，顶部保持大约1-2个汉字的高度的空的区域。另外，将“返回”按钮整体放大35%。

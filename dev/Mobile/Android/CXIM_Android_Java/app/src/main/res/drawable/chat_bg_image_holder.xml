@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 图片未加载出来时的灰色占位底 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="@color/chip_bg" />
+    <corners
+        android:topLeftRadius="@dimen/radius_card"
+        android:topRightRadius="@dimen/radius_card"
+        android:bottomLeftRadius="@dimen/radius_card"
+        android:bottomRightRadius="@dimen/radius_card" />
+</shape>

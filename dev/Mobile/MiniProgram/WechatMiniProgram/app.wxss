@@ -14,6 +14,14 @@ page {
   font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', 'PingFang SC', 'Microsoft YaHei', sans-serif;
 }
 
+/* 所有原生 button 的文字垂直居中 */
+button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.2;
+}
+
 /* 主按钮 */
 .btn-primary {
   background: var(--primary);
@@ -21,8 +29,12 @@ page {
   border-radius: 16rpx;
   font-size: 32rpx;
   font-weight: 500;
-  line-height: 92rpx;
+  line-height: 1.2;
   height: 92rpx;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .btn-primary[disabled] {
   background: #a8c3ff;

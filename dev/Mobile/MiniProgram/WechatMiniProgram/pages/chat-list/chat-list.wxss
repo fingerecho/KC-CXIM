@@ -5,6 +5,48 @@
   padding: 14rpx 32rpx;
 }
 
+.quick-bar {
+  display: flex;
+  align-items: center;
+  background: #fff;
+  padding: 24rpx 0;
+  border-bottom: 1rpx solid var(--line);
+}
+.quick-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.quick-hover { opacity: 0.6; }
+.quick-divider {
+  width: 1rpx;
+  height: 56rpx;
+  background: var(--line);
+}
+.quick-icon {
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 20rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 32rpx;
+  font-weight: 500;
+}
+.quick-icon-group { background: #8e6bf1; }
+.quick-icon-plus { background: #22b573; font-size: 44rpx; }
+.quick-text {
+  margin-top: 12rpx;
+  font-size: 24rpx;
+  color: var(--text-main);
+  line-height: 1.2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .session {
   display: flex;
   align-items: center;

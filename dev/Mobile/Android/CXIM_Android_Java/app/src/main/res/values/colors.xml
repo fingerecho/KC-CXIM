@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ===== 品牌色（与桌面端 theme.cpp 保持一致） ===== -->
+    <color name="brand_top">#5AB3F0</color>
+    <color name="brand_bottom">#3F95DD</color>
+    <color name="brand_accent">#1E8AE0</color>
+    <color name="brand_disabled">#B9DCF5</color>
+
+    <!-- ===== 登录 / 注册卡片渐变 ===== -->
+    <color name="login_grad_top">#FDEFF3</color>
+    <color name="login_grad_bottom">#E6F0FE</color>
+
+    <!-- ===== 中性色 ===== -->
+    <color name="window_bg">#F7F8FA</color>
+    <color name="panel_bg">#FFFFFF</color>
+    <color name="rail_bg">#FBFBFC</color>
+    <color name="chip_bg">#EEF0F2</color>
+    <color name="ghost_bg">#ECEEF1</color>
+    <color name="ghost_pressed">#DFE2E6</color>
+    <color name="text_primary">#33373D</color>
+    <color name="text_secondary">#8A9099</color>
+    <color name="text_time">#B0B5BB</color>
+    <color name="text_disabled">#BFC4CB</color>
+    <color name="divider">#E4E7EB</color>
+
+    <!-- ===== 气泡 ===== -->
+    <color name="bubble_in">#F0F2F5</color>
+    <color name="bubble_out">#D6E9FB</color>
+    <color name="bubble_in_border">#E2E6EA</color>
+    <color name="bubble_out_border">#B9DCF5</color>
+
+    <!-- ===== 列表状态 ===== -->
+    <color name="item_hover">#EEF4FA</color>
+    <color name="item_selected">#CFE6FB</color>
+
+    <!-- ===== 语义色 ===== -->
+    <color name="error_red">#E04A4A</color>
+    <color name="badge_red">#F56C6C</color>
+    <color name="online_green">#2ECC71</color>
+    <color name="owner_gold">#C88A15</color>
+    <color name="danger_text">#D93025</color>
+    <color name="danger_bg">#FDECEA</color>
+    <color name="danger_pressed">#F6D2CE</color>
+    <color name="announce_bg">#F2F4F7</color>
+    <color name="group_icon_blue">#5A7FA6</color>
+
+    <!-- ===== 头像底色板（按 userId 哈希取色） ===== -->
+    <color name="avatar_1">#5AA3DF</color>
+    <color name="avatar_2">#6CC4A1</color>
+    <color name="avatar_3">#E8A25C</color>
+    <color name="avatar_4">#B58AD6</color>
+    <color name="avatar_5">#E07A8F</color>
+    <color name="avatar_6">#5CB8C4</color>
+    <color name="avatar_7">#8FA85C</color>
+    <color name="avatar_8">#D68AB0</color>
+
+    <color name="white">#FFFFFF</color>
+    <color name="scrim">#66000000</color>
+    <color name="toast_bg">#33373D</color>
+    <color name="transparent">#00000000</color>
+</resources>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 登录 / 注册页背景：浅粉 → 浅蓝 纵向渐变（对齐桌面端 loginGradTop/Bottom） -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <gradient
+        android:angle="270"
+        android:startColor="@color/login_grad_top"
+        android:centerColor="#F0EEF9"
+        android:endColor="@color/login_grad_bottom" />
+</shape>
