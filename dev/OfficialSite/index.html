@@ -1,0 +1,647 @@
+// 铖信（KC-CXIM）官方下载页 —— 阿里云 ESA 边缘函数
+// 使用方法：将本文件全部内容复制粘贴到 ESA 边缘函数编辑器中直接部署。
+// 上线前只需替换下方 DOWNLOAD_CONFIG 里的 6 个占位符为真实地址即可。
+//
+// 性能约定（为满足"不过分占用 GPU/CPU"）：
+//   1. 全站零外部资源：不加载图片、字体、CSS、JS，首屏只有一 HTML 文档。
+//   2. 无持续动画：不存在 requestAnimationFrame / setInterval 循环，入场动画一次性播放后立即断开观察器。
+//   3. 不使用 backdrop-filter 大面积模糊与 canvas 粒子，避免每帧合成开销。
+//   4. 动画只使用 transform / opacity（合成器线程），悬停效果局限于被交互元素本身。
+//   5. 事件全部委托到单个监听器；尊重 prefers-reduced-motion 与 prefers-reduced-transparency。
+
+const html = String.raw`<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>铖信 - 官方下载</title>
+<meta name="description" content="铖信（KC-CXIM）是一款轻量、安全、跨平台的即时通信软件，支持 Windows 桌面端与 Android 端，提供单聊、群聊、图片与文件互发。">
+<meta name="theme-color" content="#0f172a">
+<meta name="color-scheme" content="dark">
+<script>document.documentElement.className += " js";</script>
+<style>
+/* ============ 基础与变量 ============ */
+*,*::before,*::after{box-sizing:border-box}
+:root{
+  --bg:#070b16;
+  --text:#e9effc;
+  --muted:#95a6c6;
+  --brand:#38bdf8;
+  --brand-2:#22d3ee;
+  --brand-deep:#2563eb;
+  --panel:rgba(150,185,255,.055);
+  --panel-2:rgba(150,185,255,.10);
+  --line:rgba(150,185,255,.16);
+  --line-strong:rgba(56,189,248,.42);
+  --radius:18px;
+  --maxw:1160px;
+}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;
+  font-family:"Segoe UI",system-ui,-apple-system,"Microsoft YaHei","PingFang SC","Hiragino Sans GB",Roboto,Helvetica,Arial,sans-serif;
+  color:var(--text);
+  line-height:1.7;
+  letter-spacing:.01em;
+  background-color:var(--bg);
+  background-image:linear-gradient(180deg,#0b1326 0%,#070b16 38%,#060911 100%);
+  background-repeat:no-repeat;
+  overflow-x:hidden;
+}
+a{color:inherit;text-decoration:none}
+h1,h2,h3,p{margin:0}
+.wrap{width:100%;max-width:var(--maxw);margin:0 auto;padding:0 1.5rem}
+
+/* ============ 顶部导航 ============ */
+.nav{
+  position:sticky;top:0;z-index:20;
+  background:linear-gradient(180deg,rgba(8,13,26,.94),rgba(8,13,26,.72));
+  border-bottom:1px solid var(--line);
+}
+.nav-in{display:flex;align-items:center;gap:1rem;min-height:66px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:.7rem;margin-right:auto;font-weight:700;font-size:1.12rem}
+.mark{
+  position:relative;width:34px;height:34px;border-radius:11px;flex:none;
+  background:linear-gradient(135deg,var(--brand-deep),var(--brand-2));
+  box-shadow:0 6px 16px rgba(37,99,235,.38);
+}
+.mark::before{content:"";position:absolute;left:8px;top:9px;width:18px;height:12px;border-radius:5px 5px 5px 2px;background:#08101f}
+.mark::after{content:"";position:absolute;left:11px;top:19px;width:5px;height:5px;border-radius:50% 50% 50% 0;background:#08101f}
+.brand small{display:block;font-size:.68rem;font-weight:500;color:var(--muted);letter-spacing:.16em}
+.nav-links{display:flex;align-items:center;gap:.35rem;flex-wrap:wrap}
+.nav-link{
+  padding:.5rem .85rem;border-radius:999px;font-size:.92rem;color:var(--muted);
+  border:1px solid transparent;transition:color .18s ease,border-color .18s ease,background-color .18s ease;
+}
+.nav-link:hover{color:var(--text);border-color:var(--line);background:var(--panel)}
+
+/* ============ 按钮 ============ */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:.5em;
+  padding:.82rem 1.45rem;border-radius:999px;border:1px solid transparent;
+  font-size:.96rem;font-weight:650;cursor:pointer;white-space:nowrap;
+  transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease,color .18s ease,background-color .18s ease;
+}
+.btn-primary{
+  color:#04101f;background:linear-gradient(135deg,var(--brand-deep),var(--brand) 55%,var(--brand-2));
+  box-shadow:0 12px 28px rgba(37,99,235,.34);
+}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 18px 38px rgba(37,99,235,.44)}
+.btn-ghost{color:var(--text);border-color:var(--line);background:var(--panel)}
+.btn-ghost:hover{transform:translateY(-2px);border-color:var(--line-strong);background:var(--panel-2)}
+.btn-block{width:100%;padding:.7rem 1rem;font-size:.9rem;font-weight:600}
+.btn-sm{padding:.52rem 1.05rem;font-size:.88rem}
+.dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex:none;opacity:.75}
+
+/* ============ Hero ============ */
+.hero{position:relative;padding:clamp(3rem,7vw,6.5rem) 0 clamp(2.5rem,5vw,4.5rem);overflow:hidden}
+.hero::before{
+  content:"";position:absolute;inset:-30% -10% auto -20%;height:150%;z-index:0;pointer-events:none;
+  background:
+    radial-gradient(620px 360px at 18% 18%,rgba(37,99,235,.34),transparent 66%),
+    radial-gradient(520px 320px at 88% 8%,rgba(34,211,238,.20),transparent 64%);
+}
+.hero::after{
+  content:"";position:absolute;inset:0;z-index:0;pointer-events:none;opacity:.5;
+  background-image:
+    linear-gradient(rgba(150,185,255,.06) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(150,185,255,.06) 1px,transparent 1px);
+  background-size:68px 68px;
+  -webkit-mask-image:radial-gradient(70% 60% at 30% 25%,#000,transparent 78%);
+  mask-image:radial-gradient(70% 60% at 30% 25%,#000,transparent 78%);
+}
+.hero-in{position:relative;z-index:1;display:grid;grid-template-columns:1.06fr .94fr;gap:clamp(2rem,4vw,3.5rem);align-items:center}
+.chips{display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:1.4rem}
+.chip{
+  padding:.34rem .8rem;border-radius:999px;font-size:.78rem;color:#bcd3f0;
+  background:var(--panel);border:1px solid var(--line);
+}
+h1{
+  font-size:clamp(2.9rem,7.2vw,5rem);line-height:1.05;font-weight:800;letter-spacing:-.02em;
+  background:linear-gradient(100deg,#fff 8%,var(--brand) 52%,var(--brand-2) 92%);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+}
+.slogan{margin:.85rem 0 0;font-size:clamp(1.02rem,1.7vw,1.22rem);font-weight:600;color:#cfe0f7}
+.lead{margin:.7rem 0 0;max-width:34em;color:var(--muted);font-size:.98rem}
+.hero-cta{display:flex;flex-wrap:wrap;gap:.85rem;margin-top:1.9rem}
+.detected{margin-top:1rem;font-size:.85rem;color:var(--muted)}
+.detected b{color:var(--brand);font-weight:650}
+
+/* 纯 CSS 消息界面示意（静态绘制，不参与动画循环） */
+.mock{
+  position:relative;padding:1rem 1rem 1.25rem;border-radius:24px;
+  background:linear-gradient(160deg,rgba(150,185,255,.12),rgba(150,185,255,.04));
+  border:1px solid var(--line);box-shadow:0 30px 70px rgba(2,6,23,.55);
+}
+.mock-bar{display:flex;align-items:center;gap:.45rem;padding:0 .25rem .85rem;border-bottom:1px solid var(--line)}
+.mock-bar i{width:9px;height:9px;border-radius:50%;background:rgba(150,185,255,.35)}
+.mock-bar i:first-child{background:var(--brand)}
+.mock-bar span{margin-left:auto;font-size:.76rem;color:var(--muted)}
+.bubble{
+  max-width:78%;margin:.6rem 0;padding:.6rem .9rem;border-radius:14px;font-size:.88rem;line-height:1.55;
+  background:var(--panel-2);border:1px solid var(--line);
+}
+.bubble.me{margin-left:auto;background:linear-gradient(135deg,var(--brand-deep),var(--brand));color:#04101f;border-color:transparent;font-weight:600}
+.bubble.file{display:flex;align-items:center;gap:.6rem}
+.fmt{
+  flex:none;width:30px;height:30px;border-radius:9px;display:grid;place-items:center;
+  font-size:.66rem;font-weight:700;color:var(--brand-2);background:rgba(34,211,238,.12);border:1px solid rgba(34,211,238,.3);
+}
+.bubble small{display:block;color:var(--muted);font-size:.72rem}
+
+/* ============ 区块通用 ============ */
+section{scroll-margin-top:86px}
+.sec{padding:clamp(2.5rem,5.5vw,4.2rem) 0}
+.sec-head{max-width:44rem;margin-bottom:2rem}
+.eyebrow{font-size:.76rem;font-weight:700;letter-spacing:.2em;color:var(--brand);text-transform:uppercase}
+h2{margin:.5rem 0 .6rem;font-size:clamp(1.6rem,3.4vw,2.3rem);font-weight:750;letter-spacing:-.01em}
+.sec-head p{color:var(--muted);font-size:.97rem}
+.grid{display:grid;gap:1.1rem}
+.g4{grid-template-columns:repeat(4,1fr)}
+.g2{grid-template-columns:repeat(2,1fr)}
+.g4feat{grid-template-columns:repeat(4,1fr)}
+
+/* ============ 卡片 ============ */
+.card{
+  position:relative;display:flex;flex-direction:column;gap:.85rem;padding:1.5rem;
+  border-radius:var(--radius);background:var(--panel);border:1px solid var(--line);
+  box-shadow:0 18px 40px rgba(2,6,23,.32);
+  transition:transform .2s ease,border-color .2s ease,box-shadow .2s ease;
+}
+.card:hover{transform:translateY(-4px);border-color:var(--line-strong);box-shadow:0 26px 54px rgba(2,6,23,.45)}
+.card h3{font-size:1.06rem;font-weight:680}
+.card p{color:var(--muted);font-size:.88rem}
+.card .foot{margin-top:auto;padding-top:.35rem}
+.tag{
+  display:inline-flex;align-items:center;gap:.4em;padding:.2rem .6rem;border-radius:999px;
+  font-size:.72rem;font-weight:600;color:#a8c4e6;background:var(--panel-2);border:1px solid var(--line);
+}
+.tag-now{color:#04101f;background:linear-gradient(135deg,var(--brand),var(--brand-2));border-color:transparent}
+.mono{
+  flex:none;display:grid;place-items:center;width:46px;height:46px;border-radius:14px;
+  font-size:.82rem;font-weight:800;letter-spacing:.04em;color:var(--brand);
+  background:linear-gradient(140deg,rgba(37,99,235,.28),rgba(34,211,238,.12));
+  border:1px solid rgba(56,189,248,.3);
+}
+.card-top{display:flex;align-items:center;gap:.9rem}
+.card-top .tag{margin-left:auto}
+.meta{display:flex;flex-wrap:wrap;gap:.35rem .9rem;font-size:.8rem;color:var(--muted)}
+.card.is-current{border-color:var(--line-strong);background:linear-gradient(160deg,rgba(56,189,248,.12),rgba(150,185,255,.04))}
+.card-note{font-size:.78rem;color:#8fa1c2}
+
+/* 特性卡片（轻量列表，无重阴影） */
+.feat{padding:1.25rem;border-radius:14px;background:var(--panel);border:1px solid var(--line)}
+.feat h3{font-size:.98rem;margin-bottom:.35rem}
+.feat p{font-size:.83rem;color:var(--muted)}
+.check{
+  display:inline-block;width:16px;height:16px;margin-right:.5rem;vertical-align:-3px;border-radius:50%;
+  background:rgba(56,189,248,.16);border:1px solid rgba(56,189,248,.4);position:relative;
+}
+.check::after{
+  content:"";position:absolute;left:5px;top:3px;width:5px;height:8px;
+  border:solid var(--brand);border-width:0 2px 2px 0;transform:rotate(42deg);
+}
+
+/* ============ 源码区 ============ */
+.repo-meta{display:flex;flex-wrap:wrap;gap:.4rem}
+.repo-meta .tag{font-weight:500}
+
+/* ============ 页脚 ============ */
+footer{border-top:1px solid var(--line);padding:2rem 0 2.6rem;margin-top:1rem}
+.foot-in{display:flex;flex-wrap:wrap;gap:1rem;align-items:center;justify-content:space-between;font-size:.86rem;color:var(--muted)}
+.foot-in b{color:var(--text);font-weight:650}
+.foot-tip{width:100%;font-size:.78rem;color:#6f809f}
+
+/* ============ Toast 轻提示 ============ */
+.toast{
+  position:fixed;left:50%;bottom:2rem;z-index:50;transform:translate(-50%,140%);
+  max-width:min(92vw,26rem);padding:.8rem 1.1rem;border-radius:14px;
+  font-size:.88rem;color:var(--text);pointer-events:none;opacity:0;
+  background:linear-gradient(140deg,rgba(20,32,58,.97),rgba(12,20,38,.97));
+  border:1px solid var(--line-strong);box-shadow:0 18px 40px rgba(2,6,23,.6);
+  transition:opacity .22s ease,transform .22s ease;
+}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+.toast.ok{border-color:rgba(34,211,238,.55)}
+
+/* ============ 入场动画（一次性，播放后停止） ============ */
+.js .reveal{opacity:0;transform:translateY(16px);transition:opacity .5s ease,transform .5s ease}
+.js .reveal.in{opacity:1;transform:none}
+
+/* ============ 响应式：PC / 平板 / 手机 ============ */
+@media (max-width:1040px){
+  .g4,.g4feat{grid-template-columns:repeat(2,1fr)}
+}
+@media (max-width:900px){
+  .hero-in{grid-template-columns:1fr}
+  .mock{order:2}
+}
+@media (max-width:620px){
+  .wrap{padding:0 1.15rem}
+  .g2,.g4,.g4feat{grid-template-columns:1fr}
+  .nav-in{min-height:60px;padding:.6rem 0}
+  .brand{width:100%;margin-bottom:.15rem}
+  .nav-links{width:100%;gap:.3rem}
+  .nav-link,.nav .btn{flex:1 1 auto;padding:.5rem .7rem;font-size:.85rem;justify-content:center}
+  .hero-cta .btn{flex:1 1 100%}
+  .card{padding:1.25rem}
+}
+@media (prefers-reduced-motion:reduce){
+  .js .reveal{opacity:1;transform:none;transition:none}
+  html{scroll-behavior:auto}
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+}
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap nav-in">
+    <a class="brand" href="#top" data-action="scroll" data-target="top">
+      <span class="mark" aria-hidden="true"></span>
+      <span>铖信<small>KC-CXIM</small></span>
+    </a>
+    <nav class="nav-links">
+      <a class="nav-link" href="#source" data-action="repo" data-repo="github" target="_blank" rel="noopener noreferrer">GitHub</a>
+      <a class="nav-link" href="#source" data-action="repo" data-repo="gitee" target="_blank" rel="noopener noreferrer">Gitee</a>
+      <a class="btn btn-ghost btn-sm" href="#download" data-action="scroll" data-target="download">下载客户端</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+
+  <!-- A/B. Hero 首屏 -->
+  <section class="hero">
+    <div class="wrap hero-in">
+      <div>
+        <div class="chips">
+          <span class="chip">轻量部署</span>
+          <span class="chip">私有协议 · 自主可控</span>
+          <span class="chip">Windows 桌面端</span>
+          <span class="chip">Android 端</span>
+          <span class="chip">MIT 开源</span>
+        </div>
+        <h1>铖信</h1>
+        <p class="slogan">轻量、安全、跨平台的即时通信软件</p>
+        <p class="lead">注册登录、好友关系、单聊与群聊、图片与文件互发、离线补投，一条链路全部跑通。服务端为 2 核 CPU / 2GB 内存 / 3Mbps 带宽的入门级云服务器而优化，桌面端基于 Qt6，移动端基于原生 Android。</p>
+        <div class="hero-cta">
+          <a class="btn btn-primary" id="primary-download" href="#download" data-action="download" data-platform="auto"><span class="dot" aria-hidden="true"></span><span id="primary-text">下载客户端</span></a>
+          <a class="btn btn-ghost" href="#source" data-action="scroll" data-target="source">查看源码</a>
+        </div>
+        <p class="detected">已识别当前设备：<b id="platform-name">正在识别…</b></p>
+      </div>
+
+      <!-- 纯 CSS 绘制的消息界面示意，不含任何图片 -->
+      <div class="mock reveal" aria-hidden="true">
+        <div class="mock-bar"><i></i><i></i><i></i><span>单聊 · 在线</span></div>
+        <div class="bubble">服务端 2 核 2GB 就能跑，先把链路跑通。</div>
+        <div class="bubble me">桌面端 Qt6 已经能互发图片和文件了。</div>
+        <div class="bubble file"><span class="fmt">APK</span><span>铖信-Android-1.0.apk<small>移动端同样一条链路</small></span></div>
+        <div class="bubble me">群聊走"在线推送、离线拉取"，避免广播放大。</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 特性说明 -->
+  <section class="sec">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="eyebrow">Why 铖信</span>
+        <h2>把有限的 CPU、内存和带宽留给业务本身</h2>
+        <p>C++17 自研服务端，HTTP 鉴权与 TCP 长连接共享同一事件循环，不引入 Kafka、Redis 集群等重型中间件。</p>
+      </div>
+      <div class="grid g4feat">
+        <div class="feat reveal"><h3><span class="check" aria-hidden="true"></span>轻量</h3><p>单 io_context 多线程模型 + 按需扩容连接池，入门级云服务器即可部署。</p></div>
+        <div class="feat reveal"><h3><span class="check" aria-hidden="true"></span>安全</h3><p>JWT 鉴权配合轻量私有 TCP 帧，消息与数据完全自主可控。</p></div>
+        <div class="feat reveal"><h3><span class="check" aria-hidden="true"></span>跨平台</h3><p>Windows 桌面端（Qt6）与 Android 端共享同一套服务端接口。</p></div>
+        <div class="feat reveal"><h3><span class="check" aria-hidden="true"></span>消息完备</h3><p>单聊带 ACK 与离线补投，群聊支持创建、加群、退群与消息收发。</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- C. 下载区域 -->
+  <section class="sec" id="download">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="eyebrow">Downloads</span>
+        <h2>下载客户端</h2>
+        <p>桌面端为 Qt6 可执行文件，Android 端为 APK 安装包。macOS 与 Linux 仍在适配中，下载地址配置后即可生效。</p>
+      </div>
+      <div class="grid g4">
+
+        <article class="card reveal" data-card="windows">
+          <div class="card-top"><span class="mono" aria-hidden="true">Win</span><span class="tag slot-current" hidden>当前设备</span></div>
+          <h3>Windows 桌面端</h3>
+          <p>Qt6 QWidget 客户端，支持单聊、群聊与图片文件互发。</p>
+          <div class="meta"><span>可执行文件</span><span>x64</span></div>
+          <div class="foot"><a class="btn btn-primary btn-block" href="#download" data-action="download" data-platform="windows">下载 Windows 桌面端</a></div>
+        </article>
+
+        <article class="card reveal" data-card="macos">
+          <div class="card-top"><span class="mono" aria-hidden="true">mac</span><span class="tag slot-current" hidden>当前设备</span></div>
+          <h3>macOS 桌面端</h3>
+          <p>Qt6 桌面版适配中，配置下载地址后可直接下载。</p>
+          <div class="meta"><span>可执行文件</span><span>适配中</span></div>
+          <div class="foot"><a class="btn btn-ghost btn-block" href="#download" data-action="download" data-platform="macos">下载 macOS 桌面端</a></div>
+        </article>
+
+        <article class="card reveal" data-card="linux">
+          <div class="card-top"><span class="mono" aria-hidden="true">Lin</span><span class="tag slot-current" hidden>当前设备</span></div>
+          <h3>Linux 桌面端</h3>
+          <p>Qt6 桌面版适配中，配置下载地址后可直接下载。</p>
+          <div class="meta"><span>可执行文件</span><span>适配中</span></div>
+          <div class="foot"><a class="btn btn-ghost btn-block" href="#download" data-action="download" data-platform="linux">下载 Linux 桌面端</a></div>
+        </article>
+
+        <article class="card reveal" data-card="android">
+          <div class="card-top"><span class="mono" aria-hidden="true">And</span><span class="tag slot-current" hidden>当前设备</span></div>
+          <h3>Android 端</h3>
+          <p>原生 Java 客户端，已完成单聊与互发照片实测。</p>
+          <div class="meta"><span>APK 安装包</span><span>Android 8.0+</span></div>
+          <div class="foot"><a class="btn btn-primary btn-block" href="#download" data-action="download" data-platform="android">下载 Android APK</a></div>
+        </article>
+
+      </div>
+      <p class="card-note reveal">提示：下载地址统一在页面顶部的 DOWNLOAD_CONFIG 配置对象中维护，无需改动 HTML 结构。</p>
+    </div>
+  </section>
+
+  <!-- D. 源码介绍区域 -->
+  <section class="sec" id="source">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="eyebrow">Source Code</span>
+        <h2>源码开放，欢迎审阅与共建</h2>
+        <p>服务端、桌面端、移动端与管理后台全部开源，MIT 协议，仅供学习交流。</p>
+      </div>
+      <div class="grid g2">
+
+        <article class="card reveal">
+          <div class="card-top"><span class="mono" aria-hidden="true">GH</span></div>
+          <h3>GitHub 源码</h3>
+          <p>查看项目源码、提交记录、Issue 和 Release。</p>
+          <div class="repo-meta"><span class="tag">Issues</span><span class="tag">Pull Requests</span><span class="tag">Releases</span></div>
+          <div class="foot"><a class="btn btn-primary btn-block" href="#source" data-action="repo" data-repo="github" target="_blank" rel="noopener noreferrer">前往 GitHub</a></div>
+        </article>
+
+        <article class="card reveal">
+          <div class="card-top"><span class="mono" aria-hidden="true">Git</span></div>
+          <h3>Gitee 源码</h3>
+          <p>国内访问更快，适合查看镜像仓库和下载资源。</p>
+          <div class="repo-meta"><span class="tag">国内镜像</span><span class="tag">下载加速</span><span class="tag">同步更新</span></div>
+          <div class="foot"><a class="btn btn-ghost btn-block" href="#source" data-action="repo" data-repo="gitee" target="_blank" rel="noopener noreferrer">前往 Gitee</a></div>
+        </article>
+
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- E. 页脚 -->
+<footer>
+  <div class="wrap foot-in">
+    <div>© <span id="year">2026</span> <b>铖信 KC-CXIM</b> · 官方下载页</div>
+    <div class="foot-tip">本项目仅供学习交流，禁止用于任何违法用途。</div>
+  </div>
+</footer>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ============================================================
+   * 1. 下载与仓库地址配置：上线时只需要修改这里
+   *    保留占位符时页面不会跳转，而是给出轻提示并滚动到下载区。
+   * ============================================================ */
+  const DOWNLOAD_CONFIG = {
+    windows: "__DOWNLOAD_URL_WINDOWS__",
+    macos: "__DOWNLOAD_URL_MACOS__",
+    linux: "__DOWNLOAD_URL_LINUX__",
+    android: "__DOWNLOAD_URL_ANDROID_APK__",
+    github: "__GITHUB_REPO_URL__",
+    gitee: "__GITEE_REPO_URL__"
+  };
+
+  /* 平台展示名与主按钮文案 */
+  var NAME = { windows: "Windows", macos: "macOS", linux: "Linux", android: "Android" };
+  var LABEL = {
+    windows: "下载 Windows 桌面端",
+    macos: "下载 macOS 桌面端",
+    linux: "下载 Linux 桌面端",
+    android: "下载 Android APK",
+    unknown: "选择下载版本"
+  };
+
+  /* ============================================================
+   * 2. 工具函数
+   * ============================================================ */
+  function cfg(key) {
+    var v = DOWNLOAD_CONFIG[key];
+    return typeof v === "string" ? v : "";
+  }
+
+  /* 仍是占位符（未配置真实地址）则返回 true */
+  function isPlaceholder(v) {
+    if (!v) { return true; }
+    if (v.indexOf("__") !== -1) { return true; }
+    if (v.charAt(0) === "#") { return true; }
+    return false;
+  }
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  /* Toast：全站复用同一个节点，不产生额外图层；禁止使用 alert */
+  var toastTimer = 0;
+  function toast(msg, ok) {
+    var el = $("toast");
+    if (!el) { return; }
+    el.textContent = msg;
+    el.className = ok ? "toast show ok" : "toast show";
+    if (toastTimer) { clearTimeout(toastTimer); }
+    toastTimer = setTimeout(function () {
+      el.className = "toast";
+      toastTimer = 0;
+    }, 2600);
+  }
+
+  function scrollToId(id) {
+    var el = $(id);
+    if (!el) { return; }
+    var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+  }
+
+  /* ============================================================
+   * 3. 设备识别
+   *    注意：Android 的 UA 中也包含 Linux，必须先判断 Android。
+   * ============================================================ */
+  function detect(ua) {
+    if (/Android/i.test(ua)) { return "android"; }
+    if (/Windows/i.test(ua)) { return "windows"; }
+    if (/Macintosh|Mac OS X|iPhone|iPad|iPod/i.test(ua)) { return "macos"; }
+    if (/Linux|X11/i.test(ua)) { return "linux"; }
+    return "unknown";
+  }
+
+  var platform = detect(navigator.userAgent || "");
+
+  /* ============================================================
+   * 4. 把真实地址写进链接（配置后浏览器原生打开新标签页）
+   * ============================================================ */
+  function upgradeLinks() {
+    var links = document.querySelectorAll("[data-action='download']");
+    for (var i = 0; i < links.length; i++) {
+      var el = links[i];
+      var key = el.getAttribute("data-platform");
+      if (key === "auto") { key = platform === "unknown" ? "" : platform; }
+      var url = cfg(key);
+      if (key && !isPlaceholder(url)) {
+        el.setAttribute("href", url);
+        el.setAttribute("target", "_blank");
+        el.setAttribute("rel", "noopener noreferrer");
+      }
+    }
+    var repos = document.querySelectorAll("[data-action='repo']");
+    for (var j = 0; j < repos.length; j++) {
+      var r = repos[j];
+      var ru = cfg(r.getAttribute("data-repo"));
+      if (!isPlaceholder(ru)) { r.setAttribute("href", ru); }
+    }
+  }
+
+  /* ============================================================
+   * 5. 主按钮与当前设备标识
+   * ============================================================ */
+  function applyPlatform() {
+    var btn = $("primary-download");
+    var text = $("primary-text");
+    if (text) { text.textContent = LABEL[platform]; }
+
+    var name = $("platform-name");
+    if (name) { name.textContent = platform === "unknown" ? "未识别，可选择下方版本" : NAME[platform]; }
+
+    if (platform !== "unknown") {
+      var card = document.querySelector("[data-card='" + platform + "']");
+      if (card) {
+        card.className = card.className + " is-current";
+        var tag = card.querySelector(".slot-current");
+        if (tag) { tag.hidden = false; }
+      }
+      if (btn && !isPlaceholder(cfg(platform))) {
+        btn.setAttribute("href", cfg(platform));
+      }
+    }
+  }
+
+  /* ============================================================
+   * 6. 交互：单一委托监听器，不做逐元素绑定
+   * ============================================================ */
+  document.addEventListener("click", function (e) {
+    var el = e.target && e.target.closest ? e.target.closest("[data-action]") : null;
+    if (!el) { return; }
+    var action = el.getAttribute("data-action");
+
+    if (action === "scroll") {
+      var target = el.getAttribute("data-target");
+      if (target && $(target)) { e.preventDefault(); scrollToId(target); }
+      return;
+    }
+
+    if (action === "download") {
+      var key = el.getAttribute("data-platform");
+      if (key === "auto") { key = platform === "unknown" ? "" : platform; }
+      var url = cfg(key);
+
+      /* 未识别设备：直接展开下载区让用户自己选 */
+      if (!key) {
+        e.preventDefault();
+        scrollToId("download");
+        toast("请选择需要下载的版本");
+        return;
+      }
+      /* 未配置真实地址：不跳转，滚动到下载区并提示 */
+      if (isPlaceholder(url)) {
+        e.preventDefault();
+        scrollToId("download");
+        toast("请先配置真实下载链接（DOWNLOAD_CONFIG." + key + "）");
+        return;
+      }
+      /* href 已在 upgradeLinks 中升级为真实地址，交给浏览器新标签页打开 */
+      return;
+    }
+
+    if (action === "repo") {
+      var repo = el.getAttribute("data-repo");
+      var rurl = cfg(repo);
+      if (isPlaceholder(rurl)) {
+        e.preventDefault();
+        toast("请先配置真实的 " + (repo === "github" ? "GitHub" : "Gitee") + " 仓库地址");
+      }
+      return;
+    }
+  }, false);
+
+  /* ============================================================
+   * 7. 一次性入场动画
+   *    IntersectionObserver 在元素可见后立即 unobserve，
+   *    全部播完即断开，不留下任何长期运行的动画循环。
+   * ============================================================ */
+  function initReveal() {
+    var items = document.querySelectorAll(".reveal");
+    var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    if (reduce || !("IntersectionObserver" in window)) {
+      for (var i = 0; i < items.length; i++) { items[i].className += " in"; }
+      return;
+    }
+    var io = new IntersectionObserver(function (entries) {
+      for (var n = 0; n < entries.length; n++) {
+        if (entries[n].isIntersecting) {
+          entries[n].target.className += " in";
+          io.unobserve(entries[n].target);
+        }
+      }
+    }, { rootMargin: "0px 0px -8% 0px", threshold: 0.08 });
+
+    for (var k = 0; k < items.length; k++) { io.observe(items[k]); }
+    /* 兜底：3 秒后仍未被观察到的元素直接显示，避免内容不可见 */
+    setTimeout(function () {
+      for (var m = 0; m < items.length; m++) {
+        if (items[m].className.indexOf(" in") === -1) { items[m].className += " in"; }
+      }
+      io.disconnect();
+    }, 3000);
+  }
+
+  /* ============================================================
+   * 8. 启动
+   * ============================================================ */
+  upgradeLinks();
+  applyPlatform();
+  initReveal();
+
+  var y = $("year");
+  if (y) { y.textContent = String(new Date().getFullYear()); }
+})();
+</script>
+</body>
+</html>
+`;
+
+async function handleRequest(request) {
+  return new Response(html, {
+    headers: {
+      "content-type": "text/html;charset=UTF-8",
+    },
+  })
+}
+
+export default {
+  async fetch(request) {
+    return handleRequest(request);
+  }
+};
